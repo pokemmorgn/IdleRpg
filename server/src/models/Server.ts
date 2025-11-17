@@ -4,7 +4,7 @@ export interface IServer extends Document {
   serverId: string;        // "s1", "s2", "s3"...
   name: string;            // "Server 1", "Server 2"...
   cluster: number;         // Numéro du cluster (1, 2, 3...)
-  status: string;          // "online", "maintenance", "full"
+  status: string;          // "online", "maintenance", "full", "locked"
   capacity: number;        // Nombre max de joueurs
   currentPlayers: number;  // Nombre actuel de joueurs
   openedAt: Date;         // Date d'ouverture du serveur
@@ -29,7 +29,7 @@ const ServerSchema = new Schema<IServer>({
   status: { 
     type: String, 
     required: true,
-    enum: ["online", "maintenance", "full"],
+    enum: ["online", "maintenance", "full", "locked"], // ← AJOUTÉ "locked"
     default: "online"
   },
   capacity: { 
