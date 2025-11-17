@@ -7,7 +7,7 @@ export interface ServerConfig {
   serverId: string;      // "s1", "s2", etc.
   name: string;          // "Server 1", "Server 2", etc.
   cluster: number;       // Numéro du cluster (1, 2, 3...)
-  status: "online" | "maintenance" | "full";
+  status: "online" | "maintenance" | "full" | "locked";
   capacity: number;
   openedAt: Date;
 }
@@ -60,6 +60,50 @@ export const MAX_PLAYERS_PER_SERVER = 3;
 export const SERVER_CAPACITY = 10000;
 
 /**
+ * ===== CONFIGURATION SYSTÈME D'INVITATION =====
+ */
+
+/**
+ * Active/Désactive le système de verrouillage des serveurs avec invitations
+ * true = Les serveurs se verrouillent quand ils atteignent le seuil
+ * false = Les serveurs restent toujours ouverts
+ */
+export const INVITATION_SYSTEM_ENABLED = true;
+
+/**
+ * Seuil de verrouillage du serveur (en nombre de joueurs)
+ * Quand un serveur atteint ce nombre, il se verrouille
+ * Seuls les joueurs avec un code d'invitation peuvent rejoindre
+ */
+export const SERVER_LOCK_THRESHOLD = 10;
+
+/**
+ * Alternative : Seuil de verrouillage en pourcentage
+ * Si défini, remplace SERVER_LOCK_THRESHOLD
+ * Exemple : 0.8 = 80% de la capacité
+ * null = utilise SERVER_LOCK_THRESHOLD à la place
+ */
+export const SERVER_LOCK_THRESHOLD_PERCENTAGE: number | null = null;
+
+/**
+ * Niveau minimum requis pour générer des codes d'invitation
+ * Les joueurs en dessous de ce niveau ne peuvent pas inviter d'amis
+ */
+export const INVITATION_LEVEL_REQUIREMENT = 30;
+
+/**
+ * Nombre maximum d'invitations qu'un joueur peut envoyer
+ * Limite le nombre d'amis qu'un joueur peut inviter
+ */
+export const MAX_INVITATIONS_PER_PLAYER = 4;
+
+/**
+ * Durée de validité d'un code d'invitation (en jours)
+ * Après ce délai, le code expire et ne peut plus être utilisé
+ */
+export const INVITATION_CODE_EXPIRY_DAYS = 7;
+
+/**
  * Configuration par défaut d'un serveur
  */
 export const DEFAULT_SERVER_CONFIG = {
@@ -69,13 +113,50 @@ export const DEFAULT_SERVER_CONFIG = {
 };
 
 /**
- * Serveurs à créer initialement (seulement s1 et s2 pour commencer)
+ * Serveurs à créer initialement (seulement s1 pour commencer)
  */
 export const INITIAL_SERVERS = ["s1"];
 
 /**
+ * Calcule le seuil de verrouillage effectif pour un serveur
+ * Utilise soit le nombre absolu, soit le pourcentage
+ */
+export function getServerLockThreshold(): number {
+  if (SERVER_LOCK_THRESHOLD_PERCENTAGE !== null) {
+    return Math.floor(SERVER_CAPACITY * SERVER_LOCK_THRESHOLD_PERCENTAGE);
+  }
+  return SERVER_LOCK_THRESHOLD;
+}
+
+/**
+ * Vérifie si un serveur doit être verrouillé
+ */
+export function shouldLockServer(currentPlayers: number): boolean {
+  if (!INVITATION_SYSTEM_ENABLED) {
+    return false;
+  }
+  
+  const threshold = getServerLockThreshold();
+  return currentPlayers >= threshold;
+}
+
+/**
+ * Génère un code d'invitation unique
+ */
+export function generateInvitationCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sans I, O, 0, 1 pour éviter confusion
+  let code = "";
+  
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  
+  return code;
+}
+
+/**
  * Génère la configuration complète des serveurs
- * Par défaut, crée seulement les serveurs initiaux (s1, s2)
+ * Par défaut, crée seulement les serveurs initiaux (s1)
  */
 export function generateServersConfig(serversToCreate: string[] = INITIAL_SERVERS): ServerConfig[] {
   const servers: ServerConfig[] = [];
