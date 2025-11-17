@@ -1,10 +1,26 @@
-import mongoose, { Schema } from "mongoose";
+import mongoose, { Schema, Document } from "mongoose";
 
-const PlayerSchema = new Schema({
-  username: String,
-  level: Number,
-  xp: Number,
-  gold: Number,
-}, { timestamps: true });
+export interface IPlayer extends Document {
+  username: string;
+  email?: string;
+  level: number;
+  xp: number;
+  gold: number;
+  lastOnline: Date;
+}
 
-export default mongoose.model("Player", PlayerSchema);
+const PlayerSchema = new Schema<IPlayer>({
+  username: { type: String, required: true },
+
+  email: { type: String },
+
+  level: { type: Number, default: 1 },
+  xp: { type: Number, default: 0 },
+  gold: { type: Number, default: 0 },
+
+  lastOnline: { type: Date, default: Date.now },
+}, {
+  timestamps: true
+});
+
+export default mongoose.model<IPlayer>("Player", PlayerSchema);
