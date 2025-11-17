@@ -13,6 +13,7 @@ import { AuthRoom } from "./colyseus/AuthRoom";
 import authRoutes from "./routes/authRoutes";
 import serverRoutes from "./routes/serverRoutes";
 import profileRoutes from "./routes/profileRoutes";
+import invitationRoutes from "./routes/invitationRoutes";
 
 dotenv.config();
 
@@ -91,6 +92,7 @@ app.get("/health", async (req: Request, res: Response) => {
 app.use("/auth", authRoutes);
 app.use("/servers", serverRoutes);
 app.use("/profile", profileRoutes);
+app.use("/invitation", invitationRoutes);
 
 
 // -------------------------
