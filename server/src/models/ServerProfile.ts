@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 import { MAX_CHARACTERS_PER_SERVER } from "../config/character.config";
+import { VALID_CLASS_IDS } from "../config/classes.config";
+import { VALID_RACE_IDS } from "../config/races.config";
 
 export interface IServerProfile extends Document {
   playerId: Types.ObjectId;   // Référence au Player
@@ -15,8 +17,8 @@ export interface IServerProfile extends Document {
   gold: number;
   
   // Classe et race du personnage
-  class: string;              // "paladin", "mage", "hunter"...
-  race: string;               // "human_elion", "dwarf_rune", "varkyns_beast"...
+  class: string;              // Dynamique depuis classes.config.ts
+  race: string;               // Dynamique depuis races.config.ts
   
   // Timestamps
   lastOnline: Date;
@@ -38,7 +40,7 @@ const ServerProfileSchema = new Schema<IServerProfile>({
     type: Number,
     required: true,
     min: 1,
-    max: MAX_CHARACTERS_PER_SERVER,  // ← Dynamique depuis la config
+    max: MAX_CHARACTERS_PER_SERVER,  // Dynamique depuis character.config.ts
     default: 1
   },
   characterName: { 
@@ -60,22 +62,13 @@ const ServerProfileSchema = new Schema<IServerProfile>({
   class: { 
     type: String, 
     required: true,
-    enum: ["paladin", "hunter", "mage", "priest", "rogue", "warlock"],
-    default: "paladin"
+    enum: VALID_CLASS_IDS,  // ← Dynamique depuis classes.config.ts
+    default: "warrior"
   },
   race: {
     type: String,
     required: true,
-    enum: [
-      "human_elion", 
-      "dwarf_rune", 
-      "winged_lunaris", 
-      "sylphide_forest",
-      "varkyns_beast",
-      "morhri_insect",
-      "ghrannite_stone",
-      "selenite_lunar"
-    ],
+    enum: VALID_RACE_IDS,  // ← Dynamique depuis races.config.ts
     default: "human_elion"
   },
   lastOnline: { 
@@ -87,7 +80,6 @@ const ServerProfileSchema = new Schema<IServerProfile>({
 });
 
 // Index composé pour éviter les doublons (un joueur ne peut avoir qu'un personnage par slot sur un serveur)
-// Nouveau : playerId + serverId + characterSlot doit être unique
 ServerProfileSchema.index({ playerId: 1, serverId: 1, characterSlot: 1 }, { unique: true });
 
 // Index pour rechercher tous les personnages d'un joueur sur un serveur
