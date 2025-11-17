@@ -3,21 +3,21 @@
  * 
  * NOTE DEV - Rôles et spécialités par classe (pour référence) :
  * 
- * - Paladin : Tank/Healer/Mélée. Polyvalent en survie et soutien, armure lourde.
- * - Chasseur : DPS distance physique. Mobilité, pièges, contrôle de zones.
+ * - Prêtre (Priest) : Healer/Support. Soins puissants, buffs d'équipe, résurrection.
  * - Mage : DPS distance magique. Burst élevé, contrôle de foule, AoE.
- * - Prêtre : Healer/Support. Soins puissants, buffs d'équipe, résurrection.
- * - Voleur : DPS mélée agile burst. Furtivité, combos rapides, critiques.
- * - Démoniste : Caster ombre/DOT/Invocations. Drain de vie, contrôle via pets.
+ * - Paladin : Tank/Healer/Mélée. Polyvalent en survie et soutien, armure lourde.
+ * - Voleur (Rogue) : DPS mélée agile burst. Furtivité, combos rapides, critiques.
+ * - Guerrier (Warrior) : Tank/DPS mélée. Haute survie, contrôle, dégâts physiques.
+ * - Druide (Druid) : Support/Healer/DPS hybride. Transformation, polyvalence, magie nature.
  */
 
 export type ClassRole = "TANK" | "DPS" | "HEALER" | "SUPPORT";
 
 export interface ClassConfig {
-  classId: string;          // ID unique (ex: "paladin")
-  nameKey: string;          // Clé de traduction pour le nom (ex: "class.paladin.name")
-  descriptionKey: string;   // Clé de traduction pour la description (ex: "class.paladin.description")
-  roles: ClassRole[];       // Rôles possibles (ex: ["TANK", "HEALER"])
+  classId: string;          // ID unique (ex: "priest")
+  nameKey: string;          // Clé de traduction pour le nom (ex: "class.priest.name")
+  descriptionKey: string;   // Clé de traduction pour la description (ex: "class.priest.description")
+  roles: ClassRole[];       // Rôles possibles (ex: ["HEALER", "SUPPORT"])
   
   // Les stats de base seront ajoutées ici plus tard
   // baseStats?: { [stat: string]: number }; // Ex: { STR: 15, INT: 10, VIT: 20 }
@@ -28,16 +28,10 @@ export interface ClassConfig {
  */
 export const ALL_CLASSES: ClassConfig[] = [
   {
-    classId: "paladin",
-    nameKey: "class.paladin.name",
-    descriptionKey: "class.paladin.description",
-    roles: ["TANK", "HEALER"]
-  },
-  {
-    classId: "hunter",
-    nameKey: "class.hunter.name",
-    descriptionKey: "class.hunter.description",
-    roles: ["DPS"]
+    classId: "priest",
+    nameKey: "class.priest.name",
+    descriptionKey: "class.priest.description",
+    roles: ["HEALER", "SUPPORT"]
   },
   {
     classId: "mage",
@@ -46,10 +40,10 @@ export const ALL_CLASSES: ClassConfig[] = [
     roles: ["DPS"]
   },
   {
-    classId: "priest",
-    nameKey: "class.priest.name",
-    descriptionKey: "class.priest.description",
-    roles: ["HEALER", "SUPPORT"]
+    classId: "paladin",
+    nameKey: "class.paladin.name",
+    descriptionKey: "class.paladin.description",
+    roles: ["TANK", "HEALER"]
   },
   {
     classId: "rogue",
@@ -58,12 +52,63 @@ export const ALL_CLASSES: ClassConfig[] = [
     roles: ["DPS"]
   },
   {
-    classId: "warlock",
-    nameKey: "class.warlock.name",
-    descriptionKey: "class.warlock.description",
-    roles: ["DPS", "SUPPORT"]
+    classId: "warrior",
+    nameKey: "class.warrior.name",
+    descriptionKey: "class.warrior.description",
+    roles: ["TANK", "DPS"]
+  },
+  {
+    classId: "druid",
+    nameKey: "class.druid.name",
+    descriptionKey: "class.druid.description",
+    roles: ["SUPPORT", "HEALER", "DPS"]
   }
 ];
+
+/**
+ * Restrictions de classe par race
+ * Format: { raceId: [classIds autorisées] }
+ * Si une race n'est pas listée ici, toutes les classes sont autorisées
+ */
+export const CLASS_RACE_RESTRICTIONS: { [raceId: string]: string[] } = {
+  // Humains : Toutes les classes SAUF Druide
+  "human_elion": ["priest", "mage", "paladin", "rogue", "warrior"],
+  
+  // Autres races : à définir plus tard (pour l'instant, toutes autorisées)
+  // "dwarf_rune": ["priest", "paladin", "warrior"],
+  // "winged_lunaris": ["priest", "mage", "paladin"],
+  // etc.
+};
+
+/**
+ * Vérifie si une combinaison classe/race est autorisée
+ */
+export function isClassAllowedForRace(classId: string, raceId: string): boolean {
+  // Si la race n'a pas de restrictions définies, toutes les classes sont autorisées
+  const allowedClasses = CLASS_RACE_RESTRICTIONS[raceId];
+  
+  if (!allowedClasses) {
+    return true; // Pas de restrictions pour cette race
+  }
+  
+  // Vérifier si la classe est dans la liste autorisée
+  return allowedClasses.includes(classId);
+}
+
+/**
+ * Récupère les classes autorisées pour une race donnée
+ */
+export function getAllowedClassesForRace(raceId: string): ClassConfig[] {
+  const allowedClassIds = CLASS_RACE_RESTRICTIONS[raceId];
+  
+  // Si pas de restrictions, retourner toutes les classes
+  if (!allowedClassIds) {
+    return ALL_CLASSES;
+  }
+  
+  // Filtrer les classes autorisées
+  return ALL_CLASSES.filter(cls => allowedClassIds.includes(cls.classId));
+}
 
 /**
  * Map des classes par ID pour accès rapide
