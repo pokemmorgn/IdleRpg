@@ -9,7 +9,9 @@ import {
   getNextServerToCreate, 
   getServerCluster,
   getServerNumber,
-  DEFAULT_SERVER_CONFIG
+  DEFAULT_SERVER_CONFIG,
+  shouldLockServer,
+  INVITATION_SYSTEM_ENABLED
 } from "../config/servers.config";
 
 /**
@@ -70,8 +72,43 @@ export async function checkAndCreateNewServer(): Promise<string | null> {
 }
 
 /**
+ * Vérifie et met à jour le statut de verrouillage d'un serveur
+ */
+export async function updateServerLockStatus(serverId: string): Promise<void> {
+  try {
+    if (!INVITATION_SYSTEM_ENABLED) {
+      return;
+    }
+
+    const server = await Server.findOne({ serverId });
+    if (!server) {
+      return;
+    }
+
+    const shouldBeLocked = shouldLockServer(server.currentPlayers);
+
+    // Si le serveur doit être verrouillé mais ne l'est pas encore
+    if (shouldBeLocked && server.status === "online") {
+      server.status = "locked";
+      await server.save();
+      console.log(`🔒 Serveur ${serverId} verrouillé (${server.currentPlayers} joueurs)`);
+    }
+    // Si le serveur ne doit plus être verrouillé
+    else if (!shouldBeLocked && server.status === "locked") {
+      server.status = "online";
+      await server.save();
+      console.log(`🔓 Serveur ${serverId} déverrouillé (${server.currentPlayers} joueurs)`);
+    }
+
+  } catch (error: any) {
+    console.error(`❌ Erreur lors de la mise à jour du statut de ${serverId}:`, error.message);
+  }
+}
+
+/**
  * Incrémente le nombre de joueurs sur un serveur
  * Vérifie automatiquement si un nouveau serveur doit être créé
+ * Vérifie si le serveur doit être verrouillé
  */
 export async function incrementPlayerCount(serverId: string): Promise<void> {
   try {
@@ -87,6 +124,9 @@ export async function incrementPlayerCount(serverId: string): Promise<void> {
 
     console.log(`👥 ${serverId}: ${server.currentPlayers} joueur(s) connecté(s)`);
 
+    // Vérifier si le serveur doit être verrouillé
+    await updateServerLockStatus(serverId);
+
     // Vérifier si on doit créer un nouveau serveur
     await checkAndCreateNewServer();
 
@@ -98,6 +138,7 @@ export async function incrementPlayerCount(serverId: string): Promise<void> {
 
 /**
  * Décrémente le nombre de joueurs sur un serveur
+ * Vérifie si le serveur doit être déverrouillé
  */
 export async function decrementPlayerCount(serverId: string): Promise<void> {
   try {
@@ -113,6 +154,9 @@ export async function decrementPlayerCount(serverId: string): Promise<void> {
 
     console.log(`👥 ${serverId}: ${server.currentPlayers} joueur(s) connecté(s)`);
 
+    // Vérifier si le serveur doit être déverrouillé
+    await updateServerLockStatus(serverId);
+
   } catch (error: any) {
     console.error(`❌ Erreur lors de la décrémentation des joueurs sur ${serverId}:`, error.message);
     throw error;
@@ -121,10 +165,13 @@ export async function decrementPlayerCount(serverId: string): Promise<void> {
 
 /**
  * Récupère le serveur avec le moins de joueurs (pour le matchmaking)
+ * Exclut les serveurs verrouillés
  */
 export async function getLeastPopulatedServer(): Promise<string | null> {
   try {
-    const servers = await Server.find({ status: "online" })
+    const servers = await Server.find({ 
+      status: "online" // Exclut "locked", "maintenance", "full"
+    })
       .sort({ currentPlayers: 1, serverId: 1 })
       .limit(1);
 
@@ -137,5 +184,40 @@ export async function getLeastPopulatedServer(): Promise<string | null> {
   } catch (error: any) {
     console.error("❌ Erreur lors de la recherche du serveur le moins peuplé:", error.message);
     return null;
+  }
+}
+
+/**
+ * Vérifie si un serveur accepte de nouveaux joueurs
+ */
+export async function canJoinServer(serverId: string, hasInvitation: boolean = false): Promise<boolean> {
+  try {
+    const server = await Server.findOne({ serverId });
+    
+    if (!server) {
+      return false;
+    }
+
+    // Serveur en maintenance ou full
+    if (server.status === "maintenance" || server.status === "full") {
+      return false;
+    }
+
+    // Serveur verrouillé mais le joueur a une invitation
+    if (server.status === "locked" && hasInvitation) {
+      return true;
+    }
+
+    // Serveur verrouillé sans invitation
+    if (server.status === "locked" && !hasInvitation) {
+      return false;
+    }
+
+    // Serveur online
+    return true;
+
+  } catch (error: any) {
+    console.error(`❌ Erreur lors de la vérification d'accès à ${serverId}:`, error.message);
+    return false;
   }
 }
