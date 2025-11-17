@@ -10,6 +10,9 @@ import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { AuthRoom } from "./colyseus/AuthRoom";
 
+// --- Routes ---
+import authRoutes from "./routes/authRoutes";
+
 dotenv.config();
 
 const app: Application = express();
@@ -80,6 +83,12 @@ app.get("/health", async (req: Request, res: Response) => {
     });
   }
 });
+
+// -------------------------
+//      AUTH ROUTES
+// -------------------------
+app.use("/auth", authRoutes);
+
 
 // -------------------------
 //    404 Catch-All
