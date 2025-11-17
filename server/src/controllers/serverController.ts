@@ -3,17 +3,17 @@ import Server from "../models/Server";
 
 /**
  * GET /servers
- * Liste tous les serveurs disponibles
+ * Liste tous les serveurs disponibles (groupés par cluster)
  */
 export const listServers = async (req: Request, res: Response) => {
   try {
-    const servers = await Server.find().sort({ region: 1, serverId: 1 });
+    const servers = await Server.find().sort({ cluster: 1, serverId: 1 });
 
     res.json({
       servers: servers.map(s => ({
         serverId: s.serverId,
         name: s.name,
-        region: s.region,
+        cluster: s.cluster,
         status: s.status,
         currentPlayers: s.currentPlayers,
         capacity: s.capacity,
@@ -42,11 +42,42 @@ export const getServer = async (req: Request, res: Response) => {
     res.json({
       serverId: server.serverId,
       name: server.name,
-      region: server.region,
+      cluster: server.cluster,
       status: server.status,
       currentPlayers: server.currentPlayers,
       capacity: server.capacity,
       openedAt: server.openedAt
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * GET /servers/cluster/:clusterId
+ * Liste tous les serveurs d'un cluster spécifique
+ */
+export const getClusterServers = async (req: Request, res: Response) => {
+  try {
+    const clusterId = parseInt(req.params.clusterId);
+
+    if (isNaN(clusterId)) {
+      return res.status(400).json({ error: "Invalid cluster ID" });
+    }
+
+    const servers = await Server.find({ cluster: clusterId }).sort({ serverId: 1 });
+
+    res.json({
+      clusterId: clusterId,
+      serverCount: servers.length,
+      servers: servers.map(s => ({
+        serverId: s.serverId,
+        name: s.name,
+        status: s.status,
+        currentPlayers: s.currentPlayers,
+        capacity: s.capacity,
+        openedAt: s.openedAt
+      }))
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
