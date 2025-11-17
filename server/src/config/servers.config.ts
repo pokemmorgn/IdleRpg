@@ -89,7 +89,7 @@ export const SERVER_LOCK_THRESHOLD_PERCENTAGE: number | null = null;
  * Niveau minimum requis pour générer des codes d'invitation
  * Les joueurs en dessous de ce niveau ne peuvent pas inviter d'amis
  */
-export const INVITATION_LEVEL_REQUIREMENT = 30;
+export const INVITATION_LEVEL_REQUIREMENT = 1;
 
 /**
  * Nombre maximum d'invitations qu'un joueur peut envoyer
