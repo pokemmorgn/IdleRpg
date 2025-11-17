@@ -34,8 +34,15 @@ async function cleanDatabase() {
     log.warning("⚠️  NETTOYAGE COMPLET DE LA BASE DE DONNÉES");
     log.warning("Toutes les données seront supprimées !");
     
+    // Vérifier que la connexion DB existe
+    const db = mongoose.connection.db;
+    
+    if (!db) {
+      throw new Error("Database connection not established");
+    }
+
     // Supprimer toutes les collections
-    const collections = await mongoose.connection.db.collections();
+    const collections = await db.collections();
     
     for (const collection of collections) {
       const count = await collection.countDocuments();
