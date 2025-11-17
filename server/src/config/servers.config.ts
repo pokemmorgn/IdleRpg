@@ -45,11 +45,26 @@ export const CLUSTERS: ClusterConfig[] = [
 ];
 
 /**
+ * ===== CONFIGURATION AUTO-SCALING =====
+ */
+
+/**
+ * Nombre maximum de joueurs par serveur avant de créer un nouveau serveur
+ * IMPORTANT : Modifie cette valeur pour changer le seuil d'auto-création
+ */
+export const MAX_PLAYERS_PER_SERVER = 3;
+
+/**
+ * Capacité totale d'un serveur (hard limit)
+ */
+export const SERVER_CAPACITY = 10000;
+
+/**
  * Configuration par défaut d'un serveur
  */
 export const DEFAULT_SERVER_CONFIG = {
   status: "online" as const,
-  capacity: 10000,
+  capacity: SERVER_CAPACITY,
   currentPlayers: 0
 };
 
@@ -122,4 +137,27 @@ export function isValidServerId(serverId: string): boolean {
 export function getClusterName(clusterId: number): string {
   const cluster = CLUSTERS.find(c => c.clusterId === clusterId);
   return cluster ? cluster.name : `Cluster ${clusterId}`;
+}
+
+/**
+ * Récupère le prochain serveur à créer dans l'ordre
+ * Retourne null si tous les serveurs sont créés
+ */
+export function getNextServerToCreate(existingServers: string[]): string | null {
+  // Parcourir tous les clusters dans l'ordre
+  for (const cluster of CLUSTERS) {
+    for (const serverId of cluster.servers) {
+      if (!existingServers.includes(serverId)) {
+        return serverId;
+      }
+    }
+  }
+  return null; // Tous les serveurs sont créés
+}
+
+/**
+ * Extrait le numéro d'un serverId (s1 -> 1, s15 -> 15)
+ */
+export function getServerNumber(serverId: string): number {
+  return parseInt(serverId.substring(1));
 }
