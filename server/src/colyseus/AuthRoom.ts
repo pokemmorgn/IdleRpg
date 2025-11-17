@@ -1,6 +1,6 @@
 import { Room, Client } from "colyseus";
 import jwt from "jsonwebtoken";
-import Player from "../database/models/Player";
+import Player from "../models/Player";
 
 export class AuthRoom extends Room {
   onCreate(options: any) {
