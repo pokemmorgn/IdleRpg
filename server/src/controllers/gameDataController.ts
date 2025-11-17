@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { ALL_CLASSES, getClassesByRole, ClassRole } from "../config/classes.config";
-import { ALL_RACES, getRacesByFaction, Faction } from "../config/races.config";
+import { ALL_CLASSES, getClassesByRole, getAllowedClassesForRace, ClassRole } from "../config/classes.config";
+import { ALL_RACES, getRacesByFaction, isValidRace, Faction } from "../config/races.config";
 
 /**
  * GET /game-data/classes
@@ -106,6 +106,41 @@ export const listFactions = async (req: Request, res: Response) => {
           races: getRacesByFaction("OMBRE").map(r => r.raceId)
         }
       ]
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * GET /game-data/allowed-classes/:raceId
+ * Récupère les classes autorisées pour une race donnée
+ */
+export const getAllowedClasses = async (req: Request, res: Response) => {
+  try {
+    const { raceId } = req.params;
+
+    // Vérifier que la race existe
+    if (!isValidRace(raceId)) {
+      return res.status(404).json({ 
+        error: "Race not found",
+        raceId: raceId
+      });
+    }
+
+    // Récupérer les classes autorisées
+    const allowedClasses = getAllowedClassesForRace(raceId);
+
+    res.json({
+      raceId: raceId,
+      allowedClasses: allowedClasses.map(cls => ({
+        classId: cls.classId,
+        nameKey: cls.nameKey,
+        descriptionKey: cls.descriptionKey,
+        roles: cls.roles
+      })),
+      totalAllowed: allowedClasses.length,
+      totalClasses: ALL_CLASSES.length
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
