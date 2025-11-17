@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface IServerProfile extends Document {
   playerId: Types.ObjectId;   // Référence au Player
-  serverId: string;           // "eu-1", "na-1", "asia-1"...
+  serverId: string;           // "s1", "s2", "s3"...
   
   // Informations du personnage principal
   characterName: string;      // Nom du personnage sur ce serveur
@@ -10,8 +10,9 @@ export interface IServerProfile extends Document {
   xp: number;
   gold: number;
   
-  // Classe du personnage
-  class: string;              // "warrior", "mage", "archer"...
+  // Classe et race du personnage
+  class: string;              // "paladin", "mage", "hunter"...
+  race: string;               // "human_elion", "dwarf_rune", "varkyns_beast"...
   
   // Timestamps
   lastOnline: Date;
@@ -48,8 +49,23 @@ const ServerProfileSchema = new Schema<IServerProfile>({
   class: { 
     type: String, 
     required: true,
-    enum: ["warrior", "mage", "archer"],
-    default: "warrior"
+    enum: ["paladin", "hunter", "mage", "priest", "rogue", "warlock"],
+    default: "paladin"
+  },
+  race: {
+    type: String,
+    required: true,
+    enum: [
+      "human_elion", 
+      "dwarf_rune", 
+      "winged_lunaris", 
+      "sylphide_forest",
+      "varkyns_beast",
+      "morhri_insect",
+      "ghrannite_stone",
+      "selenite_lunar"
+    ],
+    default: "human_elion"
   },
   lastOnline: { 
     type: Date, 
