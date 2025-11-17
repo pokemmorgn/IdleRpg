@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import ServerProfile from "../models/ServerProfile";
-import Server from "../models/Server";
+import ServerModel from "../models/Server";
 
 /**
  * GET /profile/:serverId
@@ -16,7 +16,7 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 
     // Vérifie que le serveur existe
-    const server = await Server.findOne({ serverId });
+    const server = await ServerModel.findOne({ serverId });
     if (!server) {
       return res.status(404).json({ error: "Server not found" });
     }
@@ -69,7 +69,7 @@ export const createProfile = async (req: Request, res: Response) => {
     }
 
     // Vérifie que le serveur existe et est accessible
-    const server = await Server.findOne({ serverId });
+    const server = await ServerModel.findOne({ serverId });
     if (!server) {
       return res.status(404).json({ error: "Server not found" });
     }
