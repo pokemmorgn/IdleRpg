@@ -163,18 +163,21 @@ async function testDuplicateRegister(username: string, password: string) {
       password,
     });
 
-    if (response.statusCode === 200) {
+    if (response.statusCode === 400) {
+      // C'est ce qu'on veut : le serveur rejette le doublon
+      log.success("Le serveur a bien rejeté le doublon");
+      log.info(`Message: ${response.data.error}`);
+      return true;
+    } else if (response.statusCode === 200) {
       log.error("Le serveur a accepté un doublon (BUG)");
       return false;
+    } else {
+      log.error(`Le serveur a retourné un code inattendu: ${response.statusCode}`);
+      return false;
     }
-
-    log.error("Le serveur a retourné un code inattendu");
-    return false;
   } catch (error: any) {
-    // On s'attend à une erreur ici
-    log.success("Le serveur a bien rejeté le doublon");
-    log.info(`Message: ${error.message}`);
-    return true;
+    log.error(`Erreur réseau: ${error.message}`);
+    return false;
   }
 }
 
@@ -192,18 +195,21 @@ async function testWrongPassword(username: string) {
       password: "wrongpassword",
     });
 
-    if (response.statusCode === 200) {
+    if (response.statusCode === 400) {
+      // C'est ce qu'on veut : le serveur rejette le mauvais mot de passe
+      log.success("Le serveur a bien rejeté le mauvais mot de passe");
+      log.info(`Message: ${response.data.error}`);
+      return true;
+    } else if (response.statusCode === 200) {
       log.error("Le serveur a accepté un mauvais mot de passe (BUG)");
       return false;
+    } else {
+      log.error(`Le serveur a retourné un code inattendu: ${response.statusCode}`);
+      return false;
     }
-
-    log.error("Le serveur a retourné un code inattendu");
-    return false;
   } catch (error: any) {
-    // On s'attend à une erreur ici
-    log.success("Le serveur a bien rejeté le mauvais mot de passe");
-    log.info(`Message: ${error.message}`);
-    return true;
+    log.error(`Erreur réseau: ${error.message}`);
+    return false;
   }
 }
 
