@@ -1,7 +1,7 @@
 {
-  "name": "unity-gacha-game-api",
+  "name": "idle-rpg-game-api",
   "version": "1.0.0",
-  "description": "API backend for Unity Gacha Game",
+  "description": "API backend for Unity Idle RPG",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
