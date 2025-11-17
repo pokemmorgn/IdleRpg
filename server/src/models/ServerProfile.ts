@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-export export interface IServerProfile extends Document {
+export interface IServerProfile extends Document {
   playerId: Types.ObjectId;   // Référence au Player
   serverId: string;           // "eu-1", "na-1", "asia-1"...
   
