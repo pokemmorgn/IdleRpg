@@ -39,7 +39,7 @@ export const createInvitation = async (req: Request, res: Response) => {
     // Créer le code d'invitation
     const result = await createInvitationCode(
       playerId,
-      profile._id.toString(),
+      String(profile._id),
       serverId
     );
 
