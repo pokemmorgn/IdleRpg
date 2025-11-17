@@ -71,7 +71,7 @@ export const DEFAULT_SERVER_CONFIG = {
 /**
  * Serveurs à créer initialement (seulement s1 et s2 pour commencer)
  */
-export const INITIAL_SERVERS = ["s1", "s2"];
+export const INITIAL_SERVERS = ["s1"];
 
 /**
  * Génère la configuration complète des serveurs
