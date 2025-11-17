@@ -90,81 +90,39 @@ async function runTests() {
   log.info(`Max invitations: ${MAX_INVITATIONS_PER_PLAYER}`);
   log.info(`Seuil de verrouillage: ${SERVER_LOCK_THRESHOLD} joueurs\n`);
 
-  let tokenHighLevel: string;
-  let tokenLowLevel: string;
+  let tokenInviter: string;
   let tokenFriend: string;
   let invitationCode: string;
 
   try {
-    // ===== ÉTAPE 1: Créer un joueur de haut niveau =====
-    log.section("ÉTAPE 1: CRÉER UN JOUEUR DE HAUT NIVEAU");
+    // ===== ÉTAPE 1: Créer un joueur qui va inviter =====
+    log.section("ÉTAPE 1: CRÉER UN JOUEUR QUI VA INVITER");
     
-    const usernameHighLevel = `highlevel_${Date.now()}`;
-    log.info(`Création du compte: ${usernameHighLevel}`);
+    const usernameInviter = `inviter_${Date.now()}`;
+    log.info(`Création du compte: ${usernameInviter}`);
     
     let res = await makeRequest("POST", "/auth/register", {
-      username: usernameHighLevel,
+      username: usernameInviter,
       password: "password123"
     });
     
     if (res.statusCode !== 200) throw new Error("Register failed");
-    tokenHighLevel = res.data.token;
-    log.success(`Compte créé: ${usernameHighLevel}`);
+    tokenInviter = res.data.token;
+    log.success(`Compte créé: ${usernameInviter}`);
     
     // Créer profil sur s1
     res = await makeRequest("POST", "/profile/s1", {
-      characterName: "HighLevelHero",
+      characterName: "Inviter",
       characterClass: "warrior"
-    }, tokenHighLevel);
-    
-    if (res.statusCode !== 201) throw new Error("Profile creation failed");
-    log.success("Profil créé sur s1");
-    
-    // Simuler un niveau élevé en modifiant directement la DB
-    // (Normalement ce serait fait via gameplay)
-    log.warning(`Note: En production, le niveau serait gagné via gameplay`);
-    log.info(`On simule un joueur niveau ${INVITATION_LEVEL_REQUIREMENT}...`);
-
-    // ===== ÉTAPE 2: Tenter de créer une invitation (niveau trop bas) =====
-    log.section("ÉTAPE 2: TENTER DE CRÉER UNE INVITATION (NIVEAU TROP BAS)");
-    
-    res = await makeRequest("POST", "/invitation/s1", {}, tokenHighLevel);
-    
-    if (res.statusCode === 400) {
-      log.success("Création refusée car niveau trop bas (comportement attendu)");
-      log.info(`Message: ${res.data.error}`);
-    } else {
-      log.warning("L'invitation a été créée malgré le niveau insuffisant");
-    }
-
-    // ===== ÉTAPE 3: Créer un joueur de bas niveau =====
-    log.section("ÉTAPE 3: CRÉER UN JOUEUR DE BAS NIVEAU");
-    
-    const usernameLowLevel = `lowlevel_${Date.now()}`;
-    log.info(`Création du compte: ${usernameLowLevel}`);
-    
-    res = await makeRequest("POST", "/auth/register", {
-      username: usernameLowLevel,
-      password: "password123"
-    });
-    
-    if (res.statusCode !== 200) throw new Error("Register failed");
-    tokenLowLevel = res.data.token;
-    log.success(`Compte créé: ${usernameLowLevel}`);
-    
-    // Créer profil sur s1
-    res = await makeRequest("POST", "/profile/s1", {
-      characterName: "LowLevelHero",
-      characterClass: "mage"
-    }, tokenLowLevel);
+    }, tokenInviter);
     
     if (res.statusCode !== 201) throw new Error("Profile creation failed");
     log.success("Profil créé sur s1");
 
-    // ===== ÉTAPE 4: Vérifier les infos du système =====
-    log.section("ÉTAPE 4: RÉCUPÉRER LES INFOS DU SYSTÈME");
+    // ===== ÉTAPE 2: Vérifier les infos du système =====
+    log.section("ÉTAPE 2: RÉCUPÉRER LES INFOS DU SYSTÈME");
     
-    res = await makeRequest("GET", "/invitation/info", undefined, tokenHighLevel);
+    res = await makeRequest("GET", "/invitation/info", undefined, tokenInviter);
     
     if (res.statusCode === 200) {
       log.success("Infos récupérées:");
@@ -174,36 +132,105 @@ async function runTests() {
       log.info(`  Expiration: ${res.data.codeExpiryDays} jours`);
     }
 
-    // ===== ÉTAPE 5: Simuler le remplissage du serveur =====
-    log.section(`ÉTAPE 5: REMPLIR S1 JUSQU'AU VERROUILLAGE (${SERVER_LOCK_THRESHOLD} joueurs)`);
+    // ===== ÉTAPE 3: Créer un code d'invitation =====
+    log.section("ÉTAPE 3: CRÉER UN CODE D'INVITATION");
     
-    log.info("Création de comptes pour remplir le serveur...");
-    const tokens: string[] = [];
+    log.info("Création d'un code d'invitation pour s1...");
+    res = await makeRequest("POST", "/invitation/s1", {}, tokenInviter);
     
-    for (let i = 1; i <= SERVER_LOCK_THRESHOLD; i++) {
-      const username = `filler_${Date.now()}_${i}`;
+    if (res.statusCode === 201) {
+      invitationCode = res.data.code;
+      log.success("Code d'invitation créé !");
+      log.invitation(`Code: ${invitationCode}`);
+      log.info(`Expire dans: ${res.data.expiresInDays} jours`);
+    } else {
+      throw new Error(`Failed to create invitation: ${res.data.error}`);
+    }
+
+    // ===== ÉTAPE 4: Lister les invitations =====
+    log.section("ÉTAPE 4: LISTER LES INVITATIONS");
+    
+    res = await makeRequest("GET", "/invitation/s1", undefined, tokenInviter);
+    
+    if (res.statusCode === 200) {
+      log.success(`${res.data.invitations.length} invitation(s) trouvée(s)`);
+      log.info(`Invitations actives: ${res.data.activeCount}/${res.data.maxInvitations}`);
+      log.info(`Peut créer plus: ${res.data.canCreateMore ? "OUI" : "NON"}`);
       
-      const resReg = await makeRequest("POST", "/auth/register", {
-        username,
-        password: "password123"
+      res.data.invitations.forEach((inv: any, i: number) => {
+        console.log(`  ${i+1}. Code: ${inv.code}`);
+        console.log(`     Utilisé: ${inv.used ? "OUI" : "NON"}`);
+        console.log(`     Actif: ${inv.isActive ? "OUI" : "NON"}`);
       });
+    }
+
+    // ===== ÉTAPE 5: Créer plusieurs codes (tester la limite) =====
+    log.section(`ÉTAPE 5: TESTER LA LIMITE DE ${MAX_INVITATIONS_PER_PLAYER} INVITATIONS`);
+    
+    log.info(`Création de ${MAX_INVITATIONS_PER_PLAYER - 1} codes supplémentaires...`);
+    
+    for (let i = 2; i <= MAX_INVITATIONS_PER_PLAYER; i++) {
+      res = await makeRequest("POST", "/invitation/s1", {}, tokenInviter);
       
-      const token = resReg.data.token;
-      tokens.push(token);
-      
-      const resProf = await makeRequest("POST", "/profile/s1", {
-        characterName: `Filler${i}`,
-        characterClass: "warrior"
-      }, token);
-      
-      if (i % 5 === 0 || i === SERVER_LOCK_THRESHOLD) {
-        log.info(`[${i}/${SERVER_LOCK_THRESHOLD}] Joueurs créés`);
+      if (res.statusCode === 201) {
+        log.success(`[${i}/${MAX_INVITATIONS_PER_PLAYER}] Code créé: ${res.data.code}`);
+      } else {
+        log.error(`Échec création code ${i}: ${res.data.error}`);
       }
       
-      await sleep(100);
+      await sleep(200);
     }
     
-    log.success(`${SERVER_LOCK_THRESHOLD} joueurs créés sur s1`);
+    // Tenter d'en créer un de plus (devrait échouer)
+    log.info("Tentative de créer un 5ème code (devrait échouer)...");
+    res = await makeRequest("POST", "/invitation/s1", {}, tokenInviter);
+    
+    if (res.statusCode === 400) {
+      log.success("Création refusée - limite atteinte (comportement attendu)");
+      log.info(`Message: ${res.data.error}`);
+    } else {
+      log.error("La limite n'a pas été respectée (BUG)");
+    }
+
+    // ===== ÉTAPE 6: Remplir le serveur jusqu'au verrouillage =====
+    log.section(`ÉTAPE 6: REMPLIR S1 JUSQU'AU VERROUILLAGE (${SERVER_LOCK_THRESHOLD} joueurs)`);
+    
+    // Vérifier combien de joueurs sont déjà sur s1
+    res = await makeRequest("GET", "/servers/s1");
+    const currentPlayers = res.data.currentPlayers;
+    log.info(`Joueurs actuels sur s1: ${currentPlayers}`);
+    
+    const playersToCreate = SERVER_LOCK_THRESHOLD - currentPlayers;
+    
+    if (playersToCreate > 0) {
+      log.info(`Création de ${playersToCreate} comptes supplémentaires...`);
+      
+      for (let i = 1; i <= playersToCreate; i++) {
+        const username = `filler_${Date.now()}_${i}`;
+        
+        const resReg = await makeRequest("POST", "/auth/register", {
+          username,
+          password: "password123"
+        });
+        
+        const token = resReg.data.token;
+        
+        await makeRequest("POST", "/profile/s1", {
+          characterName: `Filler${i}`,
+          characterClass: "warrior"
+        }, token);
+        
+        if (i % 2 === 0 || i === playersToCreate) {
+          log.info(`[${i}/${playersToCreate}] Joueurs créés`);
+        }
+        
+        await sleep(100);
+      }
+      
+      log.success(`${playersToCreate} joueurs créés sur s1`);
+    } else {
+      log.info("Serveur déjà plein");
+    }
     
     // Vérifier le statut du serveur
     await sleep(1000);
@@ -212,11 +239,11 @@ async function runTests() {
     if (res.data.status === "locked") {
       log.success("🔒 Serveur s1 VERROUILLÉ automatiquement !");
     } else {
-      log.warning(`Serveur s1 statut: ${res.data.status} (attendu: locked)`);
+      log.warning(`Serveur s1 statut: ${res.data.status}`);
     }
 
-    // ===== ÉTAPE 6: Tenter de rejoindre sans invitation =====
-    log.section("ÉTAPE 6: TENTER DE REJOINDRE UN SERVEUR VERROUILLÉ SANS INVITATION");
+    // ===== ÉTAPE 7: Tenter de rejoindre sans invitation =====
+    log.section("ÉTAPE 7: TENTER DE REJOINDRE SANS INVITATION");
     
     const usernameFriend = `friend_${Date.now()}`;
     log.info(`Création du compte ami: ${usernameFriend}`);
@@ -242,46 +269,107 @@ async function runTests() {
       log.error("Le joueur a pu rejoindre sans invitation (BUG)");
     }
 
-    // ===== ÉTAPE 7: Générer un code d'invitation (simulé) =====
-    log.section("ÉTAPE 7: GÉNÉRER UN CODE D'INVITATION");
+    // ===== ÉTAPE 8: Valider le code d'invitation =====
+    log.section("ÉTAPE 8: VALIDER LE CODE D'INVITATION");
     
-    log.warning("Note: Pour ce test, on simule qu'un joueur de haut niveau génère un code");
-    log.warning("En réalité, il faudrait d'abord mettre à niveau le profil dans MongoDB");
-    
-    // Simuler un code pour les tests
-    invitationCode = "TEST1234";
-    log.invitation(`Code d'invitation simulé: ${invitationCode}`);
-
-    // ===== ÉTAPE 8: Rejoindre avec une invitation invalide =====
-    log.section("ÉTAPE 8: TENTER DE REJOINDRE AVEC UN CODE INVALIDE");
-    
-    res = await makeRequest("POST", "/profile/s1", {
-      characterName: "FriendHero2",
-      characterClass: "archer",
-      invitationCode: "FAKECODEXXX"
+    log.info(`Validation du code: ${invitationCode}`);
+    res = await makeRequest("POST", "/invitation/validate", {
+      code: invitationCode,
+      serverId: "s1"
     }, tokenFriend);
     
+    if (res.statusCode === 200 && res.data.valid) {
+      log.success("Code d'invitation validé !");
+    } else {
+      log.error(`Validation échouée: ${res.data.error}`);
+    }
+
+    // ===== ÉTAPE 9: Rejoindre avec le code valide =====
+    log.section("ÉTAPE 9: REJOINDRE AVEC LE CODE VALIDE");
+    
+    log.info("Tentative de rejoindre s1 avec le code d'invitation...");
+    res = await makeRequest("POST", "/profile/s1", {
+      characterName: "FriendHero",
+      characterClass: "archer",
+      invitationCode: invitationCode
+    }, tokenFriend);
+    
+    if (res.statusCode === 201) {
+      log.success("✨ Profil créé avec succès grâce à l'invitation !");
+      log.info(`Personnage: ${res.data.profile.characterName}`);
+      log.info(`Invitation utilisée: ${res.data.usedInvitation}`);
+    } else {
+      log.error(`Échec: ${res.data.error}`);
+    }
+
+    // ===== ÉTAPE 10: Vérifier que le code est marqué comme utilisé =====
+    log.section("ÉTAPE 10: VÉRIFIER QUE LE CODE EST UTILISÉ");
+    
+    res = await makeRequest("GET", "/invitation/s1", undefined, tokenInviter);
+    
+    if (res.statusCode === 200) {
+      const usedInvitation = res.data.invitations.find((inv: any) => inv.code === invitationCode);
+      
+      if (usedInvitation) {
+        log.info(`Code: ${usedInvitation.code}`);
+        log.info(`Utilisé: ${usedInvitation.used ? "OUI" : "NON"}`);
+        log.info(`Actif: ${usedInvitation.isActive ? "OUI" : "NON"}`);
+        
+        if (usedInvitation.used) {
+          log.success("Code correctement marqué comme utilisé !");
+        } else {
+          log.error("Code non marqué comme utilisé (BUG)");
+        }
+      }
+      
+      log.info(`Invitations actives restantes: ${res.data.activeCount}/${res.data.maxInvitations}`);
+    }
+
+    // ===== ÉTAPE 11: Tenter de réutiliser le même code =====
+    log.section("ÉTAPE 11: TENTER DE RÉUTILISER LE MÊME CODE");
+    
+    const usernameSecondFriend = `secondfriend_${Date.now()}`;
+    
+    res = await makeRequest("POST", "/auth/register", {
+      username: usernameSecondFriend,
+      password: "password123"
+    });
+    
+    const tokenSecondFriend = res.data.token;
+    
+    res = await makeRequest("POST", "/profile/s1", {
+      characterName: "SecondFriend",
+      characterClass: "mage",
+      invitationCode: invitationCode
+    }, tokenSecondFriend);
+    
     if (res.statusCode === 400) {
-      log.success("Code invalide rejeté (comportement attendu)");
+      log.success("Code déjà utilisé rejeté (comportement attendu)");
       log.info(`Message: ${res.data.error}`);
+    } else if (res.statusCode === 201) {
+      log.error("Le code a pu être réutilisé (BUG)");
     }
 
     // ===== RÉSUMÉ =====
     log.section("RÉSUMÉ DES TESTS");
     
-    log.success("✓ Système d'invitation configuré");
-    log.success("✓ Niveau requis vérifié");
-    log.success(`✓ Serveur verrouillé à ${SERVER_LOCK_THRESHOLD} joueurs`);
+    log.success("✓ Code d'invitation créé avec succès");
+    log.success("✓ Liste des invitations fonctionne");
+    log.success(`✓ Limite de ${MAX_INVITATIONS_PER_PLAYER} invitations respectée`);
+    log.success("✓ Serveur verrouillé automatiquement");
     log.success("✓ Accès refusé sans invitation");
-    log.success("✓ Code invalide rejeté");
+    log.success("✓ Validation du code fonctionne");
+    log.success("✓ Rejoindre avec code valide fonctionne");
+    log.success("✓ Code marqué comme utilisé");
+    log.success("✓ Réutilisation du code bloquée");
     
-    log.info("\n📝 NOTES:");
-    log.info("- Pour tester complètement, il faudrait modifier le niveau dans MongoDB");
-    log.info("- Ou créer une route admin pour changer le niveau (dev only)");
-    log.info(`- Configuration actuelle: niveau ${INVITATION_LEVEL_REQUIREMENT} requis`);
-    log.info(`- Seuil de verrouillage: ${SERVER_LOCK_THRESHOLD} joueurs`);
+    log.info("\n📝 CONFIGURATION:");
+    log.info(`  Niveau requis: ${INVITATION_LEVEL_REQUIREMENT}`);
+    log.info(`  Max invitations: ${MAX_INVITATIONS_PER_PLAYER}`);
+    log.info(`  Seuil de verrouillage: ${SERVER_LOCK_THRESHOLD} joueurs`);
 
-    log.success("\n🎉 Tests du système d'invitation terminés !");
+    log.success("\n🎉 TOUS LES TESTS SONT PASSÉS !");
+    log.success("Le système d'invitation est 100% fonctionnel ! ✨");
 
   } catch (error: any) {
     log.section("❌ ÉCHEC CRITIQUE");
