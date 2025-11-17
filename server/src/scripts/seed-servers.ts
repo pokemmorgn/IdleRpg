@@ -6,64 +6,11 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import Server from "../models/Server";
+import { generateServersConfig, CLUSTERS } from "../config/servers.config";
 
 dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/idlerpg";
-
-const servers = [
-  // Europe
-  {
-    serverId: "eu-1",
-    name: "Europe - Server 1",
-    region: "EU",
-    status: "online",
-    capacity: 10000,
-    currentPlayers: 0,
-  },
-  {
-    serverId: "eu-2",
-    name: "Europe - Server 2",
-    region: "EU",
-    status: "online",
-    capacity: 10000,
-    currentPlayers: 0,
-  },
-  // North America
-  {
-    serverId: "na-1",
-    name: "North America - Server 1",
-    region: "NA",
-    status: "online",
-    capacity: 10000,
-    currentPlayers: 0,
-  },
-  {
-    serverId: "na-2",
-    name: "North America - Server 2",
-    region: "NA",
-    status: "online",
-    capacity: 10000,
-    currentPlayers: 0,
-  },
-  // Asia
-  {
-    serverId: "asia-1",
-    name: "Asia - Server 1",
-    region: "ASIA",
-    status: "online",
-    capacity: 10000,
-    currentPlayers: 0,
-  },
-  {
-    serverId: "asia-2",
-    name: "Asia - Server 2",
-    region: "ASIA",
-    status: "online",
-    capacity: 10000,
-    currentPlayers: 0,
-  },
-];
 
 const colors = {
   reset: "\x1b[0m",
@@ -91,26 +38,45 @@ async function seedServers() {
     await Server.deleteMany({});
     log.success("Anciens serveurs supprimés");
 
-    log.info("Création des 6 serveurs...");
+    log.info("Génération de la configuration des serveurs...");
+    const serversConfig = generateServersConfig();
     
-    for (const serverData of servers) {
-      await Server.create(serverData);
-      log.success(`${serverData.serverId} - ${serverData.name}`);
+    log.info(`Création de ${serversConfig.length} serveurs répartis sur ${CLUSTERS.length} clusters...`);
+    
+    for (const serverData of serversConfig) {
+      await Server.create({
+        serverId: serverData.serverId,
+        name: serverData.name,
+        cluster: serverData.cluster,
+        status: serverData.status,
+        capacity: serverData.capacity,
+        currentPlayers: 0,
+        openedAt: serverData.openedAt
+      });
+      log.success(`${serverData.serverId} - ${serverData.name} (Cluster ${serverData.cluster})`);
     }
 
-    log.success(`\n🎉 ${servers.length} serveurs créés avec succès !`);
+    log.success(`\n🎉 ${serversConfig.length} serveurs créés avec succès !`);
 
-    // Afficher la liste
-    console.log("\n" + colors.cyan + "Liste des serveurs :" + colors.reset);
-    const allServers = await Server.find().sort({ region: 1, serverId: 1 });
+    // Afficher la liste groupée par cluster
+    console.log("\n" + colors.cyan + "Liste des serveurs par cluster :" + colors.reset);
+    const allServers = await Server.find().sort({ cluster: 1, serverId: 1 });
     
-    let currentRegion = "";
+    let currentCluster = -1;
     for (const s of allServers) {
-      if (s.region !== currentRegion) {
-        currentRegion = s.region;
-        console.log(`\n${colors.yellow}${currentRegion}:${colors.reset}`);
+      if (s.cluster !== currentCluster) {
+        currentCluster = s.cluster;
+        const clusterInfo = CLUSTERS.find(c => c.clusterId === currentCluster);
+        console.log(`\n${colors.yellow}Cluster ${currentCluster} (${clusterInfo?.servers.length || 0} serveurs):${colors.reset}`);
       }
       console.log(`  ${s.serverId} - ${s.name} (${s.status})`);
+    }
+
+    // Afficher les statistiques
+    console.log("\n" + colors.cyan + "Statistiques :" + colors.reset);
+    for (const cluster of CLUSTERS) {
+      const count = await Server.countDocuments({ cluster: cluster.clusterId });
+      console.log(`  Cluster ${cluster.clusterId}: ${count}/${cluster.maxServers} serveurs`);
     }
 
     await mongoose.disconnect();
