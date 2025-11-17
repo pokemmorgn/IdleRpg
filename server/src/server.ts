@@ -5,12 +5,16 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 
-// Si tu veux activer le panel admin plus tard, garde ces imports
-// import { setupAdminPanel, shutdownAdminPanel } from "./serverAdmin";
+// --- Colyseus ---
+import { Server } from "colyseus";
+import { WebSocketTransport } from "@colyseus/ws-transport";
+import { AuthRoom } from "./colyseus/AuthRoom";
 
 dotenv.config();
 
 const app: Application = express();
+
+// HTTP server partagé entre Express & Colyseus
 const httpServer = createServer(app);
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -113,13 +117,33 @@ const connectDB = async () => {
 };
 
 // -------------------------
+//  COLOYEUS SERVER SETUP
+// -------------------------
+let colyseusServer: Server;
+
+const setupColyseus = () => {
+  colyseusServer = new Server({
+    transport: new WebSocketTransport({
+      server: httpServer, // même port que Express
+    }),
+  });
+
+  // --- Déclarer tes Rooms ici ---
+  colyseusServer.define("auth", AuthRoom);
+
+  console.log("🟢 Colyseus initialisé avec AuthRoom");
+};
+
+// -------------------------
 //       Start Server
 // -------------------------
 const startServer = async () => {
   await connectDB();
+  setupColyseus();
 
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 IdleRPG server running on port ${PORT}`);
+    console.log(`🚀 IdleRPG + Colyseus server running on port ${PORT}`);
+    console.log(`WebSocket: ws://localhost:${PORT}`);
   });
 };
 
