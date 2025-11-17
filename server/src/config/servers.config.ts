@@ -75,7 +75,7 @@ export const INVITATION_SYSTEM_ENABLED = true;
  * Quand un serveur atteint ce nombre, il se verrouille
  * Seuls les joueurs avec un code d'invitation peuvent rejoindre
  */
-export const SERVER_LOCK_THRESHOLD = 3;
+export const SERVER_LOCK_THRESHOLD = 10;
 
 /**
  * Alternative : Seuil de verrouillage en pourcentage
