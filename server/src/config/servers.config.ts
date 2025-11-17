@@ -54,13 +54,24 @@ export const DEFAULT_SERVER_CONFIG = {
 };
 
 /**
- * Génère la configuration complète des serveurs
+ * Serveurs à créer initialement (seulement s1 et s2 pour commencer)
  */
-export function generateServersConfig(): ServerConfig[] {
+export const INITIAL_SERVERS = ["s1", "s2"];
+
+/**
+ * Génère la configuration complète des serveurs
+ * Par défaut, crée seulement les serveurs initiaux (s1, s2)
+ */
+export function generateServersConfig(serversToCreate: string[] = INITIAL_SERVERS): ServerConfig[] {
   const servers: ServerConfig[] = [];
   
   for (const cluster of CLUSTERS) {
     for (const serverId of cluster.servers) {
+      // Ne créer que les serveurs spécifiés
+      if (!serversToCreate.includes(serverId)) {
+        continue;
+      }
+      
       // Extraire le numéro du serveur (s1 -> 1, s11 -> 11)
       const serverNumber = parseInt(serverId.substring(1));
       
