@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import ServerProfile, { IServerProfile } from "../models/ServerProfile";
 import ServerModel from "../models/Server";
+import { incrementPlayerCount, decrementPlayerCount } from "../services/serverScalingService";
 
 /**
  * GET /profile/:serverId
@@ -53,6 +54,7 @@ export const getProfile = async (req: Request, res: Response) => {
 /**
  * POST /profile/:serverId
  * Crée un nouveau profil sur un serveur
+ * DÉCLENCHE L'AUTO-SCALING si le seuil est atteint
  */
 export const createProfile = async (req: Request, res: Response) => {
   try {
@@ -94,6 +96,9 @@ export const createProfile = async (req: Request, res: Response) => {
       xp: 0,
       gold: 0
     });
+
+    // ⚡ INCRÉMENTER LE COMPTEUR DE JOUEURS (déclenche l'auto-scaling si besoin)
+    await incrementPlayerCount(serverId);
 
     res.status(201).json({
       message: "Profile created",
@@ -138,6 +143,41 @@ export const listProfiles = async (req: Request, res: Response) => {
         lastOnline: p.lastOnline
       }))
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * DELETE /profile/:serverId
+ * Supprime un profil sur un serveur
+ * DÉCRÉMENTE le compteur de joueurs
+ */
+export const deleteProfile = async (req: Request, res: Response) => {
+  try {
+    const { serverId } = req.params;
+    const playerId = req.playerId;
+
+    if (!playerId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const profile = await ServerProfile.findOne({ playerId, serverId });
+
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    await profile.deleteOne();
+
+    // ⚡ DÉCRÉMENTER LE COMPTEUR DE JOUEURS
+    await decrementPlayerCount(serverId);
+
+    res.json({
+      message: "Profile deleted",
+      serverId: serverId
+    });
+
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
