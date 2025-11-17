@@ -1,9 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IServer extends Document {
-  serverId: string;        // "eu-1", "na-1", "asia-1"...
-  name: string;            // "Europe - Server 1"
-  region: string;          // "EU", "NA", "ASIA"
+  serverId: string;        // "s1", "s2", "s3"...
+  name: string;            // "Server 1", "Server 2"...
+  cluster: number;         // Numéro du cluster (1, 2, 3...)
   status: string;          // "online", "maintenance", "full"
   capacity: number;        // Nombre max de joueurs
   currentPlayers: number;  // Nombre actuel de joueurs
@@ -21,10 +21,10 @@ const ServerSchema = new Schema<IServer>({
     type: String, 
     required: true 
   },
-  region: { 
-    type: String, 
+  cluster: {
+    type: Number,
     required: true,
-    enum: ["EU", "NA", "ASIA"]
+    index: true
   },
   status: { 
     type: String, 
@@ -47,5 +47,8 @@ const ServerSchema = new Schema<IServer>({
 }, { 
   timestamps: true 
 });
+
+// Index composé pour rechercher par cluster
+ServerSchema.index({ cluster: 1, serverId: 1 });
 
 export default mongoose.model<IServer>("Server", ServerSchema);
