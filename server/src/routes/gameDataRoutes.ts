@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listClasses, listRaces, listFactions } from "../controllers/gameDataController";
+import { listClasses, listRaces, listFactions, getAllowedClasses } from "../controllers/gameDataController";
 
 const router = Router();
 
@@ -15,5 +15,8 @@ router.get("/races", listRaces);
 
 // GET /game-data/factions - Liste les factions avec leurs races
 router.get("/factions", listFactions);
+
+// GET /game-data/allowed-classes/:raceId - Classes autorisées pour une race
+router.get("/allowed-classes/:raceId", getAllowedClasses);
 
 export default router;
