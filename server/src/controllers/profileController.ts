@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import ServerProfile from "../models/ServerProfile";
+import ServerProfile, { IServerProfile } from "../models/ServerProfile";
 import ServerModel from "../models/Server";
 
 /**
@@ -22,7 +22,7 @@ export const getProfile = async (req: Request, res: Response) => {
     }
 
     // Cherche le profil
-    const profile = await ServerProfile.findOne({ playerId, serverId });
+    const profile: IServerProfile | null = await ServerProfile.findOne({ playerId, serverId });
 
     if (!profile) {
       return res.json({
@@ -85,7 +85,7 @@ export const createProfile = async (req: Request, res: Response) => {
     }
 
     // Crée le profil
-    const profile = await ServerProfile.create({
+    const profile: IServerProfile = await ServerProfile.create({
       playerId,
       serverId,
       characterName,
@@ -124,7 +124,7 @@ export const listProfiles = async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const profiles = await ServerProfile.find({ playerId });
+    const profiles: IServerProfile[] = await ServerProfile.find({ playerId });
 
     res.json({
       profiles: profiles.map(p => ({
