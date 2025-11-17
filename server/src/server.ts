@@ -3,7 +3,6 @@ import { createServer } from "http";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
-import path from "path";
 
 // --- Colyseus ---
 import { Server } from "colyseus";
@@ -12,6 +11,8 @@ import { AuthRoom } from "./colyseus/AuthRoom";
 
 // --- Routes ---
 import authRoutes from "./routes/authRoutes";
+import serverRoutes from "./routes/serverRoutes";
+import profileRoutes from "./routes/profileRoutes";
 
 dotenv.config();
 
@@ -49,7 +50,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // -------------------------
-//   PAGE D’ACCUEIL API
+//   PAGE D'ACCUEIL API
 // -------------------------
 app.get("/", (req: Request, res: Response) => {
   res.json({
@@ -85,9 +86,11 @@ app.get("/health", async (req: Request, res: Response) => {
 });
 
 // -------------------------
-//      AUTH ROUTES
+//      ROUTES
 // -------------------------
 app.use("/auth", authRoutes);
+app.use("/servers", serverRoutes);
+app.use("/profile", profileRoutes);
 
 
 // -------------------------
