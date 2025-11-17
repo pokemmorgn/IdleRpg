@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getProfile, createProfile, listProfiles } from "../controllers/profileController";
+import { getProfile, createProfile, listProfiles, deleteProfile } from "../controllers/profileController";
 import { authMiddleware } from "../middleware/authMiddleware";
 
 const router = Router();
@@ -15,5 +15,8 @@ router.get("/:serverId", getProfile);
 
 // POST /profile/:serverId - Crée un profil sur un serveur
 router.post("/:serverId", createProfile);
+
+// DELETE /profile/:serverId - Supprime un profil sur un serveur
+router.delete("/:serverId", deleteProfile);
 
 export default router;
