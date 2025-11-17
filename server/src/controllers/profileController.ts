@@ -3,8 +3,8 @@ import ServerProfile, { IServerProfile } from "../models/ServerProfile";
 import ServerModel from "../models/Server";
 import { syncPlayerCount, canJoinServer } from "../services/serverScalingService";
 import { validateInvitationCode, useInvitationCode } from "../services/invitationService";
-import { isValidClass } from "../config/classes.config";
-import { isValidRace } from "../config/races.config";
+import { isValidClass, isClassAllowedForRace, getAllowedClassesForRace, VALID_CLASS_IDS } from "../config/classes.config";
+import { isValidRace, VALID_RACE_IDS } from "../config/races.config";
 import { MAX_CHARACTERS_PER_SERVER, isValidCharacterSlot } from "../config/character.config";
 
 /**
@@ -94,7 +94,7 @@ export const createProfile = async (req: Request, res: Response) => {
     if (!isValidClass(characterClass)) {
       return res.status(400).json({ 
         error: "Invalid character class",
-        validClasses: ["paladin", "hunter", "mage", "priest", "rogue", "warlock"]
+        validClasses: VALID_CLASS_IDS
       });
     }
 
@@ -102,10 +102,17 @@ export const createProfile = async (req: Request, res: Response) => {
     if (!isValidRace(characterRace)) {
       return res.status(400).json({ 
         error: "Invalid character race",
-        validRaces: [
-          "human_elion", "dwarf_rune", "winged_lunaris", "sylphide_forest",
-          "varkyns_beast", "morhri_insect", "ghrannite_stone", "selenite_lunar"
-        ]
+        validRaces: VALID_RACE_IDS
+      });
+    }
+
+    // Valider la combinaison classe/race
+    if (!isClassAllowedForRace(characterClass, characterRace)) {
+      return res.status(400).json({ 
+        error: "This class is not allowed for this race",
+        race: characterRace,
+        class: characterClass,
+        allowedClasses: getAllowedClassesForRace(characterRace).map(c => c.classId)
       });
     }
 
