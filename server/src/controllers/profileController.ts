@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import ServerProfile, { IServerProfile } from "../models/ServerProfile";
 import ServerModel from "../models/Server";
-import { incrementPlayerCount, decrementPlayerCount } from "../services/serverScalingService";
+import { incrementPlayerCount, decrementPlayerCount, canJoinServer } from "../services/serverScalingService";
+import { validateInvitationCode, useInvitationCode } from "../services/invitationService";
 
 /**
  * GET /profile/:serverId
@@ -55,12 +56,13 @@ export const getProfile = async (req: Request, res: Response) => {
  * POST /profile/:serverId
  * Crée un nouveau profil sur un serveur
  * DÉCLENCHE L'AUTO-SCALING si le seuil est atteint
+ * SUPPORTE les codes d'invitation pour serveurs verrouillés
  */
 export const createProfile = async (req: Request, res: Response) => {
   try {
     const { serverId } = req.params;
     const playerId = req.playerId; // Injecté par authMiddleware
-    const { characterName, characterClass } = req.body;
+    const { characterName, characterClass, invitationCode } = req.body;
 
     if (!playerId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -70,14 +72,10 @@ export const createProfile = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Character name is required" });
     }
 
-    // Vérifie que le serveur existe et est accessible
+    // Vérifie que le serveur existe
     const server = await ServerModel.findOne({ serverId });
     if (!server) {
       return res.status(404).json({ error: "Server not found" });
-    }
-
-    if (server.status !== "online") {
-      return res.status(400).json({ error: `Server is ${server.status}` });
     }
 
     // Vérifie qu'il n'y a pas déjà un profil
@@ -86,7 +84,39 @@ export const createProfile = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Profile already exists on this server" });
     }
 
-    // Crée le profil
+    // Gestion du code d'invitation si le serveur est verrouillé
+    let hasValidInvitation = false;
+    
+    if (invitationCode) {
+      // Valider le code d'invitation
+      const validation = await validateInvitationCode(invitationCode, playerId, serverId);
+      
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
+      }
+      
+      hasValidInvitation = true;
+    }
+
+    // Vérifier si le joueur peut rejoindre le serveur
+    const canJoin = await canJoinServer(serverId, hasValidInvitation);
+    
+    if (!canJoin) {
+      if (server.status === "locked") {
+        return res.status(403).json({ 
+          error: "Server is locked. Invitation code required.",
+          serverStatus: "locked"
+        });
+      } else if (server.status === "maintenance") {
+        return res.status(400).json({ error: "Server is in maintenance" });
+      } else if (server.status === "full") {
+        return res.status(400).json({ error: "Server is full" });
+      } else {
+        return res.status(400).json({ error: "Cannot join this server" });
+      }
+    }
+
+    // Créer le profil
     const profile: IServerProfile = await ServerProfile.create({
       playerId,
       serverId,
@@ -96,6 +126,11 @@ export const createProfile = async (req: Request, res: Response) => {
       xp: 0,
       gold: 0
     });
+
+    // Si un code d'invitation a été utilisé, le marquer comme utilisé
+    if (hasValidInvitation && invitationCode) {
+      await useInvitationCode(invitationCode, playerId, serverId);
+    }
 
     // ⚡ INCRÉMENTER LE COMPTEUR DE JOUEURS (déclenche l'auto-scaling si besoin)
     await incrementPlayerCount(serverId);
@@ -110,7 +145,8 @@ export const createProfile = async (req: Request, res: Response) => {
         xp: profile.xp,
         gold: profile.gold,
         class: profile.class
-      }
+      },
+      usedInvitation: hasValidInvitation
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
