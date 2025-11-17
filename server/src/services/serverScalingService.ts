@@ -1,9 +1,11 @@
 /**
  * Service de gestion de l'auto-scaling des serveurs
  * Crée automatiquement de nouveaux serveurs quand le seuil est atteint
+ * Compte les COMPTES UNIQUES, pas les personnages
  */
 
 import Server from "../models/Server";
+import ServerProfile from "../models/ServerProfile";
 import { 
   MAX_PLAYERS_PER_SERVER, 
   getNextServerToCreate, 
@@ -13,6 +15,44 @@ import {
   shouldLockServer,
   INVITATION_SYSTEM_ENABLED
 } from "../config/servers.config";
+
+/**
+ * Compte le nombre de comptes uniques ayant au moins un personnage sur un serveur
+ */
+export async function countUniquePlayersOnServer(serverId: string): Promise<number> {
+  try {
+    const uniquePlayers = await ServerProfile.distinct("playerId", { serverId });
+    return uniquePlayers.length;
+  } catch (error: any) {
+    console.error(`❌ Erreur lors du comptage des joueurs sur ${serverId}:`, error.message);
+    return 0;
+  }
+}
+
+/**
+ * Met à jour le compteur de joueurs d'un serveur (comptes uniques)
+ */
+export async function updatePlayerCount(serverId: string): Promise<void> {
+  try {
+    const server = await Server.findOne({ serverId });
+    
+    if (!server) {
+      throw new Error(`Server ${serverId} not found`);
+    }
+
+    // Compter les comptes uniques
+    const uniquePlayerCount = await countUniquePlayersOnServer(serverId);
+    
+    server.currentPlayers = uniquePlayerCount;
+    await server.save();
+
+    console.log(`👥 ${serverId}: ${server.currentPlayers} compte(s) unique(s)`);
+
+  } catch (error: any) {
+    console.error(`❌ Erreur lors de la mise à jour du compteur sur ${serverId}:`, error.message);
+    throw error;
+  }
+}
 
 /**
  * Vérifie si un nouveau serveur doit être créé
@@ -32,7 +72,7 @@ export async function checkAndCreateNewServer(): Promise<string | null> {
 
     const lastServer = existingServers[existingServers.length - 1];
     
-    console.log(`🔍 Vérification du serveur ${lastServer.serverId}: ${lastServer.currentPlayers}/${MAX_PLAYERS_PER_SERVER} joueurs`);
+    console.log(`🔍 Vérification du serveur ${lastServer.serverId}: ${lastServer.currentPlayers}/${MAX_PLAYERS_PER_SERVER} compte(s)`);
 
     // 3. Si le dernier serveur n'a pas atteint le seuil, ne rien faire
     if (lastServer.currentPlayers < MAX_PLAYERS_PER_SERVER) {
@@ -91,13 +131,13 @@ export async function updateServerLockStatus(serverId: string): Promise<void> {
     if (shouldBeLocked && server.status === "online") {
       server.status = "locked";
       await server.save();
-      console.log(`🔒 Serveur ${serverId} verrouillé (${server.currentPlayers} joueurs)`);
+      console.log(`🔒 Serveur ${serverId} verrouillé (${server.currentPlayers} comptes)`);
     }
     // Si le serveur ne doit plus être verrouillé
     else if (!shouldBeLocked && server.status === "locked") {
       server.status = "online";
       await server.save();
-      console.log(`🔓 Serveur ${serverId} déverrouillé (${server.currentPlayers} joueurs)`);
+      console.log(`🔓 Serveur ${serverId} déverrouillé (${server.currentPlayers} comptes)`);
     }
 
   } catch (error: any) {
@@ -106,23 +146,20 @@ export async function updateServerLockStatus(serverId: string): Promise<void> {
 }
 
 /**
- * Incrémente le nombre de joueurs sur un serveur
+ * Met à jour le compteur après ajout/suppression de personnage
  * Vérifie automatiquement si un nouveau serveur doit être créé
  * Vérifie si le serveur doit être verrouillé
  */
-export async function incrementPlayerCount(serverId: string): Promise<void> {
+export async function syncPlayerCount(serverId: string): Promise<void> {
   try {
+    // Mettre à jour le compteur
+    await updatePlayerCount(serverId);
+
+    // Récupérer le serveur mis à jour
     const server = await Server.findOne({ serverId });
-    
     if (!server) {
       throw new Error(`Server ${serverId} not found`);
     }
-
-    // Incrémenter le nombre de joueurs
-    server.currentPlayers += 1;
-    await server.save();
-
-    console.log(`👥 ${serverId}: ${server.currentPlayers} joueur(s) connecté(s)`);
 
     // Vérifier si le serveur doit être verrouillé
     await updateServerLockStatus(serverId);
@@ -131,36 +168,25 @@ export async function incrementPlayerCount(serverId: string): Promise<void> {
     await checkAndCreateNewServer();
 
   } catch (error: any) {
-    console.error(`❌ Erreur lors de l'incrémentation des joueurs sur ${serverId}:`, error.message);
+    console.error(`❌ Erreur lors de la synchronisation des joueurs sur ${serverId}:`, error.message);
     throw error;
   }
 }
 
 /**
- * Décrémente le nombre de joueurs sur un serveur
- * Vérifie si le serveur doit être déverrouillé
+ * Incrémente le nombre de joueurs sur un serveur (DEPRECATED - utiliser syncPlayerCount)
+ * Conservé pour compatibilité
+ */
+export async function incrementPlayerCount(serverId: string): Promise<void> {
+  await syncPlayerCount(serverId);
+}
+
+/**
+ * Décrémente le nombre de joueurs sur un serveur (DEPRECATED - utiliser syncPlayerCount)
+ * Conservé pour compatibilité
  */
 export async function decrementPlayerCount(serverId: string): Promise<void> {
-  try {
-    const server = await Server.findOne({ serverId });
-    
-    if (!server) {
-      throw new Error(`Server ${serverId} not found`);
-    }
-
-    // Décrémenter le nombre de joueurs (minimum 0)
-    server.currentPlayers = Math.max(0, server.currentPlayers - 1);
-    await server.save();
-
-    console.log(`👥 ${serverId}: ${server.currentPlayers} joueur(s) connecté(s)`);
-
-    // Vérifier si le serveur doit être déverrouillé
-    await updateServerLockStatus(serverId);
-
-  } catch (error: any) {
-    console.error(`❌ Erreur lors de la décrémentation des joueurs sur ${serverId}:`, error.message);
-    throw error;
-  }
+  await syncPlayerCount(serverId);
 }
 
 /**
