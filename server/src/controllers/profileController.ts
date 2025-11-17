@@ -3,6 +3,8 @@ import ServerProfile, { IServerProfile } from "../models/ServerProfile";
 import ServerModel from "../models/Server";
 import { incrementPlayerCount, decrementPlayerCount, canJoinServer } from "../services/serverScalingService";
 import { validateInvitationCode, useInvitationCode } from "../services/invitationService";
+import { isValidClass } from "../config/classes.config";
+import { isValidRace } from "../config/races.config";
 
 /**
  * GET /profile/:serverId
@@ -44,6 +46,7 @@ export const getProfile = async (req: Request, res: Response) => {
         xp: profile.xp,
         gold: profile.gold,
         class: profile.class,
+        race: profile.race,
         lastOnline: profile.lastOnline
       }
     });
@@ -62,7 +65,7 @@ export const createProfile = async (req: Request, res: Response) => {
   try {
     const { serverId } = req.params;
     const playerId = req.playerId; // Injecté par authMiddleware
-    const { characterName, characterClass, invitationCode } = req.body;
+    const { characterName, characterClass, characterRace, invitationCode } = req.body;
 
     if (!playerId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -70,6 +73,33 @@ export const createProfile = async (req: Request, res: Response) => {
 
     if (!characterName) {
       return res.status(400).json({ error: "Character name is required" });
+    }
+
+    if (!characterClass) {
+      return res.status(400).json({ error: "Character class is required" });
+    }
+
+    if (!characterRace) {
+      return res.status(400).json({ error: "Character race is required" });
+    }
+
+    // Valider la classe
+    if (!isValidClass(characterClass)) {
+      return res.status(400).json({ 
+        error: "Invalid character class",
+        validClasses: ["paladin", "hunter", "mage", "priest", "rogue", "warlock"]
+      });
+    }
+
+    // Valider la race
+    if (!isValidRace(characterRace)) {
+      return res.status(400).json({ 
+        error: "Invalid character race",
+        validRaces: [
+          "human_elion", "dwarf_rune", "winged_lunaris", "sylphide_forest",
+          "varkyns_beast", "morhri_insect", "ghrannite_stone", "selenite_lunar"
+        ]
+      });
     }
 
     // Vérifie que le serveur existe
@@ -121,7 +151,8 @@ export const createProfile = async (req: Request, res: Response) => {
       playerId,
       serverId,
       characterName,
-      class: characterClass || "warrior",
+      class: characterClass,
+      race: characterRace,
       level: 1,
       xp: 0,
       gold: 0
@@ -144,7 +175,8 @@ export const createProfile = async (req: Request, res: Response) => {
         level: profile.level,
         xp: profile.xp,
         gold: profile.gold,
-        class: profile.class
+        class: profile.class,
+        race: profile.race
       },
       usedInvitation: hasValidInvitation
     });
@@ -154,7 +186,7 @@ export const createProfile = async (req: Request, res: Response) => {
 };
 
 /**
- * GET /profiles
+ * GET /profile
  * Liste tous les profils du joueur (sur tous les serveurs)
  */
 export const listProfiles = async (req: Request, res: Response) => {
@@ -176,6 +208,7 @@ export const listProfiles = async (req: Request, res: Response) => {
         xp: p.xp,
         gold: p.gold,
         class: p.class,
+        race: p.race,
         lastOnline: p.lastOnline
       }))
     });
