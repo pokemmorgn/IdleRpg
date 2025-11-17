@@ -1,46 +1,57 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Schema, Document, Types } from "mongoose";
 
-export interface IServer extends Document {
-  serverId: string;        // "eu-1", "na-1", "asia-1"...
-  name: string;            // "Europe - Server 1"
-  region: string;          // "EU", "NA", "ASIA"
-  status: string;          // "online", "maintenance", "full"
-  capacity: number;        // Nombre max de joueurs
-  currentPlayers: number;  // Nombre actuel de joueurs
-  openedAt: Date;         // Date d'ouverture du serveur
+export export interface IServerProfile extends Document {
+  playerId: Types.ObjectId;   // Référence au Player
+  serverId: string;           // "eu-1", "na-1", "asia-1"...
+  
+  // Informations du personnage principal
+  characterName: string;      // Nom du personnage sur ce serveur
+  level: number;
+  xp: number;
+  gold: number;
+  
+  // Classe du personnage
+  class: string;              // "warrior", "mage", "archer"...
+  
+  // Timestamps
+  lastOnline: Date;
 }
 
-const ServerSchema = new Schema<IServer>({
+const ServerProfileSchema = new Schema<IServerProfile>({
+  playerId: { 
+    type: Schema.Types.ObjectId, 
+    ref: "Player",
+    required: true,
+    index: true
+  },
   serverId: { 
     type: String, 
-    required: true, 
-    unique: true,
-    index: true 
+    required: true,
+    index: true
   },
-  name: { 
+  characterName: { 
     type: String, 
     required: true 
   },
-  region: { 
-    type: String, 
-    required: true,
-    enum: ["EU", "NA", "ASIA"]
-  },
-  status: { 
-    type: String, 
-    required: true,
-    enum: ["online", "maintenance", "full"],
-    default: "online"
-  },
-  capacity: { 
+  level: { 
     type: Number, 
-    default: 10000 
+    default: 1 
   },
-  currentPlayers: { 
+  xp: { 
     type: Number, 
     default: 0 
   },
-  openedAt: { 
+  gold: { 
+    type: Number, 
+    default: 0 
+  },
+  class: { 
+    type: String, 
+    required: true,
+    enum: ["warrior", "mage", "archer"],
+    default: "warrior"
+  },
+  lastOnline: { 
     type: Date, 
     default: Date.now 
   }
@@ -48,4 +59,7 @@ const ServerSchema = new Schema<IServer>({
   timestamps: true 
 });
 
-export default mongoose.model<IServer>("Server", ServerSchema);
+// Index composé pour éviter les doublons (un joueur ne peut avoir qu'un profil par serveur)
+ServerProfileSchema.index({ playerId: 1, serverId: 1 }, { unique: true });
+
+export default mongoose.model<IServerProfile>("ServerProfile", ServerProfileSchema);
