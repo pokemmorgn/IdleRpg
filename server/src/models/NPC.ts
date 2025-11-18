@@ -10,7 +10,10 @@ export interface INPC extends Document {
   level: number;              // Niveau du NPC
   faction: string;            // Faction: "AURION", "OMBRE", "NEUTRAL"
   
-  // Position dans le monde (identique sur tous les serveurs initialement)
+  // Zone/Map (optionnel)
+  zoneId?: string;            // ID de la zone (ex: "village_start", "forest_dark") - null par défaut
+  
+  // Position dans le monde (coordonnées globales)
   position: {
     x: number;
     y: number;
@@ -74,6 +77,11 @@ const NPCSchema = new Schema<INPC>({
     enum: ["AURION", "OMBRE", "NEUTRAL"],
     default: "NEUTRAL"
   },
+  zoneId: {
+    type: String,
+    default: null,
+    index: true  // Index pour filtrer par zone
+  },
   position: {
     x: { type: Number, required: true, default: 0 },
     y: { type: Number, required: true, default: 0 },
@@ -123,5 +131,8 @@ NPCSchema.index({ serverId: 1, isActive: 1 });
 
 // Index pour rechercher par type sur un serveur
 NPCSchema.index({ serverId: 1, type: 1 });
+
+// Index pour rechercher par zone sur un serveur (utile pour l'optimisation)
+NPCSchema.index({ serverId: 1, zoneId: 1, isActive: 1 });
 
 export default mongoose.model<INPC>("NPC", NPCSchema);
