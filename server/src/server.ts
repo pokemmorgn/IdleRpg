@@ -17,7 +17,9 @@ import invitationRoutes from "./routes/invitationRoutes";
 import gameDataRoutes from "./routes/gameDataRoutes";
 import npcRoutes from "./routes/npcRoutes";
 import dialogueRoutes from "./routes/dialogueRoutes"; 
-import monsterRoutes from "./routes/monsterRoutes"; 
+import monsterRoutes from "./routes/monsterRoutes";
+import statsRoutes from "./routes/statsRoutes"; // ← AJOUT
+
 dotenv.config();
 
 const app: Application = express();
@@ -100,6 +102,8 @@ app.use("/game-data", gameDataRoutes);
 app.use("/npcs", npcRoutes);
 app.use("/dialogues", dialogueRoutes);
 app.use("/monsters", monsterRoutes);
+app.use("/stats", statsRoutes); // ← AJOUT
+
 // -------------------------
 //    404 Catch-All
 // -------------------------
@@ -148,8 +152,6 @@ const setupColyseus = () => {
   });
 
   // --- WorldRoom - Room principale du jeu ---
-  // Filtré par serverId pour créer automatiquement des instances séparées
-  // Ex: world_s1, world_s2, world_s3, etc.
   colyseusServer
     .define("world", WorldRoom)
     .filterBy(["serverId"]);
