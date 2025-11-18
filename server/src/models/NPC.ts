@@ -1,8 +1,8 @@
-import mongoose, { Schema, Document, Types } from "mongoose";
+import mongoose, { Schema, Document } from "mongoose";
 
 export interface INPC extends Document {
-  npcId: string;              // ID unique du NPC (ex: "npc_blacksmith_01")
-  serverId: string;           // Serveur où se trouve le NPC (ex: "s1")
+  npcId: string;              // ID logique du NPC (ex: "npc_blacksmith_01")
+  serverId: string;           // Serveur où se trouve cette instance (ex: "s1")
   
   // Informations de base
   name: string;               // Nom affiché (ex: "Forge Master Thorin")
@@ -10,7 +10,7 @@ export interface INPC extends Document {
   level: number;              // Niveau du NPC
   faction: string;            // Faction: "AURION", "OMBRE", "NEUTRAL"
   
-  // Position dans le monde
+  // Position dans le monde (identique sur tous les serveurs initialement)
   position: {
     x: number;
     y: number;
@@ -45,7 +45,6 @@ const NPCSchema = new Schema<INPC>({
   npcId: {
     type: String,
     required: true,
-    unique: true,
     index: true
   },
   serverId: {
@@ -116,16 +115,13 @@ const NPCSchema = new Schema<INPC>({
   timestamps: true
 });
 
-// Index composé pour rechercher tous les NPC d'un serveur
-NPCSchema.index({ serverId: 1, isActive: 1 });
-
-// Index composé pour rechercher un NPC spécifique sur un serveur
+// Index composé UNIQUE : un NPC ne peut exister qu'une fois par serveur
 NPCSchema.index({ serverId: 1, npcId: 1 }, { unique: true });
 
-// Index pour rechercher par type
-NPCSchema.index({ serverId: 1, type: 1 });
+// Index pour lister tous les NPC actifs d'un serveur
+NPCSchema.index({ serverId: 1, isActive: 1 });
 
-// Index géospatial pour les recherches de proximité (si besoin futur)
-// NPCSchema.index({ "position.x": 1, "position.z": 1 });
+// Index pour rechercher par type sur un serveur
+NPCSchema.index({ serverId: 1, type: 1 });
 
 export default mongoose.model<INPC>("NPC", NPCSchema);
