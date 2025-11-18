@@ -28,7 +28,11 @@ export class PlayerState extends Schema {
   // ===== RESSOURCE =====
   @type("number") resource: number = 100;       // Ressource actuelle (mana/rage/energy)
   @type("number") maxResource: number = 100;    // Ressource maximum
-  @type("number") resourceRegen: number = 0;    // Régénération par seconde
+  
+  // === Régénération (3 stats séparées) ===
+  @type("number") manaRegen: number = 0;        // Régénération mana (5 + SPI × 2)
+  @type("number") rageRegen: number = 0;        // Régénération rage (toujours 0)
+  @type("number") energyRegen: number = 0;      // Régénération energy (fixe 10/sec)
   
   // ===== COMBAT DE BASE =====
   @type("number") attackPower: number = 10;     // Dégâts physiques (AP)
@@ -89,7 +93,11 @@ export class PlayerState extends Schema {
     // Ressource
     this.resource = computedStats.resource;
     this.maxResource = computedStats.maxResource;
-    this.resourceRegen = computedStats.resourceRegen;
+    
+    // Régénération (3 stats séparées)
+    this.manaRegen = computedStats.manaRegen;
+    this.rageRegen = computedStats.rageRegen;
+    this.energyRegen = computedStats.energyRegen;
     
     // Combat de base
     this.attackPower = computedStats.attackPower;
