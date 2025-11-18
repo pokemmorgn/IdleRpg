@@ -15,6 +15,7 @@ import serverRoutes from "./routes/serverRoutes";
 import profileRoutes from "./routes/profileRoutes";
 import invitationRoutes from "./routes/invitationRoutes";
 import gameDataRoutes from "./routes/gameDataRoutes";
+import npcRoutes from "./routes/npcRoutes";  // ← AJOUT
 
 dotenv.config();
 
@@ -95,6 +96,7 @@ app.use("/servers", serverRoutes);
 app.use("/profile", profileRoutes);
 app.use("/invitation", invitationRoutes);
 app.use("/game-data", gameDataRoutes);
+app.use("/npcs", npcRoutes);  // ← AJOUT
 
 
 // -------------------------
