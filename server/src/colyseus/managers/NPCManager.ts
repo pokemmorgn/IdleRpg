@@ -3,6 +3,7 @@ import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { NPCState } from "../schema/NPCState";
 import NPC from "../../models/NPC";
+import { DialogueManager } from "./DialogueManager";
 
 /**
  * NPCManager - Gère tous les NPC d'un serveur
@@ -10,16 +11,19 @@ import NPC from "../../models/NPC";
  * - Charger les NPC depuis MongoDB
  * - Ajouter/Retirer des NPC du GameState
  * - Gérer les interactions joueur → NPC
+ * - Déléguer les dialogues au DialogueManager
  * - Vérifier les distances d'interaction
  * - Filtrer par zone (optionnel)
  */
 export class NPCManager {
   private serverId: string;
   private gameState: GameState;
+  private dialogueManager: DialogueManager;
 
   constructor(serverId: string, gameState: GameState) {
     this.serverId = serverId;
     this.gameState = gameState;
+    this.dialogueManager = new DialogueManager(serverId);
   }
 
   /**
@@ -136,36 +140,36 @@ export class NPCManager {
     console.log(`💬 [NPCManager] ${playerState.characterName} interagit avec ${npc.name} (${npc.type})`);
 
     // Répondre selon le type de NPC
-    this.sendInteractionResponse(client, npc);
+    this.sendInteractionResponse(client, playerState, npc);
   }
 
   /**
    * Envoie la réponse d'interaction selon le type de NPC
    */
-  private sendInteractionResponse(client: Client, npc: NPCState): void {
-    // Dialogue
-    if (npc.type === "dialogue" || npc.type === "hybrid") {
-      if (npc.dialogueId) {
-        client.send("npc_dialogue", {
-          npcId: npc.npcId,
-          npcName: npc.name,
-          dialogueId: npc.dialogueId
-        });
-      }
+  private sendInteractionResponse(client: Client, playerState: PlayerState, npc: NPCState): void {
+    // Dialogue (tous les types peuvent avoir un dialogue)
+    if (npc.dialogueId && (npc.type === "dialogue" || npc.type === "quest_giver" || npc.type === "hybrid")) {
+      // Démarrer le dialogue via le DialogueManager
+      this.dialogueManager.startDialogue(
+        client,
+        playerState,
+        npc.npcId,
+        npc.dialogueId
+      );
+      return;
     }
 
-    // Merchant / Shop
-    if (npc.type === "merchant" || npc.type === "hybrid") {
-      if (npc.shopId) {
-        client.send("npc_shop_open", {
-          npcId: npc.npcId,
-          npcName: npc.name,
-          shopId: npc.shopId
-        });
-      }
+    // Merchant / Shop (si pas de dialogue)
+    if ((npc.type === "merchant" || npc.type === "hybrid") && npc.shopId) {
+      client.send("npc_shop_open", {
+        npcId: npc.npcId,
+        npcName: npc.name,
+        shopId: npc.shopId
+      });
+      return;
     }
 
-    // Quest Giver
+    // Quest Giver (si pas de dialogue)
     if (npc.type === "quest_giver" || npc.type === "hybrid") {
       // TODO: Charger les quêtes disponibles depuis la DB
       client.send("npc_quests", {
@@ -173,7 +177,34 @@ export class NPCManager {
         npcName: npc.name,
         questIds: [] // Vide pour l'instant
       });
+      return;
     }
+
+    // Fallback : NPC sans interaction
+    client.send("error", { message: "NPC has no interaction configured" });
+  }
+
+  /**
+   * Gère le choix d'un joueur dans un dialogue
+   */
+  handleDialogueChoice(client: Client, playerState: PlayerState, message: any): void {
+    const { dialogueId, nodeId, choiceIndex } = message;
+
+    if (!dialogueId || !nodeId || choiceIndex === undefined) {
+      client.send("error", { message: "Missing dialogue choice parameters" });
+      return;
+    }
+
+    console.log(`💬 [NPCManager] ${playerState.characterName} fait un choix dans ${dialogueId}`);
+
+    // Déléguer au DialogueManager
+    this.dialogueManager.handleDialogueChoice(
+      client,
+      playerState,
+      dialogueId,
+      nodeId,
+      choiceIndex
+    );
   }
 
   /**
