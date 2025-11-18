@@ -32,9 +32,11 @@ export async function validateToken(token: string): Promise<{
 
     console.log(`🔐 Token valide pour joueur: ${player.username} (${player._id})`);
 
+    const playerId = String(player._id);
+    
     return {
       valid: true,
-      playerId: player._id.toString()
+      playerId: playerId
     };
 
   } catch (err: any) {
