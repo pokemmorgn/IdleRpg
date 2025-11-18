@@ -27,7 +27,11 @@ export interface IPlayerComputedStats {
   // === Ressource ===
   resource: number;           // Ressource actuelle (mana/rage/energy)
   maxResource: number;        // Ressource maximum
-  resourceRegen: number;      // Régénération par seconde (mana uniquement)
+  
+  // Régénération par type (une seule active selon resourceType)
+  manaRegen: number;          // Régénération mana (5 + SPI × 2)
+  rageRegen: number;          // Régénération rage (toujours 0, généré en combat)
+  energyRegen: number;        // Régénération energy (fixe 10/sec)
   
   // === Combat de base ===
   attackPower: number;        // Dégâts physiques (AP)
@@ -144,7 +148,21 @@ const PlayerComputedStatsSchema = new Schema({
     min: 0,
     default: 100
   },
-  resourceRegen: {
+  
+  // === Régénération (3 stats séparées) ===
+  manaRegen: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0
+  },
+  rageRegen: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0
+  },
+  energyRegen: {
     type: Number,
     required: true,
     min: 0,
