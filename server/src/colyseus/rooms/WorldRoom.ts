@@ -34,8 +34,9 @@ export class WorldRoom extends Room<GameState> {
   
   private serverId: string = "";
   private updateInterval: any;
-  private npcManager!: NPCManager;  // Gestionnaire des NPC
+  private npcManager!: NPCManager;
   private monsterManager!: MonsterManager;
+  
   /**
    * Création de la room
    */
@@ -48,12 +49,14 @@ export class WorldRoom extends Room<GameState> {
 
     console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
 
-    // Initialiser le NPCManager
+    // Initialiser les managers
     this.npcManager = new NPCManager(this.serverId, this.state);
     this.monsterManager = new MonsterManager(this.serverId, this.state); 
-    // Charger les NPC depuis MongoDB
+    
+    // Charger les NPC et Monsters depuis MongoDB
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
+    
     // Gestionnaire de messages
     this.onMessage("*", (client, type, message) => {
       this.handleMessage(client, String(type), message);
@@ -155,6 +158,17 @@ export class WorldRoom extends Room<GameState> {
         auth.characterRace
       );
 
+      // Charger le profil complet depuis MongoDB pour récupérer les stats
+      const fullProfile = await ServerProfile.findById(auth.profileId);
+      
+      if (fullProfile && fullProfile.computedStats) {
+        // Charger les stats depuis le profil
+        playerState.loadStatsFromProfile(fullProfile.computedStats);
+        console.log(`📊 Stats chargées pour ${auth.characterName}: HP=${playerState.maxHp}, AP=${playerState.attackPower}, SP=${playerState.spellPower}`);
+      } else {
+        console.warn(`⚠️  Pas de stats trouvées pour ${auth.characterName}, stats par défaut utilisées`);
+      }
+
       // Ajouter au GameState
       this.state.addPlayer(playerState);
 
@@ -167,10 +181,20 @@ export class WorldRoom extends Room<GameState> {
         serverId: this.serverId,
         onlinePlayers: this.state.onlineCount,
         npcCount: this.npcManager.getNPCCount(),
-        monsterCount: this.monsterManager.getMonsterCount() 
+        monsterCount: this.monsterManager.getMonsterCount(),
+        stats: {
+          hp: playerState.hp,
+          maxHp: playerState.maxHp,
+          resource: playerState.resource,
+          maxResource: playerState.maxResource,
+          attackPower: playerState.attackPower,
+          spellPower: playerState.spellPower,
+          attackSpeed: playerState.attackSpeed,
+          moveSpeed: playerState.moveSpeed
+        }
       });
 
-      console.log(`✅ ${auth.characterName} connecté (${this.state.onlineCount} joueurs, ${this.npcManager.getNPCCount()} NPC)`);
+      console.log(`✅ ${auth.characterName} connecté (${this.state.onlineCount} joueurs, ${this.npcManager.getNPCCount()} NPC, ${this.monsterManager.getMonsterCount()} monsters)`);
 
     } catch (err: any) {
       console.error("❌ Erreur dans onJoin:", err.message);
@@ -195,6 +219,9 @@ export class WorldRoom extends Room<GameState> {
         // Déconnexion volontaire
         console.log(`👋 ${characterName} quitte ${this.serverId} (volontaire)`);
         
+        // Sauvegarder les HP/ressource actuels dans MongoDB
+        await this.savePlayerStats(profileId, playerState);
+        
         // Mettre à jour lastOnline
         await this.updateLastOnline(profileId);
 
@@ -209,8 +236,9 @@ export class WorldRoom extends Room<GameState> {
           await this.allowReconnection(client, 30);
           console.log(`🔄 ${characterName} reconnecté avec succès`);
         } catch (err) {
-          // Timeout atteint, retirer du state
+          // Timeout atteint, sauvegarder et retirer du state
           console.log(`❌ ${characterName} - timeout reconnexion`);
+          await this.savePlayerStats(profileId, playerState);
           await this.updateLastOnline(profileId);
           this.state.removePlayer(client.sessionId);
         }
@@ -245,24 +273,26 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // Commande admin pour recharger les NPC (utile en développement)
+    // Commande admin pour recharger les NPC
     if (type === "npc_reload" && this.isAdmin(playerState)) {
       this.npcManager.reloadNPCs();
       client.send("info", { message: "NPCs reloaded" });
       return;
     }
+    
     // Commande admin pour recharger les monsters
     if (type === "monster_reload" && this.isAdmin(playerState)) {
       this.monsterManager.reloadMonsters();
       client.send("info", { message: "Monsters reloaded" });
       return;
     }
+    
     // TODO: Gérer les autres actions du joueur ici
     // Ex: "attack", "move", "pickup_item", etc.
   }
 
   /**
-   * Vérifie si un joueur est admin (à implémenter proprement plus tard)
+   * Vérifie si un joueur est admin
    */
   private isAdmin(playerState: PlayerState): boolean {
     // TODO: Vérifier dans la DB si le joueur est admin
@@ -274,7 +304,7 @@ export class WorldRoom extends Room<GameState> {
    */
   update(deltaTime: number) {
     // TODO: Logique de jeu ici
-    // Ex: Update des monstres, combats, etc.
+    // Ex: Régénération de mana, tick des DoT/HoT, etc.
   }
 
   /**
@@ -298,6 +328,24 @@ export class WorldRoom extends Room<GameState> {
       });
     } catch (err: any) {
       console.error("❌ Erreur update lastOnline:", err.message);
+    }
+  }
+  
+  /**
+   * Sauvegarde les stats actuelles (HP/ressource) dans MongoDB
+   */
+  private async savePlayerStats(profileId: string, playerState: PlayerState): Promise<void> {
+    try {
+      const profile = await ServerProfile.findById(profileId);
+      
+      if (profile) {
+        profile.computedStats.hp = playerState.hp;
+        profile.computedStats.resource = playerState.resource;
+        await profile.save();
+        console.log(`💾 Stats sauvegardées pour ${playerState.characterName}: HP=${playerState.hp}/${playerState.maxHp}`);
+      }
+    } catch (err: any) {
+      console.error("❌ Erreur savePlayerStats:", err.message);
     }
   }
 }
