@@ -144,21 +144,21 @@ async function runTests() {
       characterSlot: profile.characterSlot
     });
     
-    log.success(`Connecté à la room: ${room.id}`);
+    log.success(`Connecté à la room: ${room.roomId}`);
     log.info(`SessionId: ${room.sessionId}`);
 
     // ===== ÉTAPE 4: Écouter les événements =====
     log.section("ÉTAPE 4: ÉCOUTER LES ÉVÉNEMENTS COLYSEUS");
     
     // Message de bienvenue
-    room.onMessage("welcome", (message) => {
+    room.onMessage("welcome", (message: any) => {
       log.ws(`Message reçu: ${message.message}`);
       log.info(`Serveur: ${message.serverId}`);
       log.info(`Joueurs en ligne: ${message.onlinePlayers}`);
     });
 
     // État du monde synchronisé
-    room.onStateChange((state) => {
+    room.onStateChange((state: any) => {
       log.ws("État du monde mis à jour");
       log.info(`ServerId: ${state.serverId}`);
       log.info(`Joueurs en ligne: ${state.onlineCount}`);
@@ -166,7 +166,7 @@ async function runTests() {
     });
 
     // Joueur ajouté
-    room.state.players.onAdd((player, sessionId) => {
+    room.state.players.onAdd((player: any, sessionId: string) => {
       log.ws(`Joueur ajouté: ${player.characterName}`);
       log.info(`  SessionId: ${sessionId}`);
       log.info(`  Level: ${player.level}`);
@@ -175,7 +175,7 @@ async function runTests() {
     });
 
     // Joueur retiré
-    room.state.players.onRemove((player, sessionId) => {
+    room.state.players.onRemove((player: any, sessionId: string) => {
       log.ws(`Joueur retiré: ${player.characterName} (${sessionId})`);
     });
 
@@ -210,7 +210,7 @@ async function runTests() {
       characterSlot: profile.characterSlot
     });
     
-    log.success(`Reconnecté à la room: ${room2.id}`);
+    log.success(`Reconnecté à la room: ${room2.roomId}`);
     log.info(`SessionId: ${room2.sessionId}`);
 
     await sleep(2000);
@@ -260,7 +260,7 @@ async function runTests() {
     log.success("Les deux joueurs sont connectés !");
     log.info(`Room 1 SessionId: ${roomPlayer1.sessionId}`);
     log.info(`Room 2 SessionId: ${roomPlayer2.sessionId}`);
-    log.info(`Même roomId ? ${roomPlayer1.id === roomPlayer2.id ? "OUI ✓" : "NON ✗"}`);
+    log.info(`Même roomId ? ${roomPlayer1.roomId === roomPlayer2.roomId ? "OUI ✓" : "NON ✗"}`);
 
     await sleep(3000);
 
