@@ -5,26 +5,125 @@ import { isValidCharacterSlot } from "../config/character.config";
 import { isValidClass } from "../config/classes.config";
 import { isValidRace } from "../config/races.config";
 import { isClassAllowedForRace } from "../config/classes.config";
-import { StatsManager } from "../managers/StatsManager"; // ← AJOUT
+import { StatsManager } from "../managers/StatsManager";
 
 /**
- * POST /profile/create
- * Créer un nouveau personnage sur un serveur
+ * GET /profile
+ * Liste tous les profils du joueur (tous serveurs)
  */
-export const createCharacter = async (req: Request, res: Response) => {
+export const listProfiles = async (req: Request, res: Response) => {
   try {
-    const { playerId, serverId, characterSlot, characterName, characterClass, characterRace } = req.body;
+    // Le playerId vient du token JWT décodé par authMiddleware
+    const playerId = (req as any).user?.playerId;
+
+    if (!playerId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized"
+      });
+    }
+
+    const profiles = await ServerProfile.find({ playerId }).sort({ serverId: 1, characterSlot: 1 });
+
+    res.json({
+      success: true,
+      count: profiles.length,
+      profiles: profiles.map(profile => ({
+        profileId: String(profile._id),
+        characterName: profile.characterName,
+        serverId: profile.serverId,
+        characterSlot: profile.characterSlot,
+        level: profile.level,
+        class: profile.class,
+        race: profile.race,
+        lastOnline: profile.lastOnline
+      }))
+    });
+
+  } catch (err: any) {
+    console.error("❌ Erreur listProfiles:", err.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to list profiles"
+    });
+  }
+};
+
+/**
+ * GET /profile/:serverId
+ * Récupère tous les profils du joueur sur un serveur
+ */
+export const getProfile = async (req: Request, res: Response) => {
+  try {
+    const { serverId } = req.params;
+    const playerId = (req as any).user?.playerId;
+
+    if (!playerId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized"
+      });
+    }
+
+    const profiles = await ServerProfile.find({
+      playerId,
+      serverId
+    }).sort({ characterSlot: 1 });
+
+    res.json({
+      success: true,
+      serverId,
+      count: profiles.length,
+      profiles: profiles.map(profile => ({
+        profileId: String(profile._id),
+        characterName: profile.characterName,
+        characterSlot: profile.characterSlot,
+        level: profile.level,
+        xp: profile.xp,
+        gold: profile.gold,
+        class: profile.class,
+        race: profile.race,
+        primaryStats: profile.primaryStats,
+        computedStats: profile.computedStats,
+        lastOnline: profile.lastOnline
+      }))
+    });
+
+  } catch (err: any) {
+    console.error("❌ Erreur getProfile:", err.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get profiles"
+    });
+  }
+};
+
+/**
+ * POST /profile/:serverId
+ * Crée un profil sur un serveur
+ */
+export const createProfile = async (req: Request, res: Response) => {
+  try {
+    const { serverId } = req.params;
+    const { characterSlot, characterName, characterClass, characterRace } = req.body;
+    const playerId = (req as any).user?.playerId;
+
+    if (!playerId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized"
+      });
+    }
 
     // === VALIDATIONS ===
 
-    if (!playerId || !serverId || !characterSlot || !characterName || !characterClass || !characterRace) {
+    if (!characterSlot || !characterName || !characterClass || !characterRace) {
       return res.status(400).json({
         success: false,
         error: "Missing required fields"
       });
     }
 
-    // Vérifier que le slot est valide
     if (!isValidCharacterSlot(characterSlot)) {
       return res.status(400).json({
         success: false,
@@ -32,7 +131,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que le serveur existe
     const server = await Server.findOne({ serverId });
     if (!server) {
       return res.status(404).json({
@@ -41,7 +139,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que le serveur est accessible
     if (server.status === "maintenance") {
       return res.status(403).json({
         success: false,
@@ -49,7 +146,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que la classe est valide
     if (!isValidClass(characterClass)) {
       return res.status(400).json({
         success: false,
@@ -57,7 +153,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que la race est valide
     if (!isValidRace(characterRace)) {
       return res.status(400).json({
         success: false,
@@ -65,7 +160,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que la combinaison classe/race est autorisée
     if (!isClassAllowedForRace(characterClass, characterRace)) {
       return res.status(400).json({
         success: false,
@@ -73,7 +167,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que le slot n'est pas déjà occupé
     const existingCharacter = await ServerProfile.findOne({
       playerId,
       serverId,
@@ -87,7 +180,6 @@ export const createCharacter = async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que le nom n'est pas déjà pris sur ce serveur
     const existingName = await ServerProfile.findOne({
       serverId,
       characterName
@@ -102,7 +194,6 @@ export const createCharacter = async (req: Request, res: Response) => {
 
     // === CRÉATION DU PERSONNAGE ===
 
-    // Créer le profil avec des stats par défaut (seront recalculées après)
     const newProfile = await ServerProfile.create({
       playerId,
       serverId,
@@ -147,9 +238,7 @@ export const createCharacter = async (req: Request, res: Response) => {
       lastOnline: new Date()
     });
 
-    // ========================================
-    // INITIALISER LES STATS (NOUVEAU)
-    // ========================================
+    // Initialiser les stats
     await StatsManager.initializeNewCharacter(String(newProfile._id));
 
     // Recharger le profil avec les stats calculées
@@ -178,10 +267,73 @@ export const createCharacter = async (req: Request, res: Response) => {
     });
 
   } catch (err: any) {
-    console.error("❌ Erreur createCharacter:", err.message);
+    console.error("❌ Erreur createProfile:", err.message);
     res.status(500).json({
       success: false,
       error: "Failed to create character"
     });
   }
 };
+
+/**
+ * DELETE /profile/:serverId/:characterSlot
+ * Supprime un profil sur un serveur (par slot)
+ */
+export const deleteProfile = async (req: Request, res: Response) => {
+  try {
+    const { serverId, characterSlot } = req.params;
+    const playerId = (req as any).user?.playerId;
+
+    if (!playerId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized"
+      });
+    }
+
+    const slotNumber = parseInt(characterSlot);
+
+    if (!isValidCharacterSlot(slotNumber)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid character slot: ${characterSlot}`
+      });
+    }
+
+    const profile = await ServerProfile.findOne({
+      playerId,
+      serverId,
+      characterSlot: slotNumber
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        error: `No character found in slot ${characterSlot} on server ${serverId}`
+      });
+    }
+
+    const characterName = profile.characterName;
+
+    await ServerProfile.findByIdAndDelete(profile._id);
+
+    console.log(`🗑️  Personnage supprimé: ${characterName} (slot ${characterSlot}) sur ${serverId}`);
+
+    res.json({
+      success: true,
+      message: `Character ${characterName} deleted successfully`
+    });
+
+  } catch (err: any) {
+    console.error("❌ Erreur deleteProfile:", err.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete profile"
+    });
+  }
+};
+
+/**
+ * Alias pour createProfile (si besoin)
+ */
+export const createCharacter = createProfile;
