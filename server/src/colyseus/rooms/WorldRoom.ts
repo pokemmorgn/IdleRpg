@@ -45,6 +45,11 @@ export class WorldRoom extends Room<GameState> {
 
     console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
 
+    // Gestionnaire de messages
+    this.onMessage("*", (client, type, message) => {
+      this.handleMessage(client, type, message);
+    });
+
     // Tick du serveur (30 FPS = ~33ms)
     this.setSimulationInterval((deltaTime) => this.update(deltaTime), 33);
 
@@ -208,7 +213,7 @@ export class WorldRoom extends Room<GameState> {
   /**
    * Réception de messages du client
    */
-  onMessage(client: Client, type: string, message: any) {
+  private handleMessage(client: Client, type: string, message: any) {
     const playerState = this.state.players.get(client.sessionId);
     
     if (!playerState) {
