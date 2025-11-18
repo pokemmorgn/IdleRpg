@@ -147,49 +147,45 @@ async function runTests() {
     log.success(`Connecté à la room: ${room.roomId}`);
     log.info(`SessionId: ${room.sessionId}`);
 
-// ===== ÉTAPE 4: Écouter les événements =====
-log.section("ÉTAPE 4: ÉCOUTER LES ÉVÉNEMENTS COLYSEUS");
+    // ===== ÉTAPE 4: Écouter les événements =====
+    log.section("ÉTAPE 4: ÉCOUTER LES ÉVÉNEMENTS COLYSEUS");
 
-// Attendre que le state soit initialisé
-await new Promise<void>((resolve) => {
-  room.onStateChange.once((state: any) => {
-    log.ws("État initial du monde reçu");
-    log.info(`ServerId: ${state.serverId}`);
-    log.info(`Joueurs en ligne: ${state.onlineCount}`);
-    log.info(`WorldTime: ${new Date(state.worldTime).toISOString()}`);
-    resolve();
-  });
-});
+    // Attendre que le state soit initialisé
+    await new Promise<void>((resolve) => {
+      room.onStateChange.once((state: any) => {
+        log.ws("État initial du monde reçu");
+        log.info(`ServerId: ${state.serverId}`);
+        log.info(`Joueurs en ligne: ${state.onlineCount}`);
+        log.info(`WorldTime: ${new Date(state.worldTime).toISOString()}`);
+        
+        // Afficher les joueurs actuellement connectés
+        if (state.players) {
+          log.info(`\nJoueurs dans la room :`);
+          state.players.forEach((player: any, sessionId: string) => {
+            log.info(`  - ${player.characterName} (${player.class}/${player.race}) Lv${player.level}`);
+          });
+        }
+        
+        resolve();
+      });
+    });
 
-// Message de bienvenue
-room.onMessage("welcome", (message: any) => {
-  log.ws(`Message reçu: ${message.message}`);
-  log.info(`Serveur: ${message.serverId}`);
-  log.info(`Joueurs en ligne: ${message.onlinePlayers}`);
-});
+    // Message de bienvenue
+    room.onMessage("welcome", (message: any) => {
+      log.ws(`Message de bienvenue reçu !`);
+      log.info(`  Contenu: ${message.message}`);
+      log.info(`  Serveur: ${message.serverId}`);
+      log.info(`  Joueurs en ligne: ${message.onlinePlayers}`);
+    });
 
-// État du monde synchronisé (changements suivants)
-room.onStateChange((state: any) => {
-  log.ws("État du monde mis à jour");
-});
+    // Changements d'état
+    room.onStateChange((state: any) => {
+      log.ws(`État du monde mis à jour (${state.onlineCount} joueur(s))`);
+    });
 
-// Joueur ajouté
-room.state.players.onAdd((player: any, sessionId: string) => {
-  log.ws(`Joueur ajouté: ${player.characterName}`);
-  log.info(`  SessionId: ${sessionId}`);
-  log.info(`  Level: ${player.level}`);
-  log.info(`  Classe: ${player.class}`);
-  log.info(`  Race: ${player.race}`);
-});
-
-// Joueur retiré
-room.state.players.onRemove((player: any, sessionId: string) => {
-  log.ws(`Joueur retiré: ${player.characterName} (${sessionId})`);
-});
-
-// Attendre pour voir les événements
-log.info("\nEn attente des événements (5 secondes)...");
-await sleep(5000);
+    // Attendre pour voir les événements
+    log.info("\nEn attente des événements (3 secondes)...");
+    await sleep(3000);
 
     // ===== ÉTAPE 5: Envoyer un message au serveur =====
     log.section("ÉTAPE 5: ENVOYER UN MESSAGE AU SERVEUR");
@@ -221,11 +217,21 @@ await sleep(5000);
     log.success(`Reconnecté à la room: ${room2.roomId}`);
     log.info(`SessionId: ${room2.sessionId}`);
 
+    // Attendre le state
+    await new Promise<void>((resolve) => {
+      room2.onStateChange.once((state: any) => {
+        log.ws(`État reçu: ${state.onlineCount} joueur(s) en ligne`);
+        resolve();
+      });
+    });
+
     await sleep(2000);
 
     log.ws("Déconnexion finale...");
     await room2.leave();
     
+    await sleep(1000);
+
     // ===== ÉTAPE 8: Test avec un second joueur =====
     log.section("ÉTAPE 8: TEST AVEC UN SECOND JOUEUR");
     
@@ -270,11 +276,32 @@ await sleep(5000);
     log.info(`Room 2 SessionId: ${roomPlayer2.sessionId}`);
     log.info(`Même roomId ? ${roomPlayer1.roomId === roomPlayer2.roomId ? "OUI ✓" : "NON ✗"}`);
 
-    await sleep(3000);
+    // Attendre les states
+    await new Promise<void>((resolve) => {
+      let count = 0;
+      const checkBoth = () => {
+        count++;
+        if (count === 2) resolve();
+      };
+      
+      roomPlayer1.onStateChange.once((state: any) => {
+        log.ws(`Player1 voit ${state.onlineCount} joueur(s)`);
+        checkBoth();
+      });
+      
+      roomPlayer2.onStateChange.once((state: any) => {
+        log.ws(`Player2 voit ${state.onlineCount} joueur(s)`);
+        checkBoth();
+      });
+    });
+
+    await sleep(2000);
 
     log.ws("Déconnexion des deux joueurs...");
     await roomPlayer1.leave();
     await roomPlayer2.leave();
+
+    await sleep(1000);
 
     // ===== RÉSUMÉ =====
     log.section("RÉSUMÉ DES TESTS");
@@ -283,7 +310,7 @@ await sleep(5000);
     log.success("✓ Authentification JWT dans Colyseus");
     log.success("✓ Chargement du personnage depuis MongoDB");
     log.success("✓ Synchronisation du GameState");
-    log.success("✓ Événements (onAdd, onRemove, onMessage)");
+    log.success("✓ Réception des messages serveur");
     log.success("✓ Envoi de messages au serveur");
     log.success("✓ Déconnexion et reconnexion");
     log.success("✓ Plusieurs joueurs dans la même room");
