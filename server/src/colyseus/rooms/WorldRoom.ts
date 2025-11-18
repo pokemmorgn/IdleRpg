@@ -4,6 +4,7 @@ import { PlayerState } from "../schema/PlayerState";
 import { validateToken } from "../utils/authHelper";
 import { loadPlayerCharacter, isCharacterAlreadyConnected } from "../utils/playerLoader";
 import { NPCManager } from "../managers/NPCManager";
+import { MonsterManager } from "../managers/MonsterManager";
 import ServerProfile from "../../models/ServerProfile";
 
 interface JoinOptions {
@@ -34,7 +35,7 @@ export class WorldRoom extends Room<GameState> {
   private serverId: string = "";
   private updateInterval: any;
   private npcManager!: NPCManager;  // Gestionnaire des NPC
-
+  private monsterManager!: MonsterManager;
   /**
    * Création de la room
    */
@@ -49,10 +50,10 @@ export class WorldRoom extends Room<GameState> {
 
     // Initialiser le NPCManager
     this.npcManager = new NPCManager(this.serverId, this.state);
-
+    this.monsterManager = new MonsterManager(this.serverId, this.state); 
     // Charger les NPC depuis MongoDB
     await this.npcManager.loadNPCs();
-
+    await this.monsterManager.loadMonsters();
     // Gestionnaire de messages
     this.onMessage("*", (client, type, message) => {
       this.handleMessage(client, String(type), message);
@@ -165,7 +166,8 @@ export class WorldRoom extends Room<GameState> {
         message: `Bienvenue ${auth.characterName} sur ${this.serverId} !`,
         serverId: this.serverId,
         onlinePlayers: this.state.onlineCount,
-        npcCount: this.npcManager.getNPCCount()
+        npcCount: this.npcManager.getNPCCount(),
+        monsterCount: this.monsterManager.getMonsterCount() 
       });
 
       console.log(`✅ ${auth.characterName} connecté (${this.state.onlineCount} joueurs, ${this.npcManager.getNPCCount()} NPC)`);
@@ -249,7 +251,12 @@ export class WorldRoom extends Room<GameState> {
       client.send("info", { message: "NPCs reloaded" });
       return;
     }
-
+    // Commande admin pour recharger les monsters
+    if (type === "monster_reload" && this.isAdmin(playerState)) {
+      this.monsterManager.reloadMonsters();
+      client.send("info", { message: "Monsters reloaded" });
+      return;
+    }
     // TODO: Gérer les autres actions du joueur ici
     // Ex: "attack", "move", "pickup_item", etc.
   }
