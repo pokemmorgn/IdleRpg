@@ -1,15 +1,14 @@
 import { Schema, type } from "@colyseus/schema";
 
-/**
- * État d'un NPC dans le monde (synchronisé avec tous les clients)
- * Représente un NPC actif dans le WorldRoom
- */
 export class NPCState extends Schema {
-  @type("string") npcId: string = "";           // ID logique du NPC (ex: "npc_blacksmith_01")
-  @type("string") name: string = "";            // Nom affiché
-  @type("string") type: string = "";            // "quest_giver", "merchant", "dialogue", "hybrid"
-  @type("number") level: number = 1;            // Niveau du NPC
-  @type("string") faction: string = "";         // "AURION", "OMBRE", "NEUTRAL"
+  @type("string") npcId: string = "";
+  @type("string") name: string = "";
+  @type("string") type: string = "";
+  @type("number") level: number = 1;
+  @type("string") faction: string = "";
+  
+  // Zone (optionnel)
+  @type("string") zoneId: string = "";  // ← AJOUT (vide si null)
   
   // Position dans le monde
   @type("number") posX: number = 0;
@@ -24,10 +23,9 @@ export class NPCState extends Schema {
   // Référence modèle 3D Unity
   @type("string") modelId: string = "";
   
-  // Fonctionnalités (références)
-  @type("string") dialogueId: string = "";      // Peut être vide
-  @type("string") shopId: string = "";          // Peut être vide
-  // Note: questIds sera géré plus tard quand le système de quêtes sera implémenté
+  // Fonctionnalités
+  @type("string") dialogueId: string = "";
+  @type("string") shopId: string = "";
   
   // Interaction
   @type("number") interactionRadius: number = 3;
@@ -41,6 +39,7 @@ export class NPCState extends Schema {
     type: string,
     level: number,
     faction: string,
+    zoneId: string,  // ← AJOUT
     posX: number,
     posY: number,
     posZ: number,
@@ -59,6 +58,7 @@ export class NPCState extends Schema {
     this.type = type;
     this.level = level;
     this.faction = faction;
+    this.zoneId = zoneId || "";  // ← AJOUT
     this.posX = posX;
     this.posY = posY;
     this.posZ = posZ;
