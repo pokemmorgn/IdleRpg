@@ -147,41 +147,49 @@ async function runTests() {
     log.success(`Connecté à la room: ${room.roomId}`);
     log.info(`SessionId: ${room.sessionId}`);
 
-    // ===== ÉTAPE 4: Écouter les événements =====
-    log.section("ÉTAPE 4: ÉCOUTER LES ÉVÉNEMENTS COLYSEUS");
-    
-    // Message de bienvenue
-    room.onMessage("welcome", (message: any) => {
-      log.ws(`Message reçu: ${message.message}`);
-      log.info(`Serveur: ${message.serverId}`);
-      log.info(`Joueurs en ligne: ${message.onlinePlayers}`);
-    });
+// ===== ÉTAPE 4: Écouter les événements =====
+log.section("ÉTAPE 4: ÉCOUTER LES ÉVÉNEMENTS COLYSEUS");
 
-    // État du monde synchronisé
-    room.onStateChange((state: any) => {
-      log.ws("État du monde mis à jour");
-      log.info(`ServerId: ${state.serverId}`);
-      log.info(`Joueurs en ligne: ${state.onlineCount}`);
-      log.info(`WorldTime: ${new Date(state.worldTime).toISOString()}`);
-    });
+// Attendre que le state soit initialisé
+await new Promise<void>((resolve) => {
+  room.onStateChange.once((state: any) => {
+    log.ws("État initial du monde reçu");
+    log.info(`ServerId: ${state.serverId}`);
+    log.info(`Joueurs en ligne: ${state.onlineCount}`);
+    log.info(`WorldTime: ${new Date(state.worldTime).toISOString()}`);
+    resolve();
+  });
+});
 
-    // Joueur ajouté
-    room.state.players.onAdd((player: any, sessionId: string) => {
-      log.ws(`Joueur ajouté: ${player.characterName}`);
-      log.info(`  SessionId: ${sessionId}`);
-      log.info(`  Level: ${player.level}`);
-      log.info(`  Classe: ${player.class}`);
-      log.info(`  Race: ${player.race}`);
-    });
+// Message de bienvenue
+room.onMessage("welcome", (message: any) => {
+  log.ws(`Message reçu: ${message.message}`);
+  log.info(`Serveur: ${message.serverId}`);
+  log.info(`Joueurs en ligne: ${message.onlinePlayers}`);
+});
 
-    // Joueur retiré
-    room.state.players.onRemove((player: any, sessionId: string) => {
-      log.ws(`Joueur retiré: ${player.characterName} (${sessionId})`);
-    });
+// État du monde synchronisé (changements suivants)
+room.onStateChange((state: any) => {
+  log.ws("État du monde mis à jour");
+});
 
-    // Attendre pour voir les événements
-    log.info("\nEn attente des événements (5 secondes)...");
-    await sleep(5000);
+// Joueur ajouté
+room.state.players.onAdd((player: any, sessionId: string) => {
+  log.ws(`Joueur ajouté: ${player.characterName}`);
+  log.info(`  SessionId: ${sessionId}`);
+  log.info(`  Level: ${player.level}`);
+  log.info(`  Classe: ${player.class}`);
+  log.info(`  Race: ${player.race}`);
+});
+
+// Joueur retiré
+room.state.players.onRemove((player: any, sessionId: string) => {
+  log.ws(`Joueur retiré: ${player.characterName} (${sessionId})`);
+});
+
+// Attendre pour voir les événements
+log.info("\nEn attente des événements (5 secondes)...");
+await sleep(5000);
 
     // ===== ÉTAPE 5: Envoyer un message au serveur =====
     log.section("ÉTAPE 5: ENVOYER UN MESSAGE AU SERVEUR");
