@@ -232,77 +232,81 @@ async function runTests() {
     
     await sleep(1000);
 
-// ===== ÉTAPE 8: Test avec un second joueur =====
-log.section("ÉTAPE 8: TEST AVEC UN SECOND JOUEUR");
+    // ===== ÉTAPE 8: Test avec un second joueur =====
+    log.section("ÉTAPE 8: TEST AVEC UN SECOND JOUEUR");
+    
+    const username2 = `colytest2_${Date.now()}`;
+    log.info(`Création du second compte: ${username2}`);
+    
+    res = await makeRequest("POST", "/auth/register", {
+      username: username2,
+      password: "password123"
+    });
+    
+    const token2 = res.data.token;
+    log.success(`Second compte créé: ${username2}`);
 
-const username2 = `colytest2_${Date.now()}`;
-log.info(`Création du second compte: ${username2}`);
+    log.info("Création d'un personnage pour le second joueur...");
+    res = await makeRequest("POST", "/profile/s1", {
+      characterName: "TestHero2",
+      characterClass: "mage",
+      characterRace: "winged_lunaris"
+    }, token2);  // ← AJOUT DU TOKEN ICI
+    
+    if (res.statusCode !== 201) {
+      throw new Error(`Second profile creation failed: ${res.data.error}`);
+    }
+    
+    const profile2 = res.data.profile;
+    log.success(`Second personnage créé (slot ${profile2.characterSlot})`);
 
-res = await makeRequest("POST", "/auth/register", {
-  username: username2,
-  password: "password123"
-});
+    log.ws("Connexion des deux joueurs simultanément...");
+    
+    const client2 = new Client(`ws://${API_HOST}:${API_PORT}`);
+    
+    const roomPlayer1 = await client.joinOrCreate("world", {
+      token: token,
+      serverId: "s1",
+      characterSlot: profile.characterSlot
+    });
+    
+    const roomPlayer2 = await client2.joinOrCreate("world", {
+      token: token2,
+      serverId: "s1",
+      characterSlot: profile2.characterSlot
+    });
+    
+    log.success("Les deux joueurs sont connectés !");
+    log.info(`Room 1 SessionId: ${roomPlayer1.sessionId}`);
+    log.info(`Room 2 SessionId: ${roomPlayer2.sessionId}`);
+    log.info(`Même roomId ? ${roomPlayer1.roomId === roomPlayer2.roomId ? "OUI ✓" : "NON ✗"}`);
 
-const token2 = res.data.token;
-log.success(`Second compte créé: ${username2}`);
+    // Attendre les states
+    await new Promise<void>((resolve) => {
+      let count = 0;
+      const checkBoth = () => {
+        count++;
+        if (count === 2) resolve();
+      };
+      
+      roomPlayer1.onStateChange.once((state: any) => {
+        log.ws(`Player1 voit ${state.onlineCount} joueur(s)`);
+        checkBoth();
+      });
+      
+      roomPlayer2.onStateChange.once((state: any) => {
+        log.ws(`Player2 voit ${state.onlineCount} joueur(s)`);
+        checkBoth();
+      });
+    });
 
-log.info("Création d'un personnage pour le second joueur...");
-res = await makeRequest("POST", "/profile/s1", {
-  characterName: "TestHero2",
-  characterClass: "mage",
-  characterRace: "winged_lunaris"
-});
+    await sleep(2000);
 
-const profile2 = res.data.profile;
-log.success(`Second personnage créé (slot ${profile2.characterSlot})`);
+    log.ws("Déconnexion des deux joueurs...");
+    await roomPlayer1.leave();
+    await roomPlayer2.leave();
 
-log.ws("Connexion des deux joueurs simultanément...");
-
-const client2 = new Client(`ws://${API_HOST}:${API_PORT}`);
-
-const roomPlayer1 = await client.joinOrCreate("world", {
-  token: token,
-  serverId: "s1",
-  characterSlot: 1  // Premier joueur, slot 1
-});
-
-const roomPlayer2 = await client2.joinOrCreate("world", {
-  token: token2,
-  serverId: "s1",
-  characterSlot: profile2.characterSlot  // ← CORRECTION : Utiliser le vrai slot
-});
-
-log.success("Les deux joueurs sont connectés !");
-log.info(`Room 1 SessionId: ${roomPlayer1.sessionId}`);
-log.info(`Room 2 SessionId: ${roomPlayer2.sessionId}`);
-log.info(`Même roomId ? ${roomPlayer1.roomId === roomPlayer2.roomId ? "OUI ✓" : "NON ✗"}`);
-
-// Attendre les states
-await new Promise<void>((resolve) => {
-  let count = 0;
-  const checkBoth = () => {
-    count++;
-    if (count === 2) resolve();
-  };
-  
-  roomPlayer1.onStateChange.once((state: any) => {
-    log.ws(`Player1 voit ${state.onlineCount} joueur(s)`);
-    checkBoth();
-  });
-  
-  roomPlayer2.onStateChange.once((state: any) => {
-    log.ws(`Player2 voit ${state.onlineCount} joueur(s)`);
-    checkBoth();
-  });
-});
-
-await sleep(2000);
-
-log.ws("Déconnexion des deux joueurs...");
-await roomPlayer1.leave();
-await roomPlayer2.leave();
-
-await sleep(1000);
+    await sleep(1000);
 
     // ===== RÉSUMÉ =====
     log.section("RÉSUMÉ DES TESTS");
