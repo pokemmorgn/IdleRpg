@@ -320,7 +320,7 @@ async function runTests() {
 
     await sleep(200);
 
-    // ===== TEST 6: Créer un dialogue avec spam protection =====
+// ===== TEST 6: Créer un dialogue avec spam protection =====
     log.section("TEST 6: CRÉER UN DIALOGUE AVEC SPAM PROTECTION");
     
     log.dialogue("Création: Dialogue avec protection spam...");
@@ -336,7 +336,7 @@ async function runTests() {
           {
             minCount: 1,
             maxCount: 3,
-            startNode: "greeting_normal"
+            startNode: "start"  // ← CORRECTION: utilise "start" au lieu de "greeting_normal"
           },
           {
             minCount: 4,
@@ -352,7 +352,7 @@ async function runTests() {
       },
       nodes: [
         {
-          nodeId: "greeting_normal",
+          nodeId: "start",  // ← CORRECTION: "start" au lieu de "greeting_normal"
           text: "dialogue.thorin.greeting",
           choices: [
             {
