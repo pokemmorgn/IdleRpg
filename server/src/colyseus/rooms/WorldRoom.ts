@@ -3,6 +3,7 @@ import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { validateToken } from "../utils/authHelper";
 import { loadPlayerCharacter, isCharacterAlreadyConnected } from "../utils/playerLoader";
+import { NPCManager } from "../managers/NPCManager";
 import ServerProfile from "../../models/ServerProfile";
 
 interface JoinOptions {
@@ -25,18 +26,19 @@ interface AuthData {
  * WorldRoom - Room principale du jeu
  * Une instance par serveur logique (s1, s2, s3...)
  * Chaque joueur a son propre monde instancié côté serveur
- * Le GameState contient uniquement la liste des joueurs en ligne (présence)
+ * Le GameState contient la liste des joueurs en ligne (présence) + les NPC actifs
  */
 export class WorldRoom extends Room<GameState> {
   maxClients = 1000; // Maximum de joueurs par serveur logique
   
   private serverId: string = "";
   private updateInterval: any;
+  private npcManager!: NPCManager;  // Gestionnaire des NPC
 
   /**
    * Création de la room
    */
-  onCreate(options: { serverId: string }) {
+  async onCreate(options: { serverId: string }) {
     this.serverId = options.serverId;
     this.roomId = `world_${this.serverId}`;
     
@@ -44,6 +46,12 @@ export class WorldRoom extends Room<GameState> {
     this.setState(new GameState(this.serverId));
 
     console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
+
+    // Initialiser le NPCManager
+    this.npcManager = new NPCManager(this.serverId, this.state);
+
+    // Charger les NPC depuis MongoDB
+    await this.npcManager.loadNPCs();
 
     // Gestionnaire de messages
     this.onMessage("*", (client, type, message) => {
@@ -156,10 +164,11 @@ export class WorldRoom extends Room<GameState> {
       client.send("welcome", {
         message: `Bienvenue ${auth.characterName} sur ${this.serverId} !`,
         serverId: this.serverId,
-        onlinePlayers: this.state.onlineCount
+        onlinePlayers: this.state.onlineCount,
+        npcCount: this.npcManager.getNPCCount()
       });
 
-      console.log(`✅ ${auth.characterName} connecté (${this.state.onlineCount} joueurs en ligne)`);
+      console.log(`✅ ${auth.characterName} connecté (${this.state.onlineCount} joueurs, ${this.npcManager.getNPCCount()} NPC)`);
 
     } catch (err: any) {
       console.error("❌ Erreur dans onJoin:", err.message);
@@ -210,21 +219,42 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
-/**
- * Réception de messages du client
- */
-private handleMessage(client: Client, type: string | number, message: any) {
-  const playerState = this.state.players.get(client.sessionId);
-  
-  if (!playerState) {
-    return;
+  /**
+   * Réception de messages du client
+   */
+  private handleMessage(client: Client, type: string | number, message: any) {
+    const playerState = this.state.players.get(client.sessionId);
+    
+    if (!playerState) {
+      return;
+    }
+
+    console.log(`📨 Message de ${playerState.characterName}: ${type}`, message);
+
+    // Déléguer les interactions NPC au NPCManager
+    if (type === "npc_interact") {
+      this.npcManager.handleInteraction(client, playerState, message);
+      return;
+    }
+
+    // Commande admin pour recharger les NPC (utile en développement)
+    if (type === "npc_reload" && this.isAdmin(playerState)) {
+      this.npcManager.reloadNPCs();
+      client.send("info", { message: "NPCs reloaded" });
+      return;
+    }
+
+    // TODO: Gérer les autres actions du joueur ici
+    // Ex: "attack", "move", "pickup_item", etc.
   }
 
-  console.log(`📨 Message de ${playerState.characterName}: ${type}`, message);
-
-  // TODO: Gérer les actions du joueur ici
-  // Ex: "attack", "move", "pickup_item", etc.
-}
+  /**
+   * Vérifie si un joueur est admin (à implémenter proprement plus tard)
+   */
+  private isAdmin(playerState: PlayerState): boolean {
+    // TODO: Vérifier dans la DB si le joueur est admin
+    return false;
+  }
 
   /**
    * Tick du serveur (appelé toutes les ~33ms)
