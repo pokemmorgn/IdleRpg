@@ -8,12 +8,12 @@ import {
   deleteDialogue,
   validateDialogue
 } from "../controllers/dialogueController";
-import { authenticateToken } from "../middleware/authMiddleware";
+import { authMiddleware } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
 // Toutes les routes nécessitent l'authentification
-router.use(authenticateToken);
+router.use(authMiddleware);
 
 /**
  * POST /dialogues
