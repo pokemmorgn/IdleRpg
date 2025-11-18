@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 // --- Colyseus ---
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
-import { AuthRoom } from "./colyseus/AuthRoom";
+import { WorldRoom } from "./colyseus/rooms/WorldRoom";
 
 // --- Routes ---
 import authRoutes from "./routes/authRoutes";
@@ -133,7 +133,7 @@ const connectDB = async () => {
 };
 
 // -------------------------
-//  COLOYEUS SERVER SETUP
+//  COLYSEUS SERVER SETUP
 // -------------------------
 let colyseusServer: Server;
 
@@ -144,10 +144,15 @@ const setupColyseus = () => {
     }),
   });
 
-  // --- Déclarer tes Rooms ici ---
-  colyseusServer.define("auth", AuthRoom);
+  // --- WorldRoom - Room principale du jeu ---
+  // Filtré par serverId pour créer automatiquement des instances séparées
+  // Ex: world_s1, world_s2, world_s3, etc.
+  colyseusServer
+    .define("world", WorldRoom)
+    .filterBy(["serverId"]);
 
-  console.log("🟢 Colyseus initialisé avec AuthRoom");
+  console.log("🟢 Colyseus initialisé avec WorldRoom");
+  console.log("📌 Les rooms seront créées dynamiquement : world_s1, world_s2, etc.");
 };
 
 // -------------------------
@@ -159,7 +164,8 @@ const startServer = async () => {
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 IdleRPG + Colyseus server running on port ${PORT}`);
-    console.log(`WebSocket: ws://localhost:${PORT}`);
+    console.log(`   HTTP: http://localhost:${PORT}`);
+    console.log(`   WebSocket: ws://localhost:${PORT}`);
   });
 };
 
