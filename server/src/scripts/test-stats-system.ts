@@ -81,14 +81,17 @@ async function testStatsSystem() {
     console.log(`   ✅ Serveur: ${testServer.name} (${testServer.serverId})\n`);
     
     // ========================================
-    // TEST 4: Créer un personnage pour chaque classe
+    // TEST 4: Créer un personnage pour les 5 premières classes
     // ========================================
-    console.log("📋 TEST 4: Création de personnages de test\n");
+    console.log("📋 TEST 4: Création de personnages de test (5 slots max)\n");
     
     const profiles = [];
     
-    for (let i = 0; i < classes.length; i++) {
-      const cls = classes[i];
+    // Limiter à 5 classes (nombre max de slots)
+    const classesToTest = classes.slice(0, 5);
+    
+    for (let i = 0; i < classesToTest.length; i++) {
+      const cls = classesToTest[i];
       
       // Supprimer l'ancien profil s'il existe
       await ServerProfile.deleteOne({
@@ -212,6 +215,8 @@ async function testStatsSystem() {
     }
     
     console.log("✅ Tous les tests sont passés avec succès !\n");
+    console.log("📝 Note: 6 classes existent mais seulement 5 slots sont disponibles par serveur.");
+    console.log("   Ceci est normal et conforme à la configuration (MAX_CHARACTERS_PER_SERVER = 5)\n");
     
   } catch (err: any) {
     console.error("❌ Erreur lors des tests:", err.message);
