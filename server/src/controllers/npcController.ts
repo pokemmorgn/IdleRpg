@@ -66,7 +66,7 @@ export const createNPC = async (req: Request, res: Response) => {
       isActive: isActive !== undefined ? isActive : true
     });
 
-    console.log(`✅ NPC créé: ${npcId} sur ${serverId}`);
+    console.log(`✅ NPC créé: ${npcId} sur ${serverId}${zoneId ? ` (zone: ${zoneId})` : ''}`);
 
     res.status(201).json({
       message: "NPC created",
@@ -156,6 +156,7 @@ export const bulkCreateNPCs = async (req: Request, res: Response) => {
           type: npcData.type || "dialogue",
           level: npcData.level || 1,
           faction: npcData.faction || "NEUTRAL",
+          zoneId: npcData.zoneId || null,
           position: npcData.position || { x: 0, y: 0, z: 0 },
           rotation: npcData.rotation || { x: 0, y: 0, z: 0 },
           modelId: npcData.modelId,
@@ -169,7 +170,8 @@ export const bulkCreateNPCs = async (req: Request, res: Response) => {
         created.push({
           id: npc._id,
           npcId: npc.npcId,
-          name: npc.name
+          name: npc.name,
+          zoneId: npc.zoneId
         });
 
       } catch (err: any) {
@@ -203,7 +205,7 @@ export const bulkCreateNPCs = async (req: Request, res: Response) => {
 export const listNPCs = async (req: Request, res: Response) => {
   try {
     const { serverId } = req.params;
-    const { type, faction, isActive } = req.query;
+    const { type, faction, zoneId, isActive } = req.query;
 
     // Vérifier que le serveur existe
     const server = await Server.findOne({ serverId });
@@ -216,6 +218,7 @@ export const listNPCs = async (req: Request, res: Response) => {
     
     if (type) filter.type = type;
     if (faction) filter.faction = faction;
+    if (zoneId) filter.zoneId = zoneId;
     if (isActive !== undefined) filter.isActive = isActive === "true";
 
     // Récupérer les NPC
@@ -224,6 +227,12 @@ export const listNPCs = async (req: Request, res: Response) => {
     res.json({
       serverId,
       count: npcs.length,
+      filters: {
+        type: type || null,
+        faction: faction || null,
+        zoneId: zoneId || null,
+        isActive: isActive !== undefined ? isActive === "true" : null
+      },
       npcs: npcs.map(npc => ({
         id: npc._id,
         npcId: npc.npcId,
@@ -231,6 +240,7 @@ export const listNPCs = async (req: Request, res: Response) => {
         type: npc.type,
         level: npc.level,
         faction: npc.faction,
+        zoneId: npc.zoneId,
         position: npc.position,
         rotation: npc.rotation,
         modelId: npc.modelId,
@@ -282,6 +292,7 @@ export const getNPC = async (req: Request, res: Response) => {
         type: npc.type,
         level: npc.level,
         faction: npc.faction,
+        zoneId: npc.zoneId,
         position: npc.position,
         rotation: npc.rotation,
         modelId: npc.modelId,
@@ -345,6 +356,7 @@ export const updateNPC = async (req: Request, res: Response) => {
         type: npc.type,
         level: npc.level,
         faction: npc.faction,
+        zoneId: npc.zoneId,
         position: npc.position,
         rotation: npc.rotation,
         modelId: npc.modelId,
@@ -388,15 +400,17 @@ export const deleteNPC = async (req: Request, res: Response) => {
     }
 
     const npcName = npc.name;
+    const npcZone = npc.zoneId;
     await npc.deleteOne();
 
-    console.log(`✅ NPC supprimé: ${npcId} (${npcName}) sur ${serverId}`);
+    console.log(`✅ NPC supprimé: ${npcId} (${npcName}) sur ${serverId}${npcZone ? ` zone: ${npcZone}` : ''}`);
 
     res.json({
       message: "NPC deleted",
       npcId: npcId,
       name: npcName,
-      serverId: serverId
+      serverId: serverId,
+      zoneId: npcZone
     });
 
   } catch (err: any) {
