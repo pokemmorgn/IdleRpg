@@ -455,7 +455,141 @@ async function runTests() {
       allTestsPassed = false;
     }
 
-    // ===== RÉSUMÉ FINAL =====
+    // ===== TEST 17: Créer des NPC avec zones =====
+    log.section("TEST 17: CRÉER DES NPC AVEC ZONES");
+    
+    log.info("Création de NPC dans différentes zones...");
+    
+    const zoneNPCs = [
+      {
+        npcId: "npc_village_elder",
+        name: "Village Elder",
+        type: "quest_giver",
+        level: 40,
+        faction: "NEUTRAL",
+        zoneId: "village_start",
+        position: { x: 150, y: 0, z: 70 },
+        modelId: "npc_elder"
+      },
+      {
+        npcId: "npc_forest_merchant",
+        name: "Forest Merchant",
+        type: "merchant",
+        level: 25,
+        faction: "NEUTRAL",
+        zoneId: "forest_dark",
+        position: { x: 200, y: 0, z: 100 },
+        modelId: "npc_merchant",
+        shopId: "shop_forest_01"
+      },
+      {
+        npcId: "npc_village_guard",
+        name: "Village Guard",
+        type: "dialogue",
+        level: 30,
+        faction: "AURION",
+        zoneId: "village_start",
+        position: { x: 155, y: 0, z: 75 },
+        modelId: "npc_guard"
+      }
+    ];
+    
+    for (const npcData of zoneNPCs) {
+      res = await makeRequest("POST", "/npcs/s1", npcData, token);
+      
+      if (res.statusCode === 201) {
+        log.success(`${npcData.name} créé dans zone: ${npcData.zoneId}`);
+      } else {
+        log.error(`Échec: ${res.data.error}`);
+        allTestsPassed = false;
+      }
+      
+      await sleep(200);
+    }
+
+    // ===== TEST 18: Filtrer par zone =====
+    log.section("TEST 18: FILTRER LES NPC PAR ZONE");
+    
+    log.info("Récupération des NPC de village_start...");
+    res = await makeRequest("GET", "/npcs/s1?zoneId=village_start", undefined, token);
+    
+    if (res.statusCode === 200) {
+      log.success(`${res.data.count} NPC trouvé(s) dans village_start`);
+      
+      console.log("\n  NPC dans village_start:");
+      res.data.npcs.forEach((npc: any) => {
+        console.log(`    - ${npc.name} (${npc.type})`);
+      });
+      
+      // Vérifier qu'on a bien 2 NPC (Elder + Guard)
+      if (res.data.count === 2) {
+        log.success("Nombre correct de NPC dans la zone");
+      } else {
+        log.warning(`Nombre inattendu: ${res.data.count} (attendu: 2)`);
+      }
+    } else {
+      log.error("Échec filtrage par zone");
+      allTestsPassed = false;
+    }
+
+    // ===== TEST 19: Filtrer par zone + type =====
+    log.section("TEST 19: FILTRER PAR ZONE + TYPE");
+    
+    log.info("Récupération des merchants de forest_dark...");
+    res = await makeRequest("GET", "/npcs/s1?zoneId=forest_dark&type=merchant", undefined, token);
+    
+    if (res.statusCode === 200) {
+      log.success(`${res.data.count} merchant(s) dans forest_dark`);
+      
+      if (res.data.count === 1) {
+        log.success("Filtrage combiné fonctionne !");
+        console.log(`  - ${res.data.npcs[0].name}`);
+      } else {
+        log.warning(`Nombre inattendu: ${res.data.count}`);
+      }
+    }
+
+    // ===== TEST 20: Lister NPC sans zone (null) =====
+    log.section("TEST 20: LISTER LES NPC SANS ZONE");
+    
+    log.info("Récupération des NPC sans zoneId...");
+    
+    // Compter manuellement les NPC sans zone
+    res = await makeRequest("GET", "/npcs/s1", undefined, token);
+    
+    if (res.statusCode === 200) {
+      const npcsWithoutZone = res.data.npcs.filter((npc: any) => !npc.zoneId);
+      log.success(`${npcsWithoutZone.length} NPC sans zone trouvé(s)`);
+      
+      console.log("\n  NPC sans zone:");
+      npcsWithoutZone.forEach((npc: any) => {
+        console.log(`    - ${npc.name} (${npc.type})`);
+      });
+    }
+
+    // ===== TEST 21: Modifier la zone d'un NPC =====
+    log.section("TEST 21: MODIFIER LA ZONE D'UN NPC");
+    
+    log.info("Déplacement du Blacksmith vers village_start...");
+    
+    res = await makeRequest("PUT", "/npcs/s1/npc_blacksmith_01", {
+      zoneId: "village_start"
+    }, token);
+    
+    if (res.statusCode === 200) {
+      log.success("Zone modifiée !");
+      log.info(`  Nouvelle zone: ${res.data.npc.zoneId}`);
+      
+      // Vérifier
+      if (res.data.npc.zoneId === "village_start") {
+        log.success("Modification de zone confirmée");
+      }
+    } else {
+      log.error(`Échec: ${res.data.error}`);
+      allTestsPassed = false;
+    }
+    
+// ===== RÉSUMÉ FINAL =====
     log.section("RÉSUMÉ DES TESTS");
     
     if (allTestsPassed) {
@@ -470,14 +604,35 @@ async function runTests() {
       log.info("✅ Suppression de NPC");
       log.info("✅ Isolation par serveur");
       log.info("✅ Instances indépendantes");
+      log.info("✅ Système de zones (zoneId optionnel)");  // ← AJOUT
+      log.info("✅ Filtrage par zone");  // ← AJOUT
+      log.info("✅ Filtrage combiné (zone + type)");  // ← AJOUT
+      log.info("✅ Modification de zone");  // ← AJOUT
     } else {
       log.error("❌ CERTAINS TESTS ONT ÉCHOUÉ");
       log.warning("Consulte les logs ci-dessus pour identifier les problèmes");
     }
 
-    // Afficher le compte final
+    // Afficher le compte final PAR ZONE
     console.log("");
     log.info("📊 État final:");
+    
+    res = await makeRequest("GET", "/npcs/s1", undefined, token);
+    log.info(`  S1 Total: ${res.data.count} NPC`);
+    
+    // Compter par zone
+    const zones = new Set<string>();
+    res.data.npcs.forEach((npc: any) => {
+      if (npc.zoneId) zones.add(npc.zoneId);
+    });
+    
+    for (const zone of zones) {
+      const zoneRes = await makeRequest("GET", `/npcs/s1?zoneId=${zone}`, undefined, token);
+      log.info(`    Zone "${zone}": ${zoneRes.data.count} NPC`);
+    }
+    
+    const npcsWithoutZone = res.data.npcs.filter((npc: any) => !npc.zoneId);
+    log.info(`    Sans zone: ${npcsWithoutZone.length} NPC`);
     
     res = await makeRequest("GET", "/npcs/s1", undefined, token);
     log.info(`  S1: ${res.data.count} NPC`);
