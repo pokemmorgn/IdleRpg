@@ -8,7 +8,7 @@ import {
   deleteDialogue,
   validateDialogue
 } from "../controllers/dialogueController";
-import { authenticateToken } from "../middlewares/authMiddleware";
+import { authenticateToken } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
