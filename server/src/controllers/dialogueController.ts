@@ -11,6 +11,7 @@ export const createDialogue = async (req: Request, res: Response) => {
       dialogueId,
       npcId,
       description,
+      spamProtection,
       nodes
     } = req.body;
 
@@ -42,6 +43,7 @@ export const createDialogue = async (req: Request, res: Response) => {
       dialogueId,
       npcId: npcId || null,
       description: description || null,
+      spamProtection: spamProtection || null,
       nodes
     });
 
@@ -54,6 +56,7 @@ export const createDialogue = async (req: Request, res: Response) => {
         dialogueId: dialogue.dialogueId,
         npcId: dialogue.npcId,
         description: dialogue.description,
+        spamProtection: dialogue.spamProtection,
         nodes: dialogue.nodes,
         createdAt: dialogue.createdAt,
         updatedAt: dialogue.updatedAt
@@ -123,6 +126,7 @@ export const bulkCreateDialogues = async (req: Request, res: Response) => {
           dialogueId: dialogueData.dialogueId,
           npcId: dialogueData.npcId || null,
           description: dialogueData.description || null,
+          spamProtection: dialogueData.spamProtection || null,
           nodes: dialogueData.nodes
         });
 
@@ -182,6 +186,7 @@ export const listDialogues = async (req: Request, res: Response) => {
         dialogueId: dialogue.dialogueId,
         npcId: dialogue.npcId,
         description: dialogue.description,
+        spamProtection: dialogue.spamProtection,
         nodes: dialogue.nodes,
         createdAt: dialogue.createdAt,
         updatedAt: dialogue.updatedAt
@@ -217,6 +222,7 @@ export const getDialogue = async (req: Request, res: Response) => {
         dialogueId: dialogue.dialogueId,
         npcId: dialogue.npcId,
         description: dialogue.description,
+        spamProtection: dialogue.spamProtection,
         nodes: dialogue.nodes,
         createdAt: dialogue.createdAt,
         updatedAt: dialogue.updatedAt
@@ -273,6 +279,7 @@ export const updateDialogue = async (req: Request, res: Response) => {
         dialogueId: dialogue.dialogueId,
         npcId: dialogue.npcId,
         description: dialogue.description,
+        spamProtection: dialogue.spamProtection,
         nodes: dialogue.nodes,
         createdAt: dialogue.createdAt,
         updatedAt: dialogue.updatedAt
@@ -376,6 +383,29 @@ export const validateDialogue = async (req: Request, res: Response) => {
       }
     });
 
+    // 5. Vérifier la spam protection
+    if (dialogue.spamProtection && dialogue.spamProtection.enabled) {
+      const spamTiers = dialogue.spamProtection.tiers;
+      
+      if (spamTiers.length === 0) {
+        errors.push("Spam protection enabled but no tiers defined");
+      }
+      
+      spamTiers.forEach((tier, index) => {
+        if (!nodeIds.has(tier.startNode)) {
+          errors.push(`Spam tier ${index + 1} references non-existent node '${tier.startNode}'`);
+        }
+        
+        if (tier.minCount < 0) {
+          errors.push(`Spam tier ${index + 1} has negative minCount`);
+        }
+        
+        if (tier.maxCount !== null && tier.maxCount < tier.minCount) {
+          errors.push(`Spam tier ${index + 1} has maxCount < minCount`);
+        }
+      });
+    }
+
     const isValid = errors.length === 0;
 
     res.json({
@@ -384,6 +414,7 @@ export const validateDialogue = async (req: Request, res: Response) => {
       errors,
       warnings,
       nodeCount: dialogue.nodes.length,
+      hasSpamProtection: dialogue.spamProtection?.enabled || false,
       summary: isValid ? "Dialogue is valid" : "Dialogue has errors"
     });
 
