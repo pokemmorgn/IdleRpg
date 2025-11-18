@@ -237,6 +237,12 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
+    // Déléguer les choix de dialogue au NPCManager
+    if (type === "dialogue_choice") {
+      this.npcManager.handleDialogueChoice(client, playerState, message);
+      return;
+    }
+
     // Commande admin pour recharger les NPC (utile en développement)
     if (type === "npc_reload" && this.isAdmin(playerState)) {
       this.npcManager.reloadNPCs();
