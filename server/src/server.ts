@@ -15,8 +15,8 @@ import serverRoutes from "./routes/serverRoutes";
 import profileRoutes from "./routes/profileRoutes";
 import invitationRoutes from "./routes/invitationRoutes";
 import gameDataRoutes from "./routes/gameDataRoutes";
-import npcRoutes from "./routes/npcRoutes";  // ← AJOUT
-
+import npcRoutes from "./routes/npcRoutes";
+import dialogueRoutes from "./routes/dialogueRoutes"; 
 dotenv.config();
 
 const app: Application = express();
@@ -96,8 +96,8 @@ app.use("/servers", serverRoutes);
 app.use("/profile", profileRoutes);
 app.use("/invitation", invitationRoutes);
 app.use("/game-data", gameDataRoutes);
-app.use("/npcs", npcRoutes);  // ← AJOUT
-
+app.use("/npcs", npcRoutes);
+app.use("/dialogues", dialogueRoutes);
 
 // -------------------------
 //    404 Catch-All
