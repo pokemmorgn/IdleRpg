@@ -67,21 +67,29 @@ export class StatsManager {
     // === RESSOURCE ===
     // ========================================
     let maxResource = 0;
-    let resourceRegen = 0;
+    let manaRegen = 0;
+    let rageRegen = 0;
+    let energyRegen = 0;
     
     if (resourceType === "mana") {
-      // Formula: 100 (base) + (INT × 5)
+      // Mana: 100 (base) + (INT × 5)
       maxResource = 100 + (intelligence * 5);
-      // Regen: 5 (base) + (SPI × 2)
-      resourceRegen = 5 + (spirit * 2);
+      // Mana Regen: 5 (base) + (SPI × 2)
+      manaRegen = 5 + (spirit * 2);
+      rageRegen = 0;
+      energyRegen = 0;
     } else if (resourceType === "rage") {
-      // Rage: Max fixe à 100, pas de regen (génère en combat)
+      // Rage: Max fixe à 100
       maxResource = 100;
-      resourceRegen = 0;
+      manaRegen = 0;
+      rageRegen = 0;  // Rage ne regen pas passivement (généré en combat)
+      energyRegen = 0;
     } else if (resourceType === "energy") {
-      // Energy: Max fixe à 100, regen fixe
+      // Energy: Max fixe à 100
       maxResource = 100;
-      resourceRegen = 10; // 10 energy/sec
+      manaRegen = 0;
+      rageRegen = 0;
+      energyRegen = 10;  // Regen fixe 10/sec
     }
     
     // ========================================
@@ -160,7 +168,11 @@ export class StatsManager {
       // Ressource
       resource: maxResource,  // Full ressource au départ
       maxResource,
-      resourceRegen,
+      
+      // Régénération (3 stats séparées)
+      manaRegen,
+      rageRegen,
+      energyRegen,
       
       // Combat de base
       attackPower,
@@ -243,6 +255,7 @@ export class StatsManager {
     await profile.save();
     
     console.log(`✅ [StatsManager] Stats recalculées pour ${profile.characterName} (Lv${profile.level})`);
+    console.log(`   HP: ${computedStats.maxHp}, Resource: ${computedStats.maxResource}, Regens: [Mana:${computedStats.manaRegen}, Rage:${computedStats.rageRegen}, Energy:${computedStats.energyRegen}]`);
   }
   
   /**
