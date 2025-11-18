@@ -288,30 +288,3 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 }
-```
-
----
-
-## Changements clés :
-
-✅ **NPCManager instancié** dans `onCreate()`  
-✅ **WorldRoom allégée** - Tout ce qui concerne les NPC est délégué  
-✅ **handleMessage() simplifié** - Délègue `npc_interact` au NPCManager  
-✅ **Commande admin `npc_reload`** pour recharger les NPC en dev  
-✅ **getNPCCount()** via NPCManager dans le welcome message  
-✅ **Code plus maintenable** - Séparation des responsabilités claire
-
----
-
-## Architecture finale :
-```
-WorldRoom
-  ├─ Gère les joueurs (connexion, déconnexion, auth)
-  ├─ Gère le tick du serveur
-  └─ Utilise NPCManager pour tout ce qui concerne les NPC
-
-NPCManager
-  ├─ Charge les NPC depuis MongoDB
-  ├─ Gère les interactions joueur → NPC
-  ├─ Fournit des helpers (getNPC, getNPCsByType, etc.)
-  └─ Peut recharger les NPC à chaud
