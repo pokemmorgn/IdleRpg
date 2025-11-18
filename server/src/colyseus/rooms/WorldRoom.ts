@@ -47,7 +47,7 @@ export class WorldRoom extends Room<GameState> {
 
     // Gestionnaire de messages
     this.onMessage("*", (client, type, message) => {
-      this.handleMessage(client, type, message);
+      this.handleMessage(client, String(type), message);
     });
 
     // Tick du serveur (30 FPS = ~33ms)
@@ -210,21 +210,21 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
-  /**
-   * Réception de messages du client
-   */
-  private handleMessage(client: Client, type: string, message: any) {
-    const playerState = this.state.players.get(client.sessionId);
-    
-    if (!playerState) {
-      return;
-    }
-
-    console.log(`📨 Message de ${playerState.characterName}: ${type}`, message);
-
-    // TODO: Gérer les actions du joueur ici
-    // Ex: "attack", "move", "pickup_item", etc.
+/**
+ * Réception de messages du client
+ */
+private handleMessage(client: Client, type: string | number, message: any) {
+  const playerState = this.state.players.get(client.sessionId);
+  
+  if (!playerState) {
+    return;
   }
+
+  console.log(`📨 Message de ${playerState.characterName}: ${type}`, message);
+
+  // TODO: Gérer les actions du joueur ici
+  // Ex: "attack", "move", "pickup_item", etc.
+}
 
   /**
    * Tick du serveur (appelé toutes les ~33ms)
