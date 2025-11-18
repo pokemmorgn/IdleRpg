@@ -11,6 +11,7 @@ import NPC from "../../models/NPC";
  * - Ajouter/Retirer des NPC du GameState
  * - Gérer les interactions joueur → NPC
  * - Vérifier les distances d'interaction
+ * - Filtrer par zone (optionnel)
  */
 export class NPCManager {
   private serverId: string;
@@ -23,16 +24,25 @@ export class NPCManager {
 
   /**
    * Charge tous les NPC actifs du serveur depuis MongoDB
+   * Optionnel : filtrer par zone
    */
-  async loadNPCs(): Promise<void> {
+  async loadNPCs(zoneId?: string): Promise<void> {
     try {
       console.log(`📂 [NPCManager] Chargement des NPC pour ${this.serverId}...`);
 
-      // Récupérer tous les NPC actifs du serveur
-      const npcs = await NPC.find({ 
+      // Filtre optionnel par zone
+      const filter: any = { 
         serverId: this.serverId, 
         isActive: true 
-      });
+      };
+      
+      if (zoneId) {
+        filter.zoneId = zoneId;
+        console.log(`🗺️  [NPCManager] Filtrage par zone: ${zoneId}`);
+      }
+
+      // Récupérer les NPC depuis MongoDB
+      const npcs = await NPC.find(filter);
 
       console.log(`✅ [NPCManager] ${npcs.length} NPC trouvé(s) pour ${this.serverId}`);
 
@@ -44,6 +54,7 @@ export class NPCManager {
           npc.type,
           npc.level,
           npc.faction,
+          npc.zoneId || "",
           npc.position.x,
           npc.position.y,
           npc.position.z,
@@ -70,7 +81,7 @@ export class NPCManager {
   /**
    * Recharge les NPC depuis MongoDB (utile si un NPC est créé/modifié via l'API)
    */
-  async reloadNPCs(): Promise<void> {
+  async reloadNPCs(zoneId?: string): Promise<void> {
     try {
       console.log(`🔄 [NPCManager] Rechargement des NPC pour ${this.serverId}...`);
 
@@ -81,7 +92,7 @@ export class NPCManager {
       }
 
       // Recharger depuis MongoDB
-      await this.loadNPCs();
+      await this.loadNPCs(zoneId);
 
       console.log(`✅ [NPCManager] NPC rechargés`);
 
@@ -216,9 +227,39 @@ export class NPCManager {
   }
 
   /**
+   * Récupère tous les NPC d'une zone spécifique
+   */
+  getNPCsByZone(zoneId: string): NPCState[] {
+    const npcs: NPCState[] = [];
+    
+    this.gameState.npcs.forEach((npc) => {
+      if (npc.zoneId === zoneId) {
+        npcs.push(npc);
+      }
+    });
+    
+    return npcs;
+  }
+
+  /**
    * Compte le nombre total de NPC chargés
    */
   getNPCCount(): number {
     return this.gameState.npcs.size;
+  }
+
+  /**
+   * Compte le nombre de NPC dans une zone spécifique
+   */
+  getNPCCountByZone(zoneId: string): number {
+    let count = 0;
+    
+    this.gameState.npcs.forEach((npc) => {
+      if (npc.zoneId === zoneId) {
+        count++;
+      }
+    });
+    
+    return count;
   }
 }
