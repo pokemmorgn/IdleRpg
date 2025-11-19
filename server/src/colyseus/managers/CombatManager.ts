@@ -616,44 +616,100 @@ export class CombatManager {
     // Nettoyer le timer d'attaque
     this.attackTimers.delete(player.sessionId);
   }
+
+  private moveMonsterTowardsPlayer(
+    monster: MonsterState,
+    player: PlayerState,
+    deltaTime: number
+): void {
+
+    // direction
+    const dx = player.posX - monster.posX;
+    const dy = player.posY - monster.posY;
+    const dz = player.posZ - monster.posZ;
+
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (distance <= monster.attackRange) return; // déjà au CaC
+
+    if (distance === 0) return;
+
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    const dirZ = dz / distance;
+
+    // vitesse du monstre (convertie en m/s)
+    const moveDist = monster.speed * (deltaTime / 1000);
+
+    monster.posX += dirX * moveDist;
+    monster.posY += dirY * moveDist;
+    monster.posZ += dirZ * moveDist;
+}
+
   
-  /**
-   * Gère l'aggro des monstres aggressive
-   */
-  private handleMonsterAggro(): void {
+private handleMonsterAggro(): void {
     this.gameState.monsters.forEach((monster) => {
-      // Ignorer si mort ou déjà en combat
-      if (monster.isDead || !monster.isAlive || monster.targetPlayerId) {
-        return;
-      }
-      
-      // Ignorer si pas aggressive
-      if (monster.behaviorType !== "aggressive") {
-        return;
-      }
-      
-      // Chercher un joueur dans l'aggroRange
-      this.gameState.players.forEach((player) => {
-        // Ignorer les joueurs morts
-        if (player.isDead) return;
-        
-        const distance = this.getDistance(
-          player.posX, player.posY, player.posZ,
-          monster.posX, monster.posY, monster.posZ
-        );
-        
-        if (distance <= monster.aggroRange) {
-          // Aggro !
-          console.log(`👹 [Combat] ${monster.name} aggro ${player.characterName} (distance: ${distance.toFixed(2)}m)`);
-          
-          // Si le joueur n'est pas en combat, le démarrer
-          if (!player.inCombat) {
-            this.startCombat(player, monster);
-          }
+
+        if (!monster.isAlive || monster.isDead) return;
+
+        // ON A DÉJÀ UNE CIBLE ?
+        if (monster.targetPlayerId) {
+            const player = this.gameState.players.get(monster.targetPlayerId);
+
+            // Si le joueur n'existe plus → reset
+            if (!player || player.isDead) {
+                monster.targetPlayerId = "";
+                return;
+            }
+
+            const distance = this.getDistance(
+                player.posX, player.posY, player.posZ,
+                monster.posX, monster.posY, monster.posZ
+            );
+
+            // TROP LOIN → LEASH RESET
+            if (distance > monster.leashRange) {
+                monster.targetPlayerId = "";
+                return;
+            }
+
+            // SI PAS encore au CaC → on avance vers le joueur
+            if (distance > monster.attackRange) {
+                this.moveMonsterTowardsPlayer(monster, player, 33);
+            }
+
+            // Sinon → le combatManager gère les attaques dans handleActiveCombat()
+            return;
         }
-      });
+
+        // ============================
+        // PAS DE CIBLE → CHECK AGGRO
+        // ============================
+        if (monster.behaviorType !== "aggressive") return;
+
+        this.gameState.players.forEach((player) => {
+
+            if (player.isDead) return;
+
+            const dist = this.getDistance(
+                player.posX, player.posY, player.posZ,
+                monster.posX, monster.posY, monster.posZ
+            );
+
+            if (dist <= monster.aggroRange) {
+
+                monster.targetPlayerId = player.sessionId;
+
+                console.log(`👹 [AGGRO] ${monster.name} aggro ${player.characterName}`);
+
+                // pour accélérer l'action → déplacement immédiat au tick d’aggro
+                if (dist > monster.attackRange) {
+                    this.moveMonsterTowardsPlayer(monster, player, 33);
+                }
+            }
+        });
     });
-  }
+}
+
   
   /**
    * Calcule la distance entre deux points
