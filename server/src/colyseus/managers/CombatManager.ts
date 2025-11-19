@@ -3,24 +3,15 @@ import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { MonsterState } from "../schema/MonsterState";
 
-interface CombatState {
-  playerId: string;
-  monsterId: string;
-  playerAttackTimer: number;
-  monsterAttackTimer: number;
-  isMovingToTarget: boolean;
-  targetReached: boolean;
-}
-
 /**
- * CombatManager - Gère tout le système de combat (online et AFK)
+ * CombatManager - Gère tout le système de combat (Online + AFK)
  * 
  * Responsabilités :
- * - Détecter joueurs immobiles (1s sans mouvement)
- * - Scanner monstres dans 40m et choisir le plus proche
- * - Déplacer progressivement vers le monstre
- * - Gérer timers d'attaque indépendants (joueur + monstre)
- * - Calculer dégâts (AP, critique, esquive, DR)
+ * - Détection automatique des combats (joueur immobile + monstre proche)
+ * - Déplacement progressif vers le monstre
+ * - Calcul des dégâts (critiques, esquives, réduction)
+ * - Gestion des timers d'attaque indépendants
+ * - Gestion de la mort (joueur/monstre)
  * - XP gain et loot drop
  * - Respawn automatique des monstres
  * - Aggro des monstres aggressive
@@ -29,11 +20,16 @@ export class CombatManager {
   private serverId: string;
   private gameState: GameState;
   
-  // Map des combats en cours : sessionId → CombatState
-  private activeCombats: Map<string, CombatState> = new Map();
+  // Timers d'attaque par entité (sessionId ou monsterId)
+  private attackTimers: Map<string, number> = new Map();
   
-  // Clients connectés (pour envoyer messages WebSocket)
-  private clients: Map<string, Client> = new Map();
+  // Timers de respawn des monstres (monsterId)
+  private respawnTimers: Map<string, number> = new Map();
+  
+  // Constantes
+  private readonly DETECTION_RANGE = 40; // Distance de détection (mètres)
+  private readonly MELEE_RANGE = 2;      // Distance de corps à corps (mètres)
+  private readonly IDLE_THRESHOLD = 1000; // Temps d'immobilité pour déclencher combat (ms)
   
   constructor(serverId: string, gameState: GameState) {
     this.serverId = serverId;
@@ -41,90 +37,90 @@ export class CombatManager {
   }
   
   /**
-   * Enregistre un client (appelé dans WorldRoom.onJoin)
-   */
-  registerClient(sessionId: string, client: Client): void {
-    this.clients.set(sessionId, client);
-  }
-  
-  /**
-   * Désenregistre un client (appelé dans WorldRoom.onLeave)
-   */
-  unregisterClient(sessionId: string): void {
-    this.clients.delete(sessionId);
-    this.activeCombats.delete(sessionId);
-  }
-  
-  /**
-   * Update principal (appelé depuis WorldRoom.update toutes les ~33ms)
+   * Tick principal du combat (appelé toutes les ~33ms)
    */
   update(deltaTime: number): void {
-    // 1. Détecter les joueurs immobiles et lancer combat si monstre proche
-    this.detectIdlePlayers(deltaTime);
+    // 1. Mettre à jour les timers de respawn
+    this.updateRespawnTimers(deltaTime);
     
-    // 2. Gérer les combats en cours
-    this.updateActiveCombats(deltaTime);
-    
-    // 3. Gérer l'aggro des monstres
-    this.updateMonsterAggro(deltaTime);
-    
-    // 4. Gérer les respawns de monstres
-    this.updateMonsterRespawns(deltaTime);
-  }
-  
-  // ========================================
-  // === DÉTECTION JOUEURS IMMOBILES ===
-  // ========================================
-  
-  private detectIdlePlayers(deltaTime: number): void {
-    const now = Date.now();
-    
+    // 2. Pour chaque joueur en ligne
     this.gameState.players.forEach((player) => {
-      // Si déjà en combat, skip
-      if (player.inCombat) return;
+      // Si mort, gérer le cooldown de résurrection
+      if (player.isDead) {
+        this.handlePlayerDeath(player, deltaTime);
+        return;
+      }
       
-      // Si en AFK, skip (géré par AFKManager)
-      if (player.isAFK) return;
+      // Si en combat, continuer le combat
+      if (player.inCombat && player.targetMonsterId) {
+        this.handleActiveCombat(player, deltaTime);
+        return;
+      }
       
-      // Si mort, skip
-      if (player.isDead) return;
-      
-      // Vérifier si immobile depuis 1 seconde
-      const timeSinceLastMove = now - player.lastMovementTime;
-      
-      if (timeSinceLastMove >= 1000) {
-        // Joueur immobile → chercher monstre proche
-        this.tryStartCombat(player);
+      // Si pas en combat, vérifier détection automatique (online + AFK)
+      if (!player.inCombat) {
+        this.detectCombatOpportunity(player);
       }
     });
+    
+    // 3. Aggro des monstres aggressive
+    this.handleMonsterAggro();
   }
   
   /**
-   * Cherche un monstre dans 40m et démarre le combat
+   * Détecte si un joueur immobile peut commencer un combat
    */
-  private tryStartCombat(player: PlayerState): void {
-    // Trouver le monstre le plus proche dans 40m
-    const nearbyMonster = this.findNearestMonster(player, 40);
+  private detectCombatOpportunity(player: PlayerState): void {
+    // Vérifier si le joueur est immobile depuis 1 seconde (ou en mode AFK)
+    const now = Date.now();
+    const isIdle = (now - player.lastMovementTime) >= this.IDLE_THRESHOLD;
     
-    if (!nearbyMonster) return;
+    if (!isIdle && !player.isAFK) {
+      return; // Joueur bouge et pas en AFK
+    }
     
-    // Vérifier que le monstre est vivant
-    if (nearbyMonster.isDead) return;
+    // Chercher le monstre le plus proche dans les 40m
+    const nearestMonster = this.findNearestMonster(player);
+    
+    if (!nearestMonster) {
+      return; // Pas de monstre à portée
+    }
     
     // Démarrer le combat
-    this.startCombat(player, nearbyMonster);
+    this.startCombat(player, nearestMonster);
   }
   
-  // ========================================
-  // === GESTION DES COMBATS ===
-  // ========================================
+  /**
+   * Trouve le monstre le plus proche d'un joueur
+   */
+  private findNearestMonster(player: PlayerState): MonsterState | null {
+    let nearest: MonsterState | null = null;
+    let minDistance = this.DETECTION_RANGE;
+    
+    this.gameState.monsters.forEach((monster) => {
+      // Ignorer les monstres morts
+      if (monster.isDead || !monster.isActive || !monster.isAlive) {
+        return;
+      }
+      
+      const distance = this.getDistance(
+        player.posX, player.posY, player.posZ,
+        monster.posX, monster.posY, monster.posZ
+      );
+      
+      if (distance <= this.DETECTION_RANGE && distance < minDistance) {
+        nearest = monster;
+        minDistance = distance;
+      }
+    });
+    
+    return nearest;
+  }
   
   /**
    * Démarre un combat entre un joueur et un monstre
    */
-  startCombat(player: PlayerState, monster: MonsterState): void {
-    console.log(`⚔️  [CombatManager] Combat start: ${player.characterName} vs ${monster.name}`);
-    
+  private startCombat(player: PlayerState, monster: MonsterState): void {
     // Marquer le joueur en combat
     player.inCombat = true;
     player.targetMonsterId = monster.monsterId;
@@ -132,559 +128,474 @@ export class CombatManager {
     
     // Marquer le monstre en combat
     monster.targetPlayerId = player.sessionId;
-    monster.attackTimer = 0;
     
-    // Créer l'état de combat
-    const combatState: CombatState = {
-      playerId: player.sessionId,
-      monsterId: monster.monsterId,
-      playerAttackTimer: 0,
-      monsterAttackTimer: 0,
-      isMovingToTarget: true,
-      targetReached: false
-    };
+    // Initialiser le timer d'attaque du monstre
+    if (!this.attackTimers.has(monster.monsterId)) {
+      this.attackTimers.set(monster.monsterId, 0);
+    }
     
-    this.activeCombats.set(player.sessionId, combatState);
+    console.log(`⚔️  [Combat] ${player.characterName} engage ${monster.name} (distance: ${this.getDistance(player.posX, player.posY, player.posZ, monster.posX, monster.posY, monster.posZ).toFixed(2)}m)`);
     
     // Envoyer message au client
-    const client = this.clients.get(player.sessionId);
-    if (client) {
-      client.send("combat_start", {
-        playerId: player.sessionId,
-        monsterId: monster.monsterId,
-        playerHP: player.hp,
-        monsterHP: monster.hp
-      });
-    }
-  }
-  
-  /**
-   * Arrête un combat (joueur bouge manuellement)
-   */
-  stopCombat(player: PlayerState): void {
-    console.log(`🛑 [CombatManager] Combat stop: ${player.characterName}`);
-    
-    const combatState = this.activeCombats.get(player.sessionId);
-    if (!combatState) return;
-    
-    // Retirer le combat
-    this.activeCombats.delete(player.sessionId);
-    
-    // Réinitialiser le joueur
-    player.inCombat = false;
-    player.targetMonsterId = "";
-    player.attackTimer = 0;
-    
-    // Réinitialiser le monstre
-    const monster = this.gameState.monsters.get(combatState.monsterId);
-    if (monster) {
-      monster.targetPlayerId = "";
-      monster.attackTimer = 0;
-    }
-  }
-  
-  /**
-   * Update des combats actifs
-   */
-  private updateActiveCombats(deltaTime: number): void {
-    this.activeCombats.forEach((combatState, sessionId) => {
-      const player = this.gameState.players.get(sessionId);
-      const monster = this.gameState.monsters.get(combatState.monsterId);
-      
-      // Vérifier que le combat est toujours valide
-      if (!player || !monster || player.isDead || monster.isDead) {
-        this.activeCombats.delete(sessionId);
-        return;
-      }
-      
-      // Si le joueur est en AFK, ne pas mettre à jour le combat ici
-      // (géré par AFKManager)
-      if (player.isAFK) return;
-      
-      // 1. Déplacer le joueur vers le monstre si pas encore au corps à corps
-      if (combatState.isMovingToTarget && !combatState.targetReached) {
-        this.movePlayerTowardsMonster(player, monster, combatState, deltaTime);
-      }
-      
-      // 2. Si au corps à corps, gérer les attaques
-      if (combatState.targetReached) {
-        this.processCombatTurn(player, monster, combatState, deltaTime);
-      }
+    this.broadcastToPlayer(player.sessionId, "combat_start", {
+      playerId: player.sessionId,
+      monsterId: monster.monsterId,
+      playerHP: player.hp,
+      monsterHP: monster.hp
     });
   }
   
   /**
-   * Déplace progressivement le joueur vers le monstre
+   * Gère un combat actif
    */
-  private movePlayerTowardsMonster(
-    player: PlayerState,
-    monster: MonsterState,
-    combatState: CombatState,
-    deltaTime: number
-  ): void {
+  private handleActiveCombat(player: PlayerState, deltaTime: number): void {
+    const monster = this.gameState.monsters.get(player.targetMonsterId);
+    
+    if (!monster || monster.isDead) {
+      // Monstre disparu ou mort, arrêter le combat
+      this.stopCombat(player);
+      return;
+    }
+    
+    // Calculer la distance au monstre
     const distance = this.getDistance(
       player.posX, player.posY, player.posZ,
       monster.posX, monster.posY, monster.posZ
     );
     
-    // Si à moins de 2m, considérer comme atteint
-    if (distance <= 2) {
-      combatState.targetReached = true;
-      combatState.isMovingToTarget = false;
-      console.log(`✅ [CombatManager] ${player.characterName} reached ${monster.name}`);
+    // Si trop loin (> 40m pour AFK, leash), arrêter le combat
+    if (distance > this.DETECTION_RANGE) {
+      console.log(`⚠️  [Combat] ${player.characterName} trop loin de ${monster.name}, combat arrêté`);
+      this.stopCombat(player);
       return;
     }
     
+    // Si pas au corps à corps, se déplacer progressivement
+    if (distance > this.MELEE_RANGE) {
+      this.moveTowardsTarget(player, monster, deltaTime);
+      return; // Pas encore d'attaque
+    }
+    
+    // On est au corps à corps, gérer les attaques
+    this.handleCombatAttacks(player, monster, deltaTime);
+  }
+  
+  /**
+   * Déplace progressivement le joueur vers le monstre
+   */
+  private moveTowardsTarget(
+    player: PlayerState,
+    monster: MonsterState,
+    deltaTime: number
+  ): void {
     // Calculer la direction
     const dx = monster.posX - player.posX;
     const dy = monster.posY - player.posY;
     const dz = monster.posZ - player.posZ;
     
-    const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
     
-    if (length === 0) return;
+    if (distance === 0) return;
     
     // Normaliser
-    const dirX = dx / length;
-    const dirY = dy / length;
-    const dirZ = dz / length;
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    const dirZ = dz / distance;
     
-    // Déplacer selon moveSpeed (deltaTime en ms)
-    const moveAmount = player.moveSpeed * (deltaTime / 1000);
+    // Déplacer selon moveSpeed
+    const moveDistance = player.moveSpeed * (deltaTime / 1000);
     
-    player.posX += dirX * moveAmount;
-    player.posY += dirY * moveAmount;
-    player.posZ += dirZ * moveAmount;
+    player.posX += dirX * moveDistance;
+    player.posY += dirY * moveDistance;
+    player.posZ += dirZ * moveDistance;
     
-    // Envoyer update de position au client (toutes les 100ms)
-    const now = Date.now();
-    if (!player.lastMovementTime || now - player.lastMovementTime >= 100) {
-      const client = this.clients.get(player.sessionId);
-      if (client) {
-        client.send("player_position_update", {
-          x: player.posX,
-          y: player.posY,
-          z: player.posZ
-        });
-      }
-      player.lastMovementTime = now;
-    }
+    // Envoyer update de position au client (toutes les 100ms environ)
+    // Pour limiter la fréquence, on peut ajouter un throttle ici
+    this.broadcastToPlayer(player.sessionId, "player_position_update", {
+      x: player.posX,
+      y: player.posY,
+      z: player.posZ
+    });
   }
   
   /**
-   * Gère un tour de combat (attaques indépendantes)
+   * Gère les attaques dans un combat actif
    */
-  private processCombatTurn(
+  private handleCombatAttacks(
     player: PlayerState,
     monster: MonsterState,
-    combatState: CombatState,
     deltaTime: number
   ): void {
-    const client = this.clients.get(player.sessionId);
+    // Incrémenter le timer d'attaque du joueur
+    player.attackTimer += deltaTime;
     
-    // === ATTAQUE DU JOUEUR ===
-    combatState.playerAttackTimer += deltaTime;
-    
-    if (combatState.playerAttackTimer >= player.attackSpeed * 1000) {
-      // Joueur attaque
-      this.playerAttacksMonster(player, monster, client);
-      combatState.playerAttackTimer = 0;
+    // Le joueur peut attaquer ?
+    if (player.attackTimer >= player.attackSpeed * 1000) {
+      this.performAttack(player, monster);
+      player.attackTimer = 0;
     }
     
-    // === ATTAQUE DU MONSTRE ===
-    combatState.monsterAttackTimer += deltaTime;
+    // Incrémenter le timer d'attaque du monstre
+    const monsterTimerKey = monster.monsterId;
+    const currentMonsterTimer = this.attackTimers.get(monsterTimerKey) || 0;
+    const newMonsterTimer = currentMonsterTimer + deltaTime;
+    this.attackTimers.set(monsterTimerKey, newMonsterTimer);
     
-    // Calculer l'attack speed du monstre
-    const monsterAttackSpeed = this.calculateMonsterAttackSpeed(monster.speed);
+    // Le monstre peut attaquer ?
+    const monsterAttackSpeed = this.calculateMonsterAttackSpeed(monster);
     
-    if (combatState.monsterAttackTimer >= monsterAttackSpeed * 1000) {
-      // Monstre attaque
-      this.monsterAttacksPlayer(monster, player, client);
-      combatState.monsterAttackTimer = 0;
+    if (newMonsterTimer >= monsterAttackSpeed * 1000) {
+      this.performAttack(monster, player);
+      this.attackTimers.set(monsterTimerKey, 0);
     }
-  }
-  
-  // ========================================
-  // === CALCULS DE COMBAT ===
-  // ========================================
-  
-  /**
-   * Joueur attaque monstre
-   */
-  private playerAttacksMonster(
-    player: PlayerState,
-    monster: MonsterState,
-    client: Client | undefined
-  ): void {
-    // Calculer les dégâts
-    const damageResult = this.calculateDamage(
-      player.attackPower,
-      player.criticalChance,
-      player.criticalDamage,
-      monster.defense,
-      monster.speed // Utilisé pour l'esquive (0% pour les monstres par défaut)
-    );
-    
-    // Appliquer les dégâts
-    monster.hp = Math.max(0, monster.hp - damageResult.finalDamage);
-    
-    console.log(`⚔️  [Combat] ${player.characterName} → ${monster.name}: ${damageResult.finalDamage} dmg ${damageResult.isCritical ? '(CRIT)' : ''} ${damageResult.isMiss ? '(MISS)' : ''}`);
-    
-    // Envoyer message
-    if (client) {
-      client.send("combat_damage", {
-        attackerId: player.sessionId,
-        defenderId: monster.monsterId,
-        damage: damageResult.finalDamage,
-        isCritical: damageResult.isCritical,
-        isMiss: damageResult.isMiss,
-        defenderHPLeft: monster.hp
-      });
-    }
-    
-    // Vérifier mort du monstre
-    if (monster.hp <= 0) {
-      this.onMonsterDeath(player, monster, client);
-    }
-  }
-  
-  /**
-   * Monstre attaque joueur
-   */
-  private monsterAttacksPlayer(
-    monster: MonsterState,
-    player: PlayerState,
-    client: Client | undefined
-  ): void {
-    // Calculer les dégâts
-    const damageResult = this.calculateDamage(
-      monster.attack,
-      0, // Pas de critique pour les monstres
-      150,
-      player.damageReduction,
-      player.evasion
-    );
-    
-    // Appliquer les dégâts
-    player.hp = Math.max(0, player.hp - damageResult.finalDamage);
-    
-    console.log(`⚔️  [Combat] ${monster.name} → ${player.characterName}: ${damageResult.finalDamage} dmg ${damageResult.isMiss ? '(MISS)' : ''}`);
-    
-    // Envoyer message
-    if (client) {
-      client.send("combat_damage", {
-        attackerId: monster.monsterId,
-        defenderId: player.sessionId,
-        damage: damageResult.finalDamage,
-        isCritical: false,
-        isMiss: damageResult.isMiss,
-        defenderHPLeft: player.hp
-      });
-    }
-    
-    // Vérifier mort du joueur
-    if (player.hp <= 0) {
-      this.onPlayerDeath(player, monster, client);
-    }
-  }
-  
-  /**
-   * Calcule les dégâts finaux
-   */
-  private calculateDamage(
-    attackPower: number,
-    critChance: number,
-    critDamage: number,
-    defenseOrDR: number, // Defense pour monstre, DR% pour joueur
-    evasion: number
-  ): { finalDamage: number; isCritical: boolean; isMiss: boolean } {
-    let baseDamage = attackPower;
-    let isCritical = false;
-    let isMiss = false;
-    
-    // 1. Esquive
-    if (Math.random() * 100 < evasion) {
-      isMiss = true;
-      return { finalDamage: 0, isCritical: false, isMiss: true };
-    }
-    
-    // 2. Critique
-    if (Math.random() * 100 < critChance) {
-      isCritical = true;
-      baseDamage *= (critDamage / 100);
-    }
-    
-    // 3. Réduction de dégâts
-    // Pour les joueurs: DR est un pourcentage direct
-    // Pour les monstres: defense est une valeur brute (on utilise une formule simple)
-    let finalDamage = baseDamage;
-    
-    if (defenseOrDR > 0) {
-      // Si defenseOrDR < 100, on le traite comme un pourcentage (joueur)
-      // Sinon, on le traite comme une defense brute (monstre - non utilisé ici car monstres n'ont pas de DR%)
-      const reductionPercent = Math.min(75, defenseOrDR);
-      finalDamage = baseDamage * (1 - (reductionPercent / 100));
-    }
-    
-    // 4. Minimum 1 dégât
-    finalDamage = Math.max(1, Math.floor(finalDamage));
-    
-    return { finalDamage, isCritical, isMiss };
   }
   
   /**
    * Calcule l'attack speed d'un monstre
    * Formula: 2.5 * (100 / speed)
    */
-  private calculateMonsterAttackSpeed(speed: number): number {
-    if (speed === 0) return 2.5;
-    return 2.5 * (100 / speed);
+  private calculateMonsterAttackSpeed(monster: MonsterState): number {
+    return 2.5 * (100 / monster.speed);
   }
   
-  // ========================================
-  // === MORT ===
-  // ========================================
+  /**
+   * Effectue une attaque (joueur → monstre ou monstre → joueur)
+   */
+  private performAttack(
+    attacker: PlayerState | MonsterState,
+    defender: PlayerState | MonsterState
+  ): void {
+    // Déterminer les stats de l'attaquant
+    let attackPower = 0;
+    let criticalChance = 0;
+    let criticalDamage = 150;
+    let precision = 0;
+    let attackerName = "";
+    let attackerId = "";
+    
+    if (attacker instanceof PlayerState) {
+      attackPower = attacker.attackPower;
+      criticalChance = attacker.criticalChance;
+      criticalDamage = attacker.criticalDamage;
+      precision = attacker.precision;
+      attackerName = attacker.characterName;
+      attackerId = attacker.sessionId;
+    } else {
+      attackPower = attacker.attack;
+      criticalChance = 0; // Monstres pas de crit pour l'instant
+      criticalDamage = 150;
+      precision = 0;
+      attackerName = attacker.name;
+      attackerId = attacker.monsterId;
+    }
+    
+    // Déterminer les stats du défenseur
+    let damageReduction = 0;
+    let evasion = 0;
+    let defenderName = "";
+    let defenderId = "";
+    
+    if (defender instanceof PlayerState) {
+      damageReduction = defender.damageReduction;
+      evasion = defender.evasion;
+      defenderName = defender.characterName;
+      defenderId = defender.sessionId;
+    } else {
+      // Calculer la réduction de dégâts du monstre depuis defense
+      damageReduction = this.calculateMonsterDamageReduction(defender);
+      evasion = 0; // Monstres pas d'esquive pour l'instant
+      defenderName = defender.name;
+      defenderId = defender.monsterId;
+    }
+    
+    // Calculer les dégâts
+    let baseDamage = attackPower;
+    let finalDamage = baseDamage * (1 - (damageReduction / 100));
+    
+    // Vérifier esquive (si roll < evasion)
+    const evasionRoll = Math.random() * 100;
+    const isMiss = evasionRoll < evasion;
+    
+    if (isMiss) {
+      finalDamage = 0;
+      console.log(`💨 [Combat] ${attackerName} MISS sur ${defenderName}`);
+      
+      // Envoyer message
+      this.broadcastCombatDamage(attackerId, defenderId, 0, false, true, defender instanceof PlayerState ? defender.hp : defender.hp);
+      return;
+    }
+    
+    // Vérifier critique (si roll < criticalChance)
+    const critRoll = Math.random() * 100;
+    const isCritical = critRoll < criticalChance;
+    
+    if (isCritical) {
+      finalDamage *= (criticalDamage / 100);
+    }
+    
+    // Minimum 1 dégât
+    finalDamage = Math.max(1, Math.floor(finalDamage));
+    
+    // Appliquer les dégâts
+    if (defender instanceof PlayerState) {
+      defender.hp = Math.max(0, defender.hp - finalDamage);
+    } else {
+      defender.hp = Math.max(0, defender.hp - finalDamage);
+    }
+    
+    console.log(`⚔️  [Combat] ${attackerName} → ${defenderName}: ${finalDamage} dmg${isCritical ? ' (CRIT!)' : ''} (HP: ${defender instanceof PlayerState ? defender.hp : defender.hp}/${defender instanceof PlayerState ? defender.maxHp : defender.maxHp})`);
+    
+    // Envoyer message de dégâts
+    this.broadcastCombatDamage(
+      attackerId,
+      defenderId,
+      finalDamage,
+      isCritical,
+      false,
+      defender instanceof PlayerState ? defender.hp : defender.hp
+    );
+    
+    // Vérifier la mort
+    if ((defender instanceof PlayerState && defender.hp <= 0) || 
+        (defender instanceof MonsterState && defender.hp <= 0)) {
+      this.handleDeath(attacker, defender);
+    }
+  }
+  
+  /**
+   * Calcule la réduction de dégâts d'un monstre depuis sa defense
+   * Simple formula pour l'instant: defense * 0.5%
+   */
+  private calculateMonsterDamageReduction(monster: MonsterState): number {
+    return Math.min(75, monster.defense * 0.5);
+  }
+  
+  /**
+   * Gère la mort d'une entité
+   */
+  private handleDeath(
+    killer: PlayerState | MonsterState,
+    victim: PlayerState | MonsterState
+  ): void {
+    if (victim instanceof MonsterState) {
+      // Monstre mort
+      this.handleMonsterDeath(killer as PlayerState, victim);
+    } else {
+      // Joueur mort
+      this.handlePlayerDeathInCombat(victim);
+    }
+  }
   
   /**
    * Gère la mort d'un monstre
    */
-  private onMonsterDeath(
-    player: PlayerState,
-    monster: MonsterState,
-    client: Client | undefined
-  ): void {
-    console.log(`💀 [Combat] ${monster.name} killed by ${player.characterName}`);
+  private handleMonsterDeath(killer: PlayerState, monster: MonsterState): void {
+    console.log(`💀 [Combat] ${monster.name} tué par ${killer.characterName}`);
     
+    // Marquer le monstre comme mort
     monster.isDead = true;
     monster.isAlive = false;
     
-    // XP gain
+    // Arrêter le combat du joueur
+    this.stopCombat(killer);
+    
+    // XP Gain
     const xpGained = monster.xpReward;
-    console.log(`⭐ [Combat] ${player.characterName} gained ${xpGained} XP`);
+    // TODO: Ajouter l'XP au joueur (level up system pas encore implémenté)
     
-    // Envoyer message XP
-    if (client) {
-      client.send("xp_gained", {
-        amount: xpGained
-        // TODO: Calculer level up
-      });
-    }
+    console.log(`⭐ [Combat] ${killer.characterName} gagne ${xpGained} XP`);
     
-    // Loot drop (or uniquement)
-    const goldAmount = Math.floor(
-      Math.random() * (monster.level * 15 - monster.level * 5 + 1) + monster.level * 5
-    );
+    this.broadcastToPlayer(killer.sessionId, "xp_gained", {
+      amount: xpGained
+      // newLevel: si level up
+    });
     
-    console.log(`💰 [Combat] ${player.characterName} looted ${goldAmount} gold`);
+    // Loot Drop (or uniquement)
+    const goldAmount = this.calculateGoldDrop(monster);
     
-    // Envoyer message loot
-    if (client) {
-      client.send("loot_dropped", {
-        gold: goldAmount
-      });
-    }
+    console.log(`💰 [Combat] ${killer.characterName} obtient ${goldAmount} or`);
     
-    // Envoyer message mort
-    if (client) {
-      client.send("combat_death", {
-        entityId: monster.monsterId,
-        isPlayer: false
-      });
-    }
+    this.broadcastToPlayer(killer.sessionId, "loot_dropped", {
+      gold: goldAmount
+    });
     
-    // Retirer le combat
-    this.activeCombats.delete(player.sessionId);
-    player.inCombat = false;
-    player.targetMonsterId = "";
+    // Envoyer message de mort
+    this.broadcastToPlayer(killer.sessionId, "combat_death", {
+      entityId: monster.monsterId,
+      isPlayer: false
+    });
     
-    // Démarrer le respawn timer
+    // Programmer le respawn
     if (monster.respawnOnDeath) {
-      monster.respawnTimer = monster.respawnTime;
-      console.log(`⏱️  [Combat] ${monster.name} will respawn in ${monster.respawnTime}s`);
+      this.scheduleRespawn(monster);
     }
   }
   
   /**
-   * Gère la mort d'un joueur
+   * Calcule le drop d'or d'un monstre
    */
-  private onPlayerDeath(
-    player: PlayerState,
-    monster: MonsterState,
-    client: Client | undefined
-  ): void {
-    console.log(`💀 [Combat] ${player.characterName} killed by ${monster.name}`);
-    
-    player.isDead = true;
-    player.hp = 0;
-    player.deathTimer = 30; // 30 secondes
-    
-    // Envoyer message mort
-    if (client) {
-      client.send("combat_death", {
-        entityId: player.sessionId,
-        isPlayer: true
-      });
-    }
-    
-    // Retirer le combat
-    this.activeCombats.delete(player.sessionId);
-    player.inCombat = false;
-    player.targetMonsterId = "";
-    
-    // Réinitialiser le monstre
-    monster.targetPlayerId = "";
-    monster.attackTimer = 0;
+  private calculateGoldDrop(monster: MonsterState): number {
+    const min = monster.level * 5;
+    const max = monster.level * 15;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
   }
   
-  // ========================================
-  // === AGGRO MONSTRES ===
-  // ========================================
+  /**
+   * Programme le respawn d'un monstre
+   */
+  private scheduleRespawn(monster: MonsterState): void {
+    this.respawnTimers.set(monster.monsterId, monster.respawnTime * 1000);
+    console.log(`⏰ [Combat] ${monster.name} respawn dans ${monster.respawnTime}s`);
+  }
+  
+  /**
+   * Met à jour les timers de respawn
+   */
+  private updateRespawnTimers(deltaTime: number): void {
+    this.respawnTimers.forEach((timer, monsterId) => {
+      const newTimer = timer - deltaTime;
+      
+      if (newTimer <= 0) {
+        // Respawn !
+        this.respawnMonster(monsterId);
+        this.respawnTimers.delete(monsterId);
+      } else {
+        this.respawnTimers.set(monsterId, newTimer);
+      }
+    });
+  }
+  
+  /**
+   * Respawn un monstre
+   */
+  private respawnMonster(monsterId: string): void {
+    const monster = this.gameState.monsters.get(monsterId);
+    
+    if (!monster) return;
+    
+    // Réinitialiser le monstre
+    monster.isDead = false;
+    monster.isAlive = true;
+    monster.hp = monster.maxHp;
+    monster.targetPlayerId = "";
+    
+    // Remettre à sa position de spawn
+    // (posX, posY, posZ sont déjà les positions de spawn)
+    
+    console.log(`♻️  [Combat] ${monster.name} respawn avec ${monster.maxHp} HP`);
+    
+    // Broadcast le respawn à tous les joueurs
+    this.broadcast("monster_respawn", {
+      monsterId: monster.monsterId
+    });
+  }
+  
+  /**
+   * Gère la mort d'un joueur en combat
+   */
+  private handlePlayerDeathInCombat(player: PlayerState): void {
+    console.log(`💀 [Combat] ${player.characterName} est mort`);
+    
+    // Marquer le joueur comme mort
+    player.isDead = true;
+    player.hp = 0;
+    player.deathTimer = 30000; // 30 secondes
+    
+    // Arrêter le combat
+    this.stopCombat(player);
+    
+    // Envoyer message au client
+    this.broadcastToPlayer(player.sessionId, "combat_death", {
+      entityId: player.sessionId,
+      isPlayer: true
+    });
+  }
+  
+  /**
+   * Gère le cooldown de mort d'un joueur
+   */
+  private handlePlayerDeath(player: PlayerState, deltaTime: number): void {
+    player.deathTimer -= deltaTime;
+    
+    if (player.deathTimer <= 0) {
+      // Résurrection
+      this.resurrectPlayer(player);
+    }
+  }
+  
+  /**
+   * Ressuscite un joueur
+   */
+  private resurrectPlayer(player: PlayerState): void {
+    console.log(`✨ [Combat] ${player.characterName} ressuscite`);
+    
+    // Réinitialiser
+    player.isDead = false;
+    player.hp = player.maxHp;
+    player.deathTimer = 0;
+    
+    // Si en mode AFK, rester à la position AFK
+    // (géré par AFKBehaviorManager)
+    
+    // Envoyer message au client
+    this.broadcastToPlayer(player.sessionId, "player_resurrected", {
+      hp: player.hp,
+      maxHp: player.maxHp
+    });
+  }
+  
+  /**
+   * Arrête le combat d'un joueur
+   */
+  stopCombat(player: PlayerState): void {
+    if (!player.inCombat) return;
+    
+    console.log(`🛑 [Combat] ${player.characterName} arrête le combat`);
+    
+    player.inCombat = false;
+    player.targetMonsterId = "";
+    player.attackTimer = 0;
+    
+    // Nettoyer le timer d'attaque
+    this.attackTimers.delete(player.sessionId);
+  }
   
   /**
    * Gère l'aggro des monstres aggressive
    */
-  private updateMonsterAggro(deltaTime: number): void {
+  private handleMonsterAggro(): void {
     this.gameState.monsters.forEach((monster) => {
-      // Seulement les monstres aggressive et vivants
-      if (monster.behaviorType !== "aggressive") return;
-      if (monster.isDead) return;
-      if (monster.targetPlayerId) return; // Déjà en combat
+      // Ignorer si mort ou déjà en combat
+      if (monster.isDead || !monster.isAlive || monster.targetPlayerId) {
+        return;
+      }
+      
+      // Ignorer si pas aggressive
+      if (monster.behaviorType !== "aggressive") {
+        return;
+      }
       
       // Chercher un joueur dans l'aggroRange
-      const nearbyPlayer = this.findNearestPlayer(monster, monster.aggroRange);
-      
-      if (nearbyPlayer && !nearbyPlayer.isDead && !nearbyPlayer.inCombat) {
-        console.log(`😡 [Combat] ${monster.name} aggro ${nearbyPlayer.characterName}`);
-        this.startCombat(nearbyPlayer, monster);
-      }
-    });
-  }
-  
-  // ========================================
-  // === RESPAWN MONSTRES ===
-  // ========================================
-  
-  /**
-   * Gère les respawns de monstres
-   */
-  private updateMonsterRespawns(deltaTime: number): void {
-    this.gameState.monsters.forEach((monster) => {
-      if (!monster.isDead) return;
-      if (!monster.respawnOnDeath) return;
-      
-      // Décrémenter le timer
-      monster.respawnTimer -= deltaTime / 1000;
-      
-      if (monster.respawnTimer <= 0) {
-        // Respawn!
-        monster.isDead = false;
-        monster.isAlive = true;
-        monster.hp = monster.maxHp;
-        monster.respawnTimer = 0;
-        monster.targetPlayerId = "";
+      this.gameState.players.forEach((player) => {
+        // Ignorer les joueurs morts
+        if (player.isDead) return;
         
-        // Réinitialiser position
-        monster.posX = monster.posX; // Déjà à la spawn position
-        monster.posY = monster.posY;
-        monster.posZ = monster.posZ;
+        const distance = this.getDistance(
+          player.posX, player.posY, player.posZ,
+          monster.posX, monster.posY, monster.posZ
+        );
         
-        console.log(`🔄 [Combat] ${monster.name} respawned`);
-        
-        // Envoyer message à tous les clients du serveur
-        this.clients.forEach((client) => {
-          client.send("monster_respawn", {
-            monsterId: monster.monsterId
-          });
-        });
-      }
-    });
-  }
-  
-  // ========================================
-  // === RÉSURRECTION JOUEUR ===
-  // ========================================
-  
-  /**
-   * Gère le timer de mort du joueur (appelé depuis WorldRoom.update)
-   */
-  updatePlayerDeathTimers(deltaTime: number): void {
-    this.gameState.players.forEach((player) => {
-      if (!player.isDead) return;
-      
-      // Décrémenter le timer
-      player.deathTimer -= deltaTime / 1000;
-      
-      if (player.deathTimer <= 0) {
-        // Résurrection!
-        player.isDead = false;
-        player.hp = player.maxHp;
-        player.deathTimer = 0;
-        
-        console.log(`💚 [Combat] ${player.characterName} resurrected`);
-        
-        const client = this.clients.get(player.sessionId);
-        if (client) {
-          client.send("player_resurrected", {
-            hp: player.hp,
-            maxHp: player.maxHp
-          });
+        if (distance <= monster.aggroRange) {
+          // Aggro !
+          console.log(`👹 [Combat] ${monster.name} aggro ${player.characterName} (distance: ${distance.toFixed(2)}m)`);
+          
+          // Si le joueur n'est pas en combat, le démarrer
+          if (!player.inCombat) {
+            this.startCombat(player, monster);
+          }
         }
-      }
+      });
     });
-  }
-  
-  // ========================================
-  // === UTILITAIRES ===
-  // ========================================
-  
-  /**
-   * Trouve le monstre le plus proche d'un joueur dans un rayon donné
-   */
-  private findNearestMonster(player: PlayerState, maxRange: number): MonsterState | null {
-    let nearestMonster: MonsterState | null = null;
-    let nearestDistance = maxRange;
-    
-    this.gameState.monsters.forEach((monster) => {
-      if (monster.isDead) return;
-      if (!monster.isActive) return;
-      
-      const distance = this.getDistance(
-        player.posX, player.posY, player.posZ,
-        monster.posX, monster.posY, monster.posZ
-      );
-      
-      if (distance <= nearestDistance) {
-        nearestDistance = distance;
-        nearestMonster = monster;
-      }
-    });
-    
-    return nearestMonster;
-  }
-  
-  /**
-   * Trouve le joueur le plus proche d'un monstre dans un rayon donné
-   */
-  private findNearestPlayer(monster: MonsterState, maxRange: number): PlayerState | null {
-    let nearestPlayer: PlayerState | null = null;
-    let nearestDistance = maxRange;
-    
-    this.gameState.players.forEach((player) => {
-      if (player.isDead) return;
-      if (player.isAFK) return; // Monstres n'aggro pas les AFK
-      
-      const distance = this.getDistance(
-        monster.posX, monster.posY, monster.posZ,
-        player.posX, player.posY, player.posZ
-      );
-      
-      if (distance <= nearestDistance) {
-        nearestDistance = distance;
-        nearestPlayer = player;
-      }
-    });
-    
-    return nearestPlayer;
   }
   
   /**
@@ -695,5 +606,43 @@ export class CombatManager {
     const dy = y2 - y1;
     const dz = z2 - z1;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+  
+  /**
+   * Envoie un message à un joueur spécifique
+   */
+  private broadcastToPlayer(sessionId: string, type: string, message: any): void {
+    // Trouver le client
+    // Note: Il faudra passer la référence aux clients depuis WorldRoom
+    // Pour l'instant, on log juste
+    console.log(`📤 [Combat] Broadcast to ${sessionId}: ${type}`, message);
+  }
+  
+  /**
+   * Envoie un message à tous les joueurs
+   */
+  private broadcast(type: string, message: any): void {
+    console.log(`📤 [Combat] Broadcast to all: ${type}`, message);
+  }
+  
+  /**
+   * Envoie un message de dégâts
+   */
+  private broadcastCombatDamage(
+    attackerId: string,
+    defenderId: string,
+    damage: number,
+    isCritical: boolean,
+    isMiss: boolean,
+    defenderHPLeft: number
+  ): void {
+    this.broadcast("combat_damage", {
+      attackerId,
+      defenderId,
+      damage,
+      isCritical,
+      isMiss,
+      defenderHPLeft
+    });
   }
 }
