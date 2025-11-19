@@ -75,6 +75,9 @@ export class PlayerState extends Schema {
   @type("boolean") isDead: boolean = false;
   @type("number") deathTimer: number = 0;
   
+  // ===== AFK / Combat auto =====
+  @type("number") lastAFKCombatCheck: number = 0;  // anti-spam check AFK
+  
   // ===== CONSOMMABLES (temporaire - placeholder) =====
   @type("number") potionHP: number = 10;  // Nombre de potions HP
   @type("number") food: number = 20;      // Nombre de nourriture
