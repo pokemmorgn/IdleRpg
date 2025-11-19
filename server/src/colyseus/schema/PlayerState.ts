@@ -69,7 +69,12 @@ export class PlayerState extends Schema {
   @type("number") posY: number = 0;
   @type("number") posZ: number = 0;
   @type("number") lastMovementTime: number = 0;
-  
+
+  // ===== AFK REFERENCE POSITION =====
+  @type("number") afkRefX: number = 0;
+  @type("number") afkRefY: number = 0;
+  @type("number") afkRefZ: number = 0;
+    
   // ===== AFK =====
   @type("boolean") isAFK: boolean = false;
   @type("boolean") isDead: boolean = false;
