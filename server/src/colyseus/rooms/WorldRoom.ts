@@ -25,113 +25,83 @@ interface AuthData {
   characterSlot: number;
 }
 
-/**
- * WorldRoom - Room principale du jeu
- * Une instance par serveur logique (s1, s2, s3...)
- * Chaque joueur a son propre monde instancié côté serveur
- * Le GameState contient la liste des joueurs en ligne (présence) + les NPC actifs + les Monsters
- */
 export class WorldRoom extends Room<GameState> {
-  maxClients = 1000; // Maximum de joueurs par serveur logique
-  
+  maxClients = 1000;
+
   private serverId: string = "";
   private updateInterval: any;
   private npcManager!: NPCManager;
   private monsterManager!: MonsterManager;
   private combatManager!: CombatManager;
   private afkManager!: AFKManager;
-  
-  /**
-   * Création de la room
-   */
+
   async onCreate(options: { serverId: string }) {
     this.serverId = options.serverId;
     this.roomId = `world_${this.serverId}`;
-    
-    // Initialiser l'état du monde
+
+    // Init state
     this.setState(new GameState(this.serverId));
 
     console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
 
-    // Initialiser les managers
+    // Managers
     this.npcManager = new NPCManager(this.serverId, this.state);
     this.monsterManager = new MonsterManager(this.serverId, this.state);
     this.afkManager = new AFKManager(this.serverId, this.state);
-    this.combatManager = new CombatManager(this.serverId, this.state, this.afkManager);
-    
-    // Charger les NPC et Monsters depuis MongoDB
+
+    // Nouveau CombatManager — CORRIGÉ
+    this.combatManager = new CombatManager(
+      this.state,
+      this.afkManager,
+      (sessionId, type, data) => {
+        const client = this.clients.find(c => c.sessionId === sessionId);
+        if (client) client.send(type, data);
+      }
+    );
+
+    // Load NPC & Monsters
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
-    
-    // Charger les sessions AFK actives
+
+    // AFK sessions
     await this.afkManager.loadActiveSessions();
-    
-    // Gestionnaire de messages
+
+    // Messages
     this.onMessage("*", (client, type, message) => {
       this.handleMessage(client, String(type), message);
     });
 
-    // Tick du serveur (30 FPS = ~33ms)
+    // Simulation (30 FPS)
     this.setSimulationInterval((deltaTime) => this.update(deltaTime), 33);
 
-    // Heartbeat pour mettre à jour worldTime (toutes les secondes)
+    // Heartbeat 1s
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
   }
 
-  /**
-   * Authentification du joueur
-   * Valide le JWT et charge le personnage depuis MongoDB
-   */
   async onAuth(client: Client, options: JoinOptions): Promise<AuthData | false> {
     try {
-      console.log(`🔐 Tentative de connexion: ${client.sessionId}`);
+      if (!options.token || !options.serverId || !options.characterSlot) return false;
+      if (options.serverId !== this.serverId) return false;
 
-      // 1. Vérifier que toutes les options sont présentes
-      if (!options.token || !options.serverId || !options.characterSlot) {
-        console.log("❌ Options manquantes");
-        return false;
-      }
-
-      // 2. Vérifier que c'est bien le bon serveur
-      if (options.serverId !== this.serverId) {
-        console.log(`❌ Mauvais serverId: ${options.serverId} (attendu: ${this.serverId})`);
-        return false;
-      }
-
-      // 3. Valider le token JWT
       const tokenValidation = await validateToken(options.token);
-      if (!tokenValidation.valid || !tokenValidation.playerId) {
-        console.log(`❌ Token invalide: ${tokenValidation.error}`);
-        return false;
-      }
+      if (!tokenValidation.valid || !tokenValidation.playerId) return false;
 
       const playerId = tokenValidation.playerId;
-
-      // 4. Charger le personnage depuis MongoDB
       const characterLoad = await loadPlayerCharacter(
-        playerId,
-        options.serverId,
-        options.characterSlot
+        playerId, options.serverId, options.characterSlot
       );
 
-      if (!characterLoad.success || !characterLoad.profile) {
-        console.log(`❌ Personnage non trouvé: ${characterLoad.error}`);
-        return false;
-      }
+      if (!characterLoad.success || !characterLoad.profile) return false;
 
       const profile = characterLoad.profile;
 
-      // 5. Vérifier que le personnage n'est pas déjà connecté
       if (isCharacterAlreadyConnected(this.state.players, profile.profileId)) {
-        console.log(`❌ Personnage déjà connecté: ${profile.characterName}`);
+        console.log(`❌ Déjà connecté`);
         return false;
       }
 
-      console.log(`✅ Auth OK: ${profile.characterName} (${profile.class}/${profile.race})`);
-
-      // Retourner les données du personnage
       return {
         playerId: profile.playerId,
         profileId: profile.profileId,
@@ -142,20 +112,14 @@ export class WorldRoom extends Room<GameState> {
         characterSlot: profile.characterSlot
       };
 
-    } catch (err: any) {
-      console.error("❌ Erreur dans onAuth:", err.message);
+    } catch (err) {
+      console.error("❌ Auth error:", err);
       return false;
     }
   }
 
-  /**
-   * Joueur rejoint la room (après auth OK)
-   */
   async onJoin(client: Client, options: JoinOptions, auth: AuthData) {
     try {
-      console.log(`👤 ${auth.characterName} rejoint ${this.serverId}`);
-
-      // Créer le PlayerState
       const playerState = new PlayerState(
         client.sessionId,
         auth.playerId,
@@ -167,27 +131,15 @@ export class WorldRoom extends Room<GameState> {
         auth.characterRace
       );
 
-      // Charger le profil complet depuis MongoDB pour récupérer les stats
+      // Load stats
       const fullProfile = await ServerProfile.findById(auth.profileId);
-      
-      if (fullProfile && fullProfile.computedStats) {
-        // Charger les stats depuis le profil
+      if (fullProfile?.computedStats) {
         playerState.loadStatsFromProfile(fullProfile.computedStats);
-        console.log(`📊 Stats chargées pour ${auth.characterName}: HP=${playerState.maxHp}, AP=${playerState.attackPower}, SP=${playerState.spellPower}`);
-      } else {
-        console.warn(`⚠️  Pas de stats trouvées pour ${auth.characterName}, stats par défaut utilisées`);
       }
 
-      // Ajouter au GameState
       this.state.addPlayer(playerState);
-      
-      // Enregistrer le client dans CombatManager pour le broadcasting
-      this.combatManager.registerClient(client.sessionId, client);
 
-      // Mettre à jour lastOnline dans MongoDB (temps réel)
-      await this.updateLastOnline(auth.profileId);
-
-      // Message de bienvenue au client
+      // Message de bienvenue
       client.send("welcome", {
         message: `Bienvenue ${auth.characterName} sur ${this.serverId} !`,
         serverId: this.serverId,
@@ -206,95 +158,59 @@ export class WorldRoom extends Room<GameState> {
         }
       });
 
-      console.log(`✅ ${auth.characterName} connecté (${this.state.onlineCount} joueurs, ${this.npcManager.getNPCCount()} NPC, ${this.monsterManager.getMonsterCount()} monsters)`);
+      // lastOnline
+      await this.updateLastOnline(auth.profileId);
 
     } catch (err: any) {
-      console.error("❌ Erreur dans onJoin:", err.message);
+      console.error("❌ onJoin error:", err.message);
     }
   }
 
-  /**
-   * Joueur quitte la room
-   */
   async onLeave(client: Client, consented: boolean) {
+    const playerState = this.state.players.get(client.sessionId);
+    if (!playerState) return;
+
+    const profileId = playerState.profileId;
+
     try {
-      const playerState = this.state.players.get(client.sessionId);
-
-      if (!playerState) {
-        return;
-      }
-
-      const characterName = playerState.characterName;
-      const profileId = playerState.profileId;
-
       if (consented) {
-        // Déconnexion volontaire
-        console.log(`👋 ${characterName} quitte ${this.serverId} (volontaire)`);
-        
-        // Sauvegarder les HP/ressource actuels dans MongoDB
         await this.savePlayerStats(profileId, playerState);
-        
-        // Mettre à jour lastOnline
         await this.updateLastOnline(profileId);
-        
-        // Désenregistrer du CombatManager
-        this.combatManager.unregisterClient(client.sessionId);
-
-        // Retirer du state
         this.state.removePlayer(client.sessionId);
-
       } else {
-        // Déconnexion accidentelle : autoriser reconnexion (30 secondes)
-        console.log(`⚠️  ${characterName} déconnecté (accidentel) - reconnexion autorisée 30s`);
-        
         try {
           await this.allowReconnection(client, 30);
-          console.log(`🔄 ${characterName} reconnecté avec succès`);
-          
-          // Réenregistrer le client dans CombatManager
-          this.combatManager.registerClient(client.sessionId, client);
-        } catch (err) {
-          // Timeout atteint, sauvegarder et retirer du state
-          console.log(`❌ ${characterName} - timeout reconnexion`);
+          console.log(`🔄 Reconnexion OK`);
+        } catch {
           await this.savePlayerStats(profileId, playerState);
           await this.updateLastOnline(profileId);
-          this.combatManager.unregisterClient(client.sessionId);
           this.state.removePlayer(client.sessionId);
         }
       }
-
-    } catch (err: any) {
-      console.error("❌ Erreur dans onLeave:", err.message);
+    } catch (err) {
+      console.error("❌ onLeave error:", err);
     }
   }
 
-  /**
-   * Réception de messages du client
-   */
   private handleMessage(client: Client, type: string | number, message: any) {
     const playerState = this.state.players.get(client.sessionId);
-    
-    if (!playerState) {
-      return;
-    }
+    if (!playerState) return;
 
-    console.log(`📨 Message de ${playerState.characterName}: ${type}`, message);
-
-    // ===== MOUVEMENT MANUEL =====
+    // MOUVEMENT MANUEL
     if (type === "player_move") {
       playerState.posX = message.x;
       playerState.posY = message.y;
       playerState.posZ = message.z;
       playerState.lastMovementTime = Date.now();
-      
-      // Arrêter le combat si en cours
+
+      // Stop combat propre
       if (playerState.inCombat) {
-        this.combatManager.stopCombat(playerState);
+        this.combatManager.forceStopCombat(playerState);
       }
       return;
     }
 
-    // ===== AFK =====
+    // AFK
     if (type === "activate_afk_mode") {
       this.afkManager.activateAFK(client, playerState);
       return;
@@ -309,13 +225,13 @@ export class WorldRoom extends Room<GameState> {
       this.afkManager.claimSummary(client, playerState);
       return;
     }
-    
+
     if (type === "get_afk_summary") {
       this.afkManager.sendSummaryUpdate(client, playerState.profileId);
       return;
     }
 
-    // ===== NPC =====
+    // NPC
     if (type === "npc_interact") {
       this.npcManager.handleInteraction(client, playerState, message);
       return;
@@ -326,12 +242,12 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // ===== TEST: SPAWN MONSTRE =====
+    // SPAWN monstre test
     if (type === "spawn_test_monster") {
-      console.log("🧪 Spawn d'un monstre TEST demandé par", playerState.characterName);
-    
+      console.log("🧪 spawn test");
+
       const MonsterState = require("../schema/MonsterState").MonsterState;
-    
+
       const monster = new MonsterState(
         message.monsterId || "test_" + Date.now(),
         message.name || "Training Dummy",
@@ -346,101 +262,55 @@ export class WorldRoom extends Room<GameState> {
         message.x || 105,
         message.y || 0,
         message.z || 105,
-        0,
-        0,
-        0,
+        0,0,0,
         "aggressive",
-        12,   // aggro range
-        20,   // leash range
-        2,    // attack range
-        5,    // XP
-        3,    // respawn time
-        false,// respawnOnDeath
+        12,
+        20,
+        2,
+        5,
+        3,
+        false,
         "dummy_model",
         true
       );
-    
+
       this.state.addMonster(monster);
-    
-      console.log("🟢 Monstre TEST ajouté :", monster.name);
       return;
     }
 
-    // ===== ADMIN =====
-    if (type === "npc_reload" && this.isAdmin(playerState)) {
+    // ADMIN
+    if (type === "npc_reload") {
       this.npcManager.reloadNPCs();
       client.send("info", { message: "NPCs reloaded" });
       return;
     }
-    
-    if (type === "monster_reload" && this.isAdmin(playerState)) {
+
+    if (type === "monster_reload") {
       this.monsterManager.reloadMonsters();
       client.send("info", { message: "Monsters reloaded" });
       return;
     }
   }
 
-  /**
-   * Vérifie si un joueur est admin
-   */
-  private isAdmin(playerState: PlayerState): boolean {
-    // TODO: Vérifier dans la DB si le joueur est admin
-    return false;
-  }
-
-  /**
-   * Tick du serveur (appelé toutes les ~33ms)
-   */
   update(deltaTime: number) {
-    // Tick combat (détection monstres, auto-attaque, déplacements)
     this.combatManager.update(deltaTime);
-    
-    // Tick AFK (gérer timers, récaps, etc.)
     this.afkManager.update(deltaTime);
-    
-    // TODO: Régénération de mana/rage/energy
-    // TODO: Tick des DoT/HoT
   }
 
-  /**
-   * Nettoyage de la room
-   */
   onDispose() {
-    console.log(`♻️  WorldRoom ${this.serverId} détruite`);
-    
-    if (this.updateInterval) {
-      this.updateInterval.clear();
-    }
+    if (this.updateInterval) this.updateInterval.clear();
   }
 
-  /**
-   * Met à jour le lastOnline dans MongoDB
-   */
-  private async updateLastOnline(profileId: string): Promise<void> {
-    try {
-      await ServerProfile.findByIdAndUpdate(profileId, {
-        lastOnline: new Date()
-      });
-    } catch (err: any) {
-      console.error("❌ Erreur update lastOnline:", err.message);
-    }
+  private async updateLastOnline(profileId: string) {
+    await ServerProfile.findByIdAndUpdate(profileId, { lastOnline: new Date() });
   }
-  
-  /**
-   * Sauvegarde les stats actuelles (HP/ressource) dans MongoDB
-   */
-  private async savePlayerStats(profileId: string, playerState: PlayerState): Promise<void> {
-    try {
-      const profile = await ServerProfile.findById(profileId);
-      
-      if (profile) {
-        profile.computedStats.hp = playerState.hp;
-        profile.computedStats.resource = playerState.resource;
-        await profile.save();
-        console.log(`💾 Stats sauvegardées pour ${playerState.characterName}: HP=${playerState.hp}/${playerState.maxHp}`);
-      }
-    } catch (err: any) {
-      console.error("❌ Erreur savePlayerStats:", err.message);
+
+  private async savePlayerStats(profileId: string, playerState: PlayerState) {
+    const profile = await ServerProfile.findById(profileId);
+    if (profile) {
+      profile.computedStats.hp = playerState.hp;
+      profile.computedStats.resource = playerState.resource;
+      await profile.save();
     }
   }
 }
