@@ -127,24 +127,29 @@ log.info(`Slot = ${profile.characterSlot}`);
     log.ok(`Connecté à la room ${room.roomId}`);
     log.info(`Session = ${room.sessionId}`);
     
-      // 4.1 Spawn monstre test
-      await room.send("spawn_test_monster", {
-        monsterId: dummyId,
-        name: "Training Dummy",
-        x: dummyX,
-        y: dummyY,
-        z: dummyZ
-      });
-      log.info("Commande spawn envoyée au serveur");
-      // 4.2 TP DU JOUEUR SUR LE DUMMY
-      room.send("player_move", {
-        x: dummyX + 0.5,
-        y: dummyY,
-        z: dummyZ + 0.5
-      });
-      log.info("Joueur téléporté pile sur le dummy");
-
+    // === Dummy Test Monster settings ===
+    const dummyId = "dummy_" + Date.now();
+    const dummyX = 105;
+    const dummyY = 0;
+    const dummyZ = 105;
     
+    // 4.1 Spawn monstre test
+    await room.send("spawn_test_monster", {
+      monsterId: dummyId,
+      name: "Training Dummy",
+      x: dummyX,
+      y: dummyY,
+      z: dummyZ
+    });
+    log.info("Commande spawn envoyée au serveur");
+    
+    // 4.2 TP DU JOUEUR SUR LE DUMMY
+    room.send("player_move", {
+      x: dummyX + 0.5,
+      y: dummyY,
+      z: dummyZ + 0.5
+    });
+    log.info("Joueur téléporté pile sur le dummy");
     await wait(500);
     // 4) Écoute des messages combat/AFK
     log.section("4. Écoute des messages combat/AFK");
