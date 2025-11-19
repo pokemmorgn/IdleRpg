@@ -6,6 +6,7 @@ export class MonsterState extends Schema {
   @type("string") type: string = "";
   @type("number") level: number = 1;
   
+  // Stats de base
   @type("number") hp: number = 100;
   @type("number") maxHp: number = 100;
   @type("number") attack: number = 10;
@@ -14,6 +15,7 @@ export class MonsterState extends Schema {
   
   @type("string") zoneId: string = "";
   
+  // Position de spawn (position fixe du monstre)
   @type("number") posX: number = 0;
   @type("number") posY: number = 0;
   @type("number") posZ: number = 0;
@@ -34,6 +36,13 @@ export class MonsterState extends Schema {
   @type("string") modelId: string = "";
   @type("boolean") isActive: boolean = true;
   @type("boolean") isAlive: boolean = true;
+  
+  // ===== COMBAT (ajouts pour le système de combat) =====
+  @type("number") currentHp: number = 100;        // HP actuel (dupliqué de hp pour clarté)
+  @type("number") attackTimer: number = 0;        // Timer d'attaque du monstre
+  @type("number") respawnTimer: number = 0;       // Timer de respawn (en ms)
+  @type("string") targetPlayerId: string = "";    // ID du joueur ciblé
+  @type("boolean") isDead: boolean = false;       // Si le monstre est mort
   
   constructor(
     monsterId: string,
@@ -69,6 +78,7 @@ export class MonsterState extends Schema {
     this.level = level;
     this.hp = hp;
     this.maxHp = maxHp;
+    this.currentHp = hp; // Initialiser currentHp au maxHp
     this.attack = attack;
     this.defense = defense;
     this.speed = speed;
@@ -89,5 +99,6 @@ export class MonsterState extends Schema {
     this.modelId = modelId;
     this.isActive = isActive;
     this.isAlive = true;
+    this.isDead = false;
   }
 }
