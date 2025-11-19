@@ -9,6 +9,12 @@ import http from "http";
 const API_HOST = "localhost";
 const API_PORT = 3000;
 
+// Position fixe du Dummy
+const dummyId = "dummy_" + Date.now();
+const dummyX = 105;
+const dummyY = 0;
+const dummyZ = 105;
+
 interface HttpResponse {
   statusCode: number;
   data: any;
@@ -76,7 +82,9 @@ async function runTest() {
   let client: Client;
 
   try {
+    // ------------------------------------------------------------
     // 1) Créer un compte
+    // ------------------------------------------------------------
     log.section("1. Création du compte");
 
     const username = "afktest_" + Date.now();
@@ -89,31 +97,33 @@ async function runTest() {
     log.ok("Compte créé");
     log.info("Token: " + token.substring(0, 25) + "...");
 
+    // ------------------------------------------------------------
     // 2) Créer un personnage
-log.section("2. Création du personnage");
+    // ------------------------------------------------------------
+    log.section("2. Création du personnage");
 
-const res2 = await makeRequest("POST", "/profile/s1", {
-  characterName: "AFKTester_" + Date.now(),
-  characterClass: "warrior",
-  characterRace: "human_elion",
-  characterSlot: 1
-}, token);
+    const res2 = await makeRequest("POST", "/profile/s1", {
+      characterName: "AFKTester_" + Date.now(),
+      characterClass: "warrior",
+      characterRace: "human_elion",
+      characterSlot: 1
+    }, token);
 
-// DEBUG
-console.log("DEBUG /profile/s1 RESPONSE:", res2.data);
+    // DEBUG COMPLET PROPRE
+    console.log("DEBUG /profile/s1 RESPONSE:", JSON.stringify(res2.data, null, 2));
 
-// Validation
-if (res2.statusCode !== 201 || !res2.data.success || !res2.data.profile) {
-  throw new Error(`Profile creation failed: ${res2.data.error}`);
-}
+    if (res2.statusCode !== 201 || !res2.data.success || !res2.data.profile) {
+      throw new Error(`Profile creation failed: ${res2.data.error}`);
+    }
 
-profile = res2.data.profile;
+    profile = res2.data.profile;
 
-log.ok("Personnage créé");
-log.info(`Slot = ${profile.characterSlot}`);
+    log.ok("Personnage créé");
+    log.info(`Slot = ${profile.characterSlot}`);
 
-
+    // ------------------------------------------------------------
     // 3) Connexion Colyseus
+    // ------------------------------------------------------------
     log.section("3. Connexion WebSocket");
 
     client = new Client(`ws://${API_HOST}:${API_PORT}`);
@@ -126,14 +136,17 @@ log.info(`Slot = ${profile.characterSlot}`);
 
     log.ok(`Connecté à la room ${room.roomId}`);
     log.info(`Session = ${room.sessionId}`);
-    
-    // === Dummy Test Monster settings ===
-    const dummyId = "dummy_" + Date.now();
-    const dummyX = 105;
-    const dummyY = 0;
-    const dummyZ = 105;
-    
-    // 4.1 Spawn monstre test
+
+    // ------------------------------------------------------------
+    // DEBUG GLOBAL: log tous les messages
+    // ------------------------------------------------------------
+    room.onMessage("*", (type, message) => {
+      console.log(`\n🟣 DEBUG WS MESSAGE type="${type}"\n`, message);
+    });
+
+    // ------------------------------------------------------------
+    // 4) Spawn Dummy et déplacement direct dessus
+    // ------------------------------------------------------------
     await room.send("spawn_test_monster", {
       monsterId: dummyId,
       name: "Training Dummy",
@@ -142,31 +155,38 @@ log.info(`Slot = ${profile.characterSlot}`);
       z: dummyZ
     });
     log.info("Commande spawn envoyée au serveur");
-    
-    // 4.2 TP DU JOUEUR SUR LE DUMMY
+
     room.send("player_move", {
       x: dummyX + 0.5,
       y: dummyY,
       z: dummyZ + 0.5
     });
     log.info("Joueur téléporté pile sur le dummy");
-    await wait(500);
-    // 4) Écoute des messages combat/AFK
+
+    await wait(400);
+
+    // ------------------------------------------------------------
+    // 4) Écoute events combat
+    // ------------------------------------------------------------
     log.section("4. Écoute des messages combat/AFK");
 
     room.onMessage("combat_start", msg => {
+      console.log("DEBUG combat_start:", msg);
       log.info(`⚔️  Combat start contre ${msg.monsterName}`);
     });
 
     room.onMessage("combat_damage", msg => {
+      console.log("DEBUG combat_damage:", msg);
       log.info(`💥 Dégâts: ${msg.attacker} → ${msg.target}: ${msg.damage}`);
     });
 
     room.onMessage("combat_death", msg => {
+      console.log("DEBUG combat_death:", msg);
       log.info(`☠️ Mort: ${msg.entityType} ${msg.name}`);
     });
 
     room.onMessage("xp_gained", msg => {
+      console.log("DEBUG xp_gained:", msg);
       log.info(`⭐ XP gagnée: +${msg.amount}`);
     });
 
@@ -174,18 +194,18 @@ log.info(`Slot = ${profile.characterSlot}`);
     room.onMessage("afk_deactivated", () => log.info("🟢 AFK désactivé"));
 
     room.onMessage("afk_summary_update", summary => {
+      console.log("DEBUG afk_summary_update:", summary);
       log.info(`📊 AFK Update: kills=${summary.monstersKilled}, xp=${summary.xpGained}, gold=${summary.goldGained}`);
     });
 
-    room.onMessage("afk_time_limit_reached", () =>
-      log.info("⏳ Limite AFK atteinte")
-    );
+    room.onMessage("afk_summary_claimed", data => {
+      console.log("DEBUG afk_summary_claimed:", data);
+      log.info(`📦 Résumé réclamé: +${data.totalXp} XP, +${data.totalGold} gold`);
+    });
 
-    room.onMessage("afk_summary_claimed", data =>
-      log.info(`📦 Résumé réclamé: +${data.totalXp} XP, +${data.totalGold} gold`)
-    );
-
-    // 5) Téléporter le joueur près d'un monstre test (forest_dark)
+    // ------------------------------------------------------------
+    // 5) FAUX mouvement -> Déclencheur de combat
+    // ------------------------------------------------------------
     log.section("5. Téléportation faux mouvement pour déclencher combat");
 
     room.send("player_move", { x: 105, y: 0, z: 105 });
@@ -193,21 +213,27 @@ log.info(`Slot = ${profile.characterSlot}`);
 
     await wait(1500);
 
+    // ------------------------------------------------------------
     // 6) Activer AFK
+    // ------------------------------------------------------------
     log.section("6. Activation AFK");
 
     room.send("activate_afk_mode", {});
     log.ok("AFK envoyé");
 
-    await wait(5000); // laisser combattre
+    await wait(5000);
 
-    // 7) Récupérer le résumé AFK
+    // ------------------------------------------------------------
+    // 7) Claim résumé
+    // ------------------------------------------------------------
     log.section("7. Claim résumé AFK");
 
     room.send("claim_afk_summary", {});
     await wait(1500);
 
-    // 8) Quitter
+    // ------------------------------------------------------------
+    // 8) Déconnexion
+    // ------------------------------------------------------------
     log.section("8. Déconnexion");
     await room.leave();
     log.ok("Déconnecté");
