@@ -612,18 +612,24 @@ private handleActiveCombat(player: PlayerState, deltaTime: number): void {
   /**
    * Arrête le combat d'un joueur
    */
-  stopCombat(player: PlayerState): void {
+stopCombat(player: PlayerState): void {
     if (!player.inCombat) return;
-    
-    console.log(`🛑 [Combat] ${player.characterName} arrête le combat`);
-    
+
+    const monster = this.gameState.monsters.get(player.targetMonsterId);
+
     player.inCombat = false;
     player.targetMonsterId = "";
     player.attackTimer = 0;
-    
-    // Nettoyer le timer d'attaque
+
+    // IMPORTANT : libérer le monstre !
+    if (monster) {
+        monster.targetPlayerId = "";
+    }
+
+    // Nettoyer le timer du joueur
     this.attackTimers.delete(player.sessionId);
-  }
+}
+
 
   private moveMonsterTowardsPlayer(
     monster: MonsterState,
