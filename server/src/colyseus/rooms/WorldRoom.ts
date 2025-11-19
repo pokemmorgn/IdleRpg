@@ -5,6 +5,8 @@ import { validateToken } from "../utils/authHelper";
 import { loadPlayerCharacter, isCharacterAlreadyConnected } from "../utils/playerLoader";
 import { NPCManager } from "../managers/NPCManager";
 import { MonsterManager } from "../managers/MonsterManager";
+import { CombatManager } from "../managers/CombatManager";
+import { AFKManager } from "../managers/AFKManager";
 import ServerProfile from "../../models/ServerProfile";
 
 interface JoinOptions {
@@ -27,7 +29,7 @@ interface AuthData {
  * WorldRoom - Room principale du jeu
  * Une instance par serveur logique (s1, s2, s3...)
  * Chaque joueur a son propre monde instancié côté serveur
- * Le GameState contient la liste des joueurs en ligne (présence) + les NPC actifs
+ * Le GameState contient la liste des joueurs en ligne (présence) + les NPC actifs + les Monsters
  */
 export class WorldRoom extends Room<GameState> {
   maxClients = 1000; // Maximum de joueurs par serveur logique
@@ -36,6 +38,8 @@ export class WorldRoom extends Room<GameState> {
   private updateInterval: any;
   private npcManager!: NPCManager;
   private monsterManager!: MonsterManager;
+  private combatManager!: CombatManager;
+  private afkManager!: AFKManager;
   
   /**
    * Création de la room
@@ -51,11 +55,16 @@ export class WorldRoom extends Room<GameState> {
 
     // Initialiser les managers
     this.npcManager = new NPCManager(this.serverId, this.state);
-    this.monsterManager = new MonsterManager(this.serverId, this.state); 
+    this.monsterManager = new MonsterManager(this.serverId, this.state);
+    this.afkManager = new AFKManager(this.serverId, this.state);
+    this.combatManager = new CombatManager(this.serverId, this.state, this.afkManager);
     
     // Charger les NPC et Monsters depuis MongoDB
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
+    
+    // Charger les sessions AFK actives
+    await this.afkManager.loadActiveSessions();
     
     // Gestionnaire de messages
     this.onMessage("*", (client, type, message) => {
@@ -171,6 +180,9 @@ export class WorldRoom extends Room<GameState> {
 
       // Ajouter au GameState
       this.state.addPlayer(playerState);
+      
+      // Enregistrer le client dans CombatManager pour le broadcasting
+      this.combatManager.registerClient(client.sessionId, client);
 
       // Mettre à jour lastOnline dans MongoDB (temps réel)
       await this.updateLastOnline(auth.profileId);
@@ -224,6 +236,9 @@ export class WorldRoom extends Room<GameState> {
         
         // Mettre à jour lastOnline
         await this.updateLastOnline(profileId);
+        
+        // Désenregistrer du CombatManager
+        this.combatManager.unregisterClient(client.sessionId);
 
         // Retirer du state
         this.state.removePlayer(client.sessionId);
@@ -235,11 +250,15 @@ export class WorldRoom extends Room<GameState> {
         try {
           await this.allowReconnection(client, 30);
           console.log(`🔄 ${characterName} reconnecté avec succès`);
+          
+          // Réenregistrer le client dans CombatManager
+          this.combatManager.registerClient(client.sessionId, client);
         } catch (err) {
           // Timeout atteint, sauvegarder et retirer du state
           console.log(`❌ ${characterName} - timeout reconnexion`);
           await this.savePlayerStats(profileId, playerState);
           await this.updateLastOnline(profileId);
+          this.combatManager.unregisterClient(client.sessionId);
           this.state.removePlayer(client.sessionId);
         }
       }
@@ -261,34 +280,64 @@ export class WorldRoom extends Room<GameState> {
 
     console.log(`📨 Message de ${playerState.characterName}: ${type}`, message);
 
-    // Déléguer les interactions NPC au NPCManager
+    // ===== MOUVEMENT MANUEL =====
+    if (type === "player_move") {
+      playerState.posX = message.x;
+      playerState.posY = message.y;
+      playerState.posZ = message.z;
+      playerState.lastMovementTime = Date.now();
+      
+      // Arrêter le combat si en cours
+      if (playerState.inCombat) {
+        this.combatManager.stopCombat(playerState);
+      }
+      return;
+    }
+
+    // ===== AFK =====
+    if (type === "activate_afk_mode") {
+      this.afkManager.activateAFK(client, playerState);
+      return;
+    }
+
+    if (type === "deactivate_afk_mode") {
+      this.afkManager.deactivateAFK(client, playerState);
+      return;
+    }
+
+    if (type === "claim_afk_summary") {
+      this.afkManager.claimSummary(client, playerState);
+      return;
+    }
+    
+    if (type === "get_afk_summary") {
+      this.afkManager.sendSummaryUpdate(client, playerState.profileId);
+      return;
+    }
+
+    // ===== NPC =====
     if (type === "npc_interact") {
       this.npcManager.handleInteraction(client, playerState, message);
       return;
     }
 
-    // Déléguer les choix de dialogue au NPCManager
     if (type === "dialogue_choice") {
       this.npcManager.handleDialogueChoice(client, playerState, message);
       return;
     }
 
-    // Commande admin pour recharger les NPC
+    // ===== ADMIN =====
     if (type === "npc_reload" && this.isAdmin(playerState)) {
       this.npcManager.reloadNPCs();
       client.send("info", { message: "NPCs reloaded" });
       return;
     }
     
-    // Commande admin pour recharger les monsters
     if (type === "monster_reload" && this.isAdmin(playerState)) {
       this.monsterManager.reloadMonsters();
       client.send("info", { message: "Monsters reloaded" });
       return;
     }
-    
-    // TODO: Gérer les autres actions du joueur ici
-    // Ex: "attack", "move", "pickup_item", etc.
   }
 
   /**
@@ -303,8 +352,14 @@ export class WorldRoom extends Room<GameState> {
    * Tick du serveur (appelé toutes les ~33ms)
    */
   update(deltaTime: number) {
-    // TODO: Logique de jeu ici
-    // Ex: Régénération de mana, tick des DoT/HoT, etc.
+    // Tick combat (détection monstres, auto-attaque, déplacements)
+    this.combatManager.update(deltaTime);
+    
+    // Tick AFK (gérer timers, récaps, etc.)
+    this.afkManager.update(deltaTime);
+    
+    // TODO: Régénération de mana/rage/energy
+    // TODO: Tick des DoT/HoT
   }
 
   /**
