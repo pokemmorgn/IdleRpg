@@ -126,6 +126,7 @@ log.info(`Slot = ${profile.characterSlot}`);
 
     log.ok(`Connecté à la room ${room.roomId}`);
     log.info(`Session = ${room.sessionId}`);
+    
     // 4.1) Spawn d'un monstre TEST
     log.section("4.1 Spawn du monstre TEST");
     
@@ -136,6 +137,13 @@ log.info(`Slot = ${profile.characterSlot}`);
       y: 0,
       z: 105
     });
+        // 4.2 TP DU JOUEUR SUR LE DUMMY
+    room.send("player_move", {
+      x: dummyX + 0.5,
+      y: dummyY,
+      z: dummyZ + 0.5
+    });
+    log.info("Joueur téléporté pile sur le dummy");
     
     log.info("Commande spawn envoyée au serveur");
     await wait(500);
