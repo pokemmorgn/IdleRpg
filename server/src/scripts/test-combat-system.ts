@@ -76,8 +76,8 @@ async function runTests() {
   log.info(`API URL: http://${API_HOST}:${API_PORT}`);
   log.info("Démarrage des tests...\n");
 
-  let token: string;
-  let profileId: string;
+  let token: string | undefined;
+  let profileId: string | undefined;
   let allTestsPassed = true;
 
   try {
@@ -125,9 +125,17 @@ async function runTests() {
 
     // Level up à 5
     log.info("\nLevel up à 5...");
+    
+    // Vérification obligatoire sinon TS hurle
+    if (!profileId) {
+      allTestsPassed = false;
+      throw new Error("profileId est introuvable — la création du personnage a échoué.");
+    }
+    
     res = await makeRequest("POST", `/stats/player/${profileId}/level-up`, {
       newLevel: 5
     }, token);
+
     
     if (res.statusCode === 200) {
       log.success("Level 5 atteint !");
