@@ -1,274 +1,196 @@
 import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
-import AFKSession, { IAFKSession } from "../../models/AFKSession";
 
-/**
- * AFKManager – Gère tout le cycle AFK :
- * -------------------------------------
- * - Activation / désactivation AFK
- * - Sauvegarde position de référence (PlayerState + Mongo)
- * - Gestion du timer (max 2h)
- * - Mise à jour du récap AFK
- * - Notification des limites
- * - Synchronisation client
- * - Mode runtime : cache mémoire pour AFKCombatSystem
- */
+interface AFKSummary {
+  monstersKilled: number;
+  xpGained: number;
+  goldGained: number;
+  deaths: number;
+  totalTime: number;
+}
+
+interface AFKSessionMemory {
+  profileId: string;
+  referencePos: { x: number; y: number; z: number };
+  isActive: boolean;
+  startTime: number;
+  lastUpdate: number;
+  summary: AFKSummary;
+  timeLimitReached: boolean;
+}
 
 export class AFKManager {
+  private readonly MAX_AFK_DURATION = 7200; // 2h
+  private readonly sessions: Map<string, AFKSessionMemory> = new Map();
 
-    private readonly MAX_AFK_DURATION = 7200; // 2h en secondes
+  constructor(
+    private readonly gameState: GameState,
+    private readonly broadcastToClient: (
+      sessionId: string,
+      type: string,
+      data: any
+    ) => void
+  ) {}
 
-    // Cache runtime: profileId → session AFK MongoDB
-    private activeSessions: Map<string, IAFKSession> = new Map();
+  // ----------------------------------------------------
+  // ACTIVATION
+  // ----------------------------------------------------
+  activateAFK(client: Client, player: PlayerState): void {
+    const session: AFKSessionMemory = {
+      profileId: player.profileId,
+      referencePos: { x: player.posX, y: player.posY, z: player.posZ },
+      isActive: true,
+      startTime: Date.now(),
+      lastUpdate: Date.now(),
+      timeLimitReached: false,
+      summary: {
+        monstersKilled: 0,
+        xpGained: 0,
+        goldGained: 0,
+        deaths: 0,
+        totalTime: 0,
+      },
+    };
 
-    constructor(
-        private gameState: GameState,
-        private broadcastToClient: (sessionId: string, type: string, data: any) => void
-    ) {}
+    this.sessions.set(player.profileId, session);
+    player.isAFK = true;
 
-    // ---------------------------------------------------------
-    // ACTIVER LE MODE AFK
-    // ---------------------------------------------------------
-    async activateAFK(client: Client, player: PlayerState): Promise<void> {
-        try {
-            console.log(`💤 [AFKManager] Activation AFK → ${player.characterName}`);
+    client.send("afk_activated", {
+      referencePosition: session.referencePos,
+      maxDuration: this.MAX_AFK_DURATION,
+    });
 
-            // 1) Stopper tout combat actif
-            player.inCombat = false;
-            player.targetMonsterId = "";
+    console.log(`💤 AFK activé pour ${player.characterName}`);
+  }
 
-            // 2) Stocker position AFK de référence dans PlayerState
-            player.afkRefX = player.posX;
-            player.afkRefY = player.posY;
-            player.afkRefZ = player.posZ;
+  // ----------------------------------------------------
+  // DÉSACTIVATION
+  // ----------------------------------------------------
+  deactivateAFK(
+    client: Client,
+    player: PlayerState,
+    reason: "manual" | "time_limit" = "manual"
+  ): void {
+    const session = this.sessions.get(player.profileId);
+    if (!session) return;
 
-            // 3) Charger session AFK Mongo ou en créer une
-            let session = await AFKSession.findOne({
-                profileId: player.profileId,
-                serverId: this.gameState.serverId
-            });
+    this.updateSessionTime(session);
+    session.isActive = false;
 
-            if (!session) {
-                session = await AFKSession.create({
-                    profileId: player.profileId,
-                    serverId: this.gameState.serverId,
-                    isActive: true,
-                    startTime: new Date(),
-                    lastUpdateTime: new Date(),
-                    referencePosition: {
-                        x: player.afkRefX,
-                        y: player.afkRefY,
-                        z: player.afkRefZ,
-                    },
-                    summary: {
-                        monstersKilled: 0,
-                        xpGained: 0,
-                        goldGained: 0,
-                        deaths: 0,
-                        totalTime: 0,
-                    },
-                    maxDuration: this.MAX_AFK_DURATION,
-                    timeLimitReached: false,
-                });
-            } else {
-                // Réactivation d'une session existante
-                session.isActive = true;
-                session.startTime = new Date();
-                session.lastUpdateTime = new Date();
-                session.referencePosition = {
-                    x: player.afkRefX,
-                    y: player.afkRefY,
-                    z: player.afkRefZ,
-                };
-                session.timeLimitReached = false;
-                session.summary = {
-                    monstersKilled: 0,
-                    xpGained: 0,
-                    goldGained: 0,
-                    deaths: 0,
-                    totalTime: 0,
-                };
-                await session.save();
-            }
+    player.isAFK = false;
+    this.sessions.delete(player.profileId);
 
-            this.activeSessions.set(player.profileId, session);
+    client.send("afk_deactivated", { reason });
+    console.log(`⏹ AFK désactivé pour ${player.characterName}`);
+  }
 
-            // 4) Marquer AFK
-            player.isAFK = true;
+  // ----------------------------------------------------
+  // MISE À JOUR DU TEMPS
+  // ----------------------------------------------------
+  private updateSessionTime(session: AFKSessionMemory): void {
+    const now = Date.now();
+    const deltaSec = Math.floor((now - session.lastUpdate) / 1000);
 
-            // 5) Envoyer message client
-            client.send("afk_activated", {
-                referencePosition: {
-                    x: player.afkRefX,
-                    y: player.afkRefY,
-                    z: player.afkRefZ,
-                },
-                maxDuration: this.MAX_AFK_DURATION,
-            });
+    if (deltaSec > 0) {
+      session.summary.totalTime += deltaSec;
+      session.lastUpdate = now;
 
-        } catch (err: any) {
-            console.error("❌ [AFKManager] activateAFK error:", err);
-            client.send("error", { message: "Failed to activate AFK mode" });
+      if (
+        session.summary.totalTime >= this.MAX_AFK_DURATION &&
+        !session.timeLimitReached
+      ) {
+        session.timeLimitReached = true;
+        console.log(`⏰ Limite 2h atteinte (profileId=${session.profileId})`);
+
+        // notifier le joueur si il est en ligne
+        const player = Array.from(this.gameState.players.values()).find(
+          (p) => p.profileId === session.profileId
+        );
+
+        if (player) {
+          this.broadcastToClient(player.sessionId, "afk_time_limit_reached", {
+            message: "AFK max duration reached (2h)",
+          });
         }
+      }
+    }
+  }
+
+  // ----------------------------------------------------
+  // RÉCOMPENSES : KILL
+  // ----------------------------------------------------
+  addKill(profileId: string, xp: number, gold: number): void {
+    const session = this.sessions.get(profileId);
+    if (!session || !session.isActive) return;
+
+    this.updateSessionTime(session);
+    if (session.timeLimitReached) return;
+
+    session.summary.monstersKilled++;
+    session.summary.xpGained += xp;
+    session.summary.goldGained += gold;
+  }
+
+  // ----------------------------------------------------
+  // RÉCOMPENSES : MORT
+  // ----------------------------------------------------
+  addDeath(profileId: string): void {
+    const session = this.sessions.get(profileId);
+    if (!session || !session.isActive) return;
+
+    this.updateSessionTime(session);
+    session.summary.deaths++;
+  }
+
+  // ----------------------------------------------------
+  // SUMMARY TEMPS RÉEL
+  // ----------------------------------------------------
+  sendSummaryUpdate(client: Client, profileId: string): void {
+    const session = this.sessions.get(profileId);
+    if (!session) return;
+
+    this.updateSessionTime(session);
+
+    client.send("afk_summary_update", {
+      ...session.summary,
+      timeRemaining: Math.max(
+        0,
+        this.MAX_AFK_DURATION - session.summary.totalTime
+      ),
+    });
+  }
+
+  // ----------------------------------------------------
+  // CLAIM FINAL
+  // ----------------------------------------------------
+  claimSummary(client: Client, player: PlayerState): void {
+    const session = this.sessions.get(player.profileId);
+    if (!session) {
+      client.send("error", { message: "No AFK session found" });
+      return;
     }
 
-    // ---------------------------------------------------------
-    // DÉSACTIVER LE MODE AFK
-    // ---------------------------------------------------------
-    async deactivateAFK(client: Client, player: PlayerState, reason: "manual" | "time_limit" = "manual") {
-        try {
-            console.log(`⛔ [AFKManager] Désactivation AFK → ${player.characterName}`);
+    this.updateSessionTime(session);
+    const summary = session.summary;
 
-            const session = await this.getSession(player.profileId);
-            if (!session) return;
+    client.send("afk_summary_claimed", summary);
 
-            // Mettre à jour le temps avant désactivation
-            await this.updateSessionTime(session);
+    // reset session
+    this.sessions.delete(player.profileId);
+    player.isAFK = false;
 
-            session.isActive = false;
-            await session.save();
+    console.log(`🎁 Claim AFK pour ${player.characterName}`, summary);
+  }
 
-            this.activeSessions.delete(player.profileId);
-            player.isAFK = false;
-
-            client.send("afk_deactivated", { reason });
-
-        } catch (err: any) {
-            console.error("❌ [AFKManager] deactivateAFK error:", err);
-        }
+  // ----------------------------------------------------
+  // TICK
+  // ----------------------------------------------------
+  update(deltaTime: number): void {
+    for (const session of this.sessions.values()) {
+      if (session.isActive) {
+        this.updateSessionTime(session);
+      }
     }
-
-    // ---------------------------------------------------------
-    // AJOUTER KILL (+XP +GOLD)
-    // ---------------------------------------------------------
-    async addMonsterKill(profileId: string, xp: number, gold: number) {
-        const session = await this.getSession(profileId);
-        if (!session || !session.isActive) return;
-        if (session.timeLimitReached) return;
-
-        await this.updateSessionTime(session);
-
-        session.summary.monstersKilled++;
-        session.summary.xpGained += xp;
-        session.summary.goldGained += gold;
-
-        await session.save();
-    }
-
-    // ---------------------------------------------------------
-    // AJOUTER MORT
-    // ---------------------------------------------------------
-    async addDeath(profileId: string) {
-        const session = await this.getSession(profileId);
-        if (!session || !session.isActive) return;
-
-        await this.updateSessionTime(session);
-        session.summary.deaths++;
-
-        await session.save();
-    }
-
-    // ---------------------------------------------------------
-    // RÉCAP TEMPS RÉEL
-    // ---------------------------------------------------------
-    async sendSummaryUpdate(client: Client, profileId: string) {
-        const session = await this.getSession(profileId);
-        if (!session) return;
-
-        await this.updateSessionTime(session);
-
-        const timeRemaining = Math.max(0, this.MAX_AFK_DURATION - session.summary.totalTime);
-
-        client.send("afk_summary_update", {
-            ...session.summary,
-            timeElapsed: session.summary.totalTime,
-            timeRemaining,
-        });
-    }
-
-    // ---------------------------------------------------------
-    // CLAIM FINAL
-    // ---------------------------------------------------------
-    async claimSummary(client: Client, player: PlayerState) {
-        const session = await this.getSession(player.profileId);
-        if (!session) return;
-
-        await this.updateSessionTime(session);
-
-        client.send("afk_summary_claimed", {
-            summary: session.summary,
-        });
-
-        // Reset
-        session.summary = {
-            monstersKilled: 0,
-            xpGained: 0,
-            goldGained: 0,
-            deaths: 0,
-            totalTime: 0,
-        };
-        session.timeLimitReached = false;
-
-        await session.save();
-    }
-
-    // ---------------------------------------------------------
-    // UPDATE GLOBAL (WorldRoom)
-    // Vérifie limite de 2h + notifie joueur
-    // ---------------------------------------------------------
-    async update(deltaTime: number) {
-        const now = Date.now();
-
-        for (const [profileId, session] of this.activeSessions) {
-
-            // Total depuis le début
-            const elapsed = Math.floor((now - session.startTime.getTime()) / 1000);
-
-            if (elapsed >= this.MAX_AFK_DURATION && !session.timeLimitReached) {
-                session.timeLimitReached = true;
-                session.summary.totalTime = this.MAX_AFK_DURATION;
-                await session.save();
-
-                // Chercher le joueur connecté
-                const player = this.gameState.playersByProfile.get(profileId);
-                if (player) {
-                    this.broadcastToClient(player.sessionId, "afk_time_limit_reached", {
-                        message: "AFK time limit reached (2 hours)",
-                    });
-                }
-            }
-        }
-    }
-
-    // ---------------------------------------------------------
-    // UTILITAIRES
-    // ---------------------------------------------------------
-    private async updateSessionTime(session: IAFKSession) {
-        const now = new Date();
-        const delta = Math.floor((now.getTime() - session.lastUpdateTime.getTime()) / 1000);
-
-        session.summary.totalTime += delta;
-        session.lastUpdateTime = now;
-
-        if (session.summary.totalTime >= this.MAX_AFK_DURATION)
-            session.timeLimitReached = true;
-
-        await session.save();
-    }
-
-    private async getSession(profileId: string): Promise<IAFKSession | null> {
-        if (this.activeSessions.has(profileId))
-            return this.activeSessions.get(profileId)!;
-
-        const session = await AFKSession.findOne({
-            profileId,
-            serverId: this.gameState.serverId,
-        });
-
-        if (session && session.isActive)
-            this.activeSessions.set(profileId, session);
-
-        return session;
-    }
+  }
 }
