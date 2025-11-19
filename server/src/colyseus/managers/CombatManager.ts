@@ -96,24 +96,32 @@ export class CombatManager {
    * Détecte si un joueur immobile peut commencer un combat
    */
   private detectCombatOpportunity(player: PlayerState): void {
-    // Vérifier si le joueur est immobile depuis 1 seconde (ou en mode AFK)
     const now = Date.now();
-    const isIdle = (now - player.lastMovementTime) >= this.IDLE_THRESHOLD;
-    
-    if (!isIdle && !player.isAFK) {
-      return; // Joueur bouge et pas en AFK
+  
+    // 🔒 Anti-spam : on limite les checks à 1 par seconde
+    if (now - player.lastAFKCombatCheck < 1000) {
+      return;
     }
-    
+    player.lastAFKCombatCheck = now;
+  
+    // Vérifier si le joueur ne bouge plus depuis 1 seconde OU est en AFK
+    const isIdle = (now - player.lastMovementTime) >= this.IDLE_THRESHOLD;
+  
+    if (!isIdle && !player.isAFK) {
+      return; // Joueur actif et pas AFK → pas d'auto-combat
+    }
+  
     // Chercher le monstre le plus proche dans les 40m
     const nearestMonster = this.findNearestMonster(player);
-    
+  
     if (!nearestMonster) {
-      return; // Pas de monstre à portée
+      return; // Aucun monstre à portée
     }
-    
-    // Démarrer le combat
+  
+    // Démarrer le combat (une seule fois par seconde max)
     this.startCombat(player, nearestMonster);
   }
+
   
   /**
    * Trouve le monstre le plus proche d'un joueur
