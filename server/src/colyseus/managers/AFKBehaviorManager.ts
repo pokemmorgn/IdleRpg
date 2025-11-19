@@ -1,69 +1,69 @@
-import { PlayerState } from "../schema/PlayerState";
-
 /**
- * AFKBehaviorManager (Version propre)
- *
- * Objectifs :
- * - Le joueur AFK reste *statique*
- * - Le joueur ne doit pas bouger volontairement
- * - MAIS le monstre doit pouvoir s’approcher normalement
- * - Aucune téléportation inutile
+ * AFKBehaviorManager
+ * -------------------
+ * Responsable du comportement du joueur en mode AFK :
+ * - Le joueur reste totalement immobile (position figée)
+ * - Fournit les outils de calcul de distance pour le combat AFK
+ * - Fournit une fonction simple pour vérifier la portée
+ * 
+ * Aucun accès au GameState ici.
+ * Cette classe est volontairement ultra légère et stateless.
  */
+
 export class AFKBehaviorManager {
 
-  // Distance maximale autorisée entre la position AFK
-  // et la position actuelle du joueur avant correction.
-  private readonly POSITION_TOLERANCE = 0.5; // mètres
-
   /**
-   * Maintient le joueur proche de sa position AFK,
-   * mais uniquement si il s’en éloigne trop.
-   *
-   * @param player - Joueur en mode AFK
-   * @param referencePosition - Position AFK fixe
+   * Force le joueur à rester à sa position AFK
+   * (téléportation silencieuse si le joueur a bougé)
    */
   enforceStaticPosition(
-    player: PlayerState,
-    referencePosition: { x: number; y: number; z: number }
+    player: { posX: number; posY: number; posZ: number },
+    referencePos: { x: number; y: number; z: number }
   ): void {
-
-    if (!player.isAFK) return; // Ne rien faire si pas AFK
-
-    // Calcul de la distance entre la position actuelle du joueur
-    // et sa position AFK
-    const dx = player.posX - referencePosition.x;
-    const dy = player.posY - referencePosition.y;
-    const dz = player.posZ - referencePosition.z;
-    
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    // Si le joueur est dans une zone acceptable → ne rien faire
-    if (distance <= this.POSITION_TOLERANCE) {
-      return;
+    if (
+      player.posX !== referencePos.x ||
+      player.posY !== referencePos.y ||
+      player.posZ !== referencePos.z
+    ) {
+      player.posX = referencePos.x;
+      player.posY = referencePos.y;
+      player.posZ = referencePos.z;
     }
+  }
 
-    // Sinon → on remet le joueur à sa position AFK (doucement)
-    player.posX = referencePosition.x;
-    player.posY = referencePosition.y;
-    player.posZ = referencePosition.z;
-
-    console.log(
-      `📍 [AFK] Correction de position pour ${player.characterName} (écart: ${distance.toFixed(
-        2
-      )}m)`
+  /**
+   * Vérifie si une cible est à portée maximale depuis la position AFK
+   */
+  isWithinRange(
+    referencePos: { x: number; y: number; z: number },
+    targetPos: { x: number; y: number; z: number },
+    maxDistance: number
+  ): boolean {
+    return (
+      this.getDistance(referencePos, targetPos) <= maxDistance
     );
   }
 
   /**
-   * Distance utilitaire
+   * Retourne la distance entre la position AFK et une cible
+   */
+  getDistanceFromReference(
+    referencePos: { x: number; y: number; z: number },
+    targetPos: { x: number; y: number; z: number }
+  ): number {
+    return this.getDistance(referencePos, targetPos);
+  }
+
+  /**
+   * Fonction interne pour calculer une distance en 3D
    */
   private getDistance(
-    x1: number, y1: number, z1: number,
-    x2: number, y2: number, z2: number
+    a: { x: number; y: number; z: number },
+    b: { x: number; y: number; z: number }
   ): number {
-    const dx = x2 - x1;
-    const dy = x2 - x1;
-    const dz = x2 - x1;
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    const dz = a.z - b.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
 }
