@@ -90,17 +90,27 @@ async function runTest() {
     log.info("Token: " + token.substring(0, 25) + "...");
 
     // 2) Créer un personnage
-    log.section("2. Création du personnage");
+log.section("2. Création du personnage");
 
-    const res2 = await makeRequest("POST", "/profile/s1", {
-      characterName: "AFKTester",
-      characterClass: "warrior",
-      characterRace: "human_elion"
-    }, token);
+const res2 = await makeRequest("POST", "/profile/s1", {
+  characterName: "AFKTester",
+  characterClass: "warrior",
+  characterRace: "human_elion"
+}, token);
 
-    profile = res2.data.profile;
-    log.ok("Personnage créé");
-    log.info(`Slot = ${profile.characterSlot}`);
+// DEBUG
+console.log("DEBUG /profile/s1 RESPONSE:", res2.data);
+
+// Validation
+if (res2.statusCode !== 201 || !res2.data.success || !res2.data.profile) {
+  throw new Error(`Profile creation failed: ${res2.data.error}`);
+}
+
+profile = res2.data.profile;
+
+log.ok("Personnage créé");
+log.info(`Slot = ${profile.characterSlot}`);
+
 
     // 3) Connexion Colyseus
     log.section("3. Connexion WebSocket");
