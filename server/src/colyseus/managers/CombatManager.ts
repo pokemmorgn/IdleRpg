@@ -181,51 +181,59 @@ export class CombatManager {
   /**
    * Gère un combat actif
    */
-  private handleActiveCombat(player: PlayerState, deltaTime: number): void {
+private handleActiveCombat(player: PlayerState, deltaTime: number): void {
     const monster = this.gameState.monsters.get(player.targetMonsterId);
-    
-    if (!monster || monster.isDead) {
-      // Monstre disparu ou mort, arrêter le combat
-      this.stopCombat(player);
-      return;
-    }
-    
-    // Calculer la distance au monstre
-    const distance = this.getDistance(
-      player.posX, player.posY, player.posZ,
-      monster.posX, monster.posY, monster.posZ
-    );
-    
-    // Si trop loin (> 40m pour AFK, leash), arrêter le combat
-    if (distance > this.DETECTION_RANGE) {
-      console.log(`⚠️  [Combat] ${player.characterName} trop loin de ${monster.name}, combat arrêté`);
-      this.stopCombat(player);
-      return;
-    }
-    
-    // Si en mode AFK, pas de déplacement - rester statique
-    if (player.isAFK) {
-      // Vérifier que le monstre est toujours à portée
-      if (distance > this.MELEE_RANGE) {
-        // Monstre trop loin en AFK, arrêter le combat
-        console.log(`⚠️  [Combat] Mode AFK: ${monster.name} trop loin (${distance.toFixed(2)}m), combat arrêté`);
+
+    // Cas monstre disparu ou mort
+    if (!monster || monster.isDead || !monster.isAlive) {
         this.stopCombat(player);
         return;
-      }
-      // On est à portée, gérer les attaques
-      this.handleCombatAttacks(player, monster, deltaTime);
-      return;
     }
-    
-    // Mode Online: Si pas au corps à corps, se déplacer progressivement
+
+    // Distance actuelle
+    const distance = this.getDistance(
+        player.posX, player.posY, player.posZ,
+        monster.posX, monster.posY, monster.posZ
+    );
+
+    // LEASH : si on dépasse leashRange → reset complet
+    if (distance > monster.leashRange) {
+        console.log(`⚠️ [Combat] ${monster.name} dépasse leashRange → reset`);
+        monster.targetPlayerId = "";
+        this.stopCombat(player);
+        return;
+    }
+
+    // ===============================
+    //       🔥 MODE AFK 🔥
+    // ===============================
+    if (player.isAFK) {
+
+        // Si trop loin pour frapper → LE MONSTRE BOUGE
+        if (distance > monster.attackRange) {
+            this.moveMonsterTowardsPlayer(monster, player, deltaTime);
+            return; // on attend d'être au contact
+        }
+
+        // À portée → attaques
+        this.handleCombatAttacks(player, monster, deltaTime);
+        return;
+    }
+
+    // ===============================
+    //     🔥 MODE ONLINE 🔥
+    // ===============================
+
+    // ONLINE : si distance trop grande → déplacement du joueur
     if (distance > this.MELEE_RANGE) {
-      this.moveTowardsTarget(player, monster, deltaTime);
-      return; // Pas encore d'attaque
+        this.moveTowardsTarget(player, monster, deltaTime);
+        return; // attendre la portée
     }
-    
-    // On est au corps à corps, gérer les attaques
+
+    // ONLINE à portée → attaque
     this.handleCombatAttacks(player, monster, deltaTime);
-  }
+}
+
   
   /**
    * Déplace progressivement le joueur vers le monstre (mode online uniquement)
