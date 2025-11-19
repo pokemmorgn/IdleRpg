@@ -7,8 +7,8 @@ import { AFKBehaviorManager } from "./AFKBehaviorManager";
 export class AFKCombatSystem {
 
     private readonly MELEE_RANGE = 2.2;
-    private readonly MONSTER_MOVE_SPEED = 5;   // m/s (modéré, car AFK)
-    private readonly DETECTION_RANGE = 40;     // comme online
+    private readonly MONSTER_MOVE_SPEED = 5;
+    private readonly DETECTION_RANGE = 40;
 
     constructor(
         private gameState: GameState,
@@ -18,19 +18,27 @@ export class AFKCombatSystem {
     ) {}
 
     /**
-     * Tick principal du mode AFK
+     * Tick principal AFK
      */
     update(player: PlayerState, deltaTime: number) {
         if (!player.isAFK || player.isDead) return;
 
-        // Forcer position statique
-        this.afkBehavior.enforceStaticPosition(player, player.afkReferencePosition);
+        const reference = {
+            x: player.afkRefX,
+            y: player.afkRefY,
+            z: player.afkRefZ
+        };
 
+        // Garder le joueur statique
+        this.afkBehavior.enforceStaticPosition(player, reference);
+
+        // Si pas en combat : chercher un monstre
         if (!player.inCombat) {
-            this.detectAFKCombat(player);
+            this.detectAFKCombat(player, reference);
             return;
         }
 
+        // Si en combat
         const monster = this.gameState.monsters.get(player.targetMonsterId);
 
         if (!monster || monster.isDead || !monster.isAlive) {
@@ -38,14 +46,13 @@ export class AFKCombatSystem {
             return;
         }
 
-        this.updateAFKCombat(player, monster, deltaTime);
+        this.updateAFKCombat(player, monster, reference, deltaTime);
     }
 
     /**
-     * Détection automatique AFK
+     * Détection AFK
      */
-    private detectAFKCombat(player: PlayerState) {
-        const refPos = player.afkReferencePosition;
+    private detectAFKCombat(player: PlayerState, reference: any) {
 
         let nearest: MonsterState | null = null;
         let minDist = this.DETECTION_RANGE;
@@ -53,14 +60,14 @@ export class AFKCombatSystem {
         this.gameState.monsters.forEach(monster => {
             if (!monster.isAlive || monster.isDead) return;
 
-            const d = this.distanceXYZ(
-                refPos.x, refPos.y, refPos.z,
+            const d = this.distXYZ(
+                reference.x, reference.y, reference.z,
                 monster.posX, monster.posY, monster.posZ
             );
 
             if (d < minDist) {
-                nearest = monster;
                 minDist = d;
+                nearest = monster;
             }
         });
 
@@ -90,29 +97,28 @@ export class AFKCombatSystem {
     }
 
     /**
-     * Tick du combat AFK
+     * Update combat AFK
      */
     private updateAFKCombat(
         player: PlayerState,
         monster: MonsterState,
+        reference: any,
         deltaTime: number
     ) {
-        const ref = player.afkReferencePosition;
-
-        const distance = this.distanceXYZ(
-            ref.x, ref.y, ref.z,
+        const distance = this.distXYZ(
+            reference.x, reference.y, reference.z,
             monster.posX, monster.posY, monster.posZ
         );
 
-        // Monstre hors portée ?
+        // Si trop loin → sortie combat
         if (distance > this.DETECTION_RANGE) {
             this.stopAFKCombat(player);
             return;
         }
 
-        // Pas a portée → le monstre avance
+        // Si pas encore à portée → monster move
         if (distance > this.MELEE_RANGE) {
-            this.moveMonsterToward(monster, ref, deltaTime);
+            this.moveMonsterToward(monster, reference, deltaTime);
             return;
         }
 
@@ -121,21 +127,21 @@ export class AFKCombatSystem {
     }
 
     /**
-     * Attaques AFK (joueur & monstre)
+     * Attaques AFK
      */
     private handleAFKAttacks(
         player: PlayerState,
         monster: MonsterState,
         deltaTime: number
     ) {
-        // Attaque du joueur
+        // Attaque joueur
         player.attackTimer += deltaTime;
         if (player.attackTimer >= player.attackSpeed * 1000) {
             this.afkHit(player, monster);
             player.attackTimer = 0;
         }
 
-        // Attaque du monstre
+        // Attaque monstre
         monster.attackTimer += deltaTime;
         const monsterAttackSpeed = 2.5 * (100 / monster.speed);
 
@@ -144,18 +150,17 @@ export class AFKCombatSystem {
             monster.attackTimer = 0;
         }
 
+        // Vérifier morts
         if (monster.hp <= 0) this.killMonsterAFK(player, monster);
         if (player.hp <= 0) this.killPlayerAFK(player);
     }
 
     /**
-     * Calcul et application des dégâts AFK
+     * Calcule et applique les dégâts AFK
      */
     private afkHit(attacker: PlayerState | MonsterState, defender: PlayerState | MonsterState) {
 
-        const atk = attacker instanceof PlayerState
-            ? attacker.attackPower
-            : attacker.attack;
+        const atk = attacker instanceof PlayerState ? attacker.attackPower : attacker.attack;
 
         const reduction = defender instanceof PlayerState
             ? defender.damageReduction
@@ -168,15 +173,16 @@ export class AFKCombatSystem {
         const attackerId = attacker instanceof PlayerState ? attacker.sessionId : attacker.monsterId;
         const defenderId = defender instanceof PlayerState ? defender.sessionId : defender.monsterId;
 
-        // Broadcast
-        this.broadcast(player.sessionId,
+        this.broadcast(
+            // envoyer au joueur (même si monstre attaque)
+            attacker instanceof PlayerState ? attacker.sessionId : defender instanceof PlayerState ? defender.sessionId : attackerId,
             "combat_damage",
             { attackerId, defenderId, damage: dmg, defenderHPLeft: defender.hp }
         );
     }
 
     /**
-     * Mort d'un monstre (AFK → récap AFK)
+     * Mort du monstre en AFK → Ajout récap AFK
      */
     private async killMonsterAFK(player: PlayerState, monster: MonsterState) {
         monster.isDead = true;
@@ -185,7 +191,7 @@ export class AFKCombatSystem {
         const xp = monster.xpReward;
         const gold = this.rollGold(monster);
 
-        console.log(`💀 [AFK] ${monster.name} tué → ${xp} XP, ${gold} or`);
+        console.log(`💀 [AFK] ${monster.name} tué → +${xp} XP, +${gold} or`);
 
         await this.afkManager.addMonsterKill(player.profileId, xp, gold);
 
@@ -198,7 +204,7 @@ export class AFKCombatSystem {
     }
 
     /**
-     * Mort du joueur en AFK
+     * Mort joueur en AFK
      */
     private async killPlayerAFK(player: PlayerState) {
         player.isDead = true;
@@ -214,7 +220,7 @@ export class AFKCombatSystem {
     }
 
     /**
-     * Fin de combat
+     * Fin combat AFK
      */
     private stopAFKCombat(player: PlayerState) {
         player.inCombat = false;
@@ -222,18 +228,18 @@ export class AFKCombatSystem {
     }
 
     /**
-     * Déplacement du monstre vers la pos AFK
+     * Déplacement du monstre vers le joueur AFK
      */
     private moveMonsterToward(
         monster: MonsterState,
-        ref: { x: number; y: number; z: number },
+        reference: any,
         deltaTime: number
     ) {
-        const dx = ref.x - monster.posX;
-        const dy = ref.y - monster.posY;
-        const dz = ref.z - monster.posZ;
+        const dx = reference.x - monster.posX;
+        const dy = reference.y - monster.posY;
+        const dz = reference.z - monster.posZ;
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist < 0.0001) return;
+        if (dist < 0.001) return;
 
         const move = this.MONSTER_MOVE_SPEED * (deltaTime / 1000);
 
@@ -243,7 +249,7 @@ export class AFKCombatSystem {
     }
 
     /**
-     * Drop d'or AFK
+     * Gold AFK
      */
     private rollGold(monster: MonsterState) {
         const min = monster.level * 5;
@@ -251,7 +257,7 @@ export class AFKCombatSystem {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
-    private distanceXYZ(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) {
+    private distXYZ(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) {
         return Math.sqrt(
             (x2 - x1) ** 2 +
             (y2 - y1) ** 2 +
