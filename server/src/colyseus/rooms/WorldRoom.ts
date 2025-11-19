@@ -35,6 +35,9 @@ export class WorldRoom extends Room<GameState> {
   private combatManager!: CombatManager;
   private afkManager!: AFKManager;
 
+  /**
+   * Création de la room
+   */
   async onCreate(options: { serverId: string }) {
     this.serverId = options.serverId;
     this.roomId = `world_${this.serverId}`;
@@ -44,12 +47,20 @@ export class WorldRoom extends Room<GameState> {
 
     console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
 
-    // Managers
+    // Managers NPC / MONSTERS
     this.npcManager = new NPCManager(this.serverId, this.state);
     this.monsterManager = new MonsterManager(this.serverId, this.state);
-    this.afkManager = new AFKManager(this.serverId, this.state);
 
-    // Nouveau CombatManager — CORRIGÉ
+    // AFK MANAGER (Version B — RAM only)
+    this.afkManager = new AFKManager(
+      this.state,
+      (sessionId, type, data) => {
+        const client = this.clients.find(c => c.sessionId === sessionId);
+        if (client) client.send(type, data);
+      }
+    );
+
+    // COMBAT MANAGER
     this.combatManager = new CombatManager(
       this.state,
       this.afkManager,
@@ -59,27 +70,27 @@ export class WorldRoom extends Room<GameState> {
       }
     );
 
-    // Load NPC & Monsters
+    // Load NPCs & Monsters
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
-
-    // AFK sessions
-    await this.afkManager.loadActiveSessions();
 
     // Messages
     this.onMessage("*", (client, type, message) => {
       this.handleMessage(client, String(type), message);
     });
 
-    // Simulation (30 FPS)
+    // Simulation interval (30 FPS)
     this.setSimulationInterval((deltaTime) => this.update(deltaTime), 33);
 
-    // Heartbeat 1s
+    // Update world time every second
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
   }
 
+  /**
+   * Authentification
+   */
   async onAuth(client: Client, options: JoinOptions): Promise<AuthData | false> {
     try {
       if (!options.token || !options.serverId || !options.characterSlot) return false;
@@ -89,8 +100,11 @@ export class WorldRoom extends Room<GameState> {
       if (!tokenValidation.valid || !tokenValidation.playerId) return false;
 
       const playerId = tokenValidation.playerId;
+
       const characterLoad = await loadPlayerCharacter(
-        playerId, options.serverId, options.characterSlot
+        playerId,
+        options.serverId,
+        options.characterSlot
       );
 
       if (!characterLoad.success || !characterLoad.profile) return false;
@@ -98,7 +112,7 @@ export class WorldRoom extends Room<GameState> {
       const profile = characterLoad.profile;
 
       if (isCharacterAlreadyConnected(this.state.players, profile.profileId)) {
-        console.log(`❌ Déjà connecté`);
+        console.log(`❌ Personnage déjà connecté`);
         return false;
       }
 
@@ -118,6 +132,9 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
+  /**
+   * Join
+   */
   async onJoin(client: Client, options: JoinOptions, auth: AuthData) {
     try {
       const playerState = new PlayerState(
@@ -131,15 +148,16 @@ export class WorldRoom extends Room<GameState> {
         auth.characterRace
       );
 
-      // Load stats
+      // Load stats from DB
       const fullProfile = await ServerProfile.findById(auth.profileId);
       if (fullProfile?.computedStats) {
         playerState.loadStatsFromProfile(fullProfile.computedStats);
       }
 
+      // Add to state
       this.state.addPlayer(playerState);
 
-      // Message de bienvenue
+      // Welcome message
       client.send("welcome", {
         message: `Bienvenue ${auth.characterName} sur ${this.serverId} !`,
         serverId: this.serverId,
@@ -158,14 +176,17 @@ export class WorldRoom extends Room<GameState> {
         }
       });
 
-      // lastOnline
+      // update lastOnline
       await this.updateLastOnline(auth.profileId);
 
-    } catch (err: any) {
-      console.error("❌ onJoin error:", err.message);
+    } catch (err) {
+      console.error("❌ onJoin error:", err);
     }
   }
 
+  /**
+   * Leave
+   */
   async onLeave(client: Client, consented: boolean) {
     const playerState = this.state.players.get(client.sessionId);
     if (!playerState) return;
@@ -180,7 +201,6 @@ export class WorldRoom extends Room<GameState> {
       } else {
         try {
           await this.allowReconnection(client, 30);
-          console.log(`🔄 Reconnexion OK`);
         } catch {
           await this.savePlayerStats(profileId, playerState);
           await this.updateLastOnline(profileId);
@@ -192,25 +212,31 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
+  /**
+   * Messages
+   */
   private handleMessage(client: Client, type: string | number, message: any) {
     const playerState = this.state.players.get(client.sessionId);
     if (!playerState) return;
 
-    // MOUVEMENT MANUEL
+    // ------------------------------
+    // Move
+    // ------------------------------
     if (type === "player_move") {
       playerState.posX = message.x;
       playerState.posY = message.y;
       playerState.posZ = message.z;
       playerState.lastMovementTime = Date.now();
 
-      // Stop combat propre
       if (playerState.inCombat) {
         this.combatManager.forceStopCombat(playerState);
       }
       return;
     }
 
+    // ------------------------------
     // AFK
+    // ------------------------------
     if (type === "activate_afk_mode") {
       this.afkManager.activateAFK(client, playerState);
       return;
@@ -231,7 +257,9 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
+    // ------------------------------
     // NPC
+    // ------------------------------
     if (type === "npc_interact") {
       this.npcManager.handleInteraction(client, playerState, message);
       return;
@@ -242,10 +270,10 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // SPAWN monstre test
+    // ------------------------------
+    // Spawn test monster
+    // ------------------------------
     if (type === "spawn_test_monster") {
-      console.log("🧪 spawn test");
-
       const MonsterState = require("../schema/MonsterState").MonsterState;
 
       const monster = new MonsterState(
@@ -278,7 +306,9 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
+    // ------------------------------
     // ADMIN
+    // ------------------------------
     if (type === "npc_reload") {
       this.npcManager.reloadNPCs();
       client.send("info", { message: "NPCs reloaded" });
@@ -292,6 +322,9 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
+  /**
+   * Server tick
+   */
   update(deltaTime: number) {
     this.combatManager.update(deltaTime);
     this.afkManager.update(deltaTime);
