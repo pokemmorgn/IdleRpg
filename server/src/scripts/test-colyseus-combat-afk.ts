@@ -93,7 +93,7 @@ async function runTest() {
 log.section("2. Création du personnage");
 
 const res2 = await makeRequest("POST", "/profile/s1", {
-  characterName: "AFKTester",
+  characterName: "AFKTester_" + Date.now(),
   characterClass: "warrior",
   characterRace: "human_elion",
   characterSlot: 1
