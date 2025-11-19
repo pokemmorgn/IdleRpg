@@ -95,7 +95,8 @@ log.section("2. Création du personnage");
 const res2 = await makeRequest("POST", "/profile/s1", {
   characterName: "AFKTester",
   characterClass: "warrior",
-  characterRace: "human_elion"
+  characterRace: "human_elion",
+  characterSlot: 1
 }, token);
 
 // DEBUG
