@@ -59,6 +59,26 @@ export class PlayerState extends Schema {
   @type("number") lifesteal: number = 0;        // Vol de vie
   @type("number") spellPenetration: number = 0; // Pénétration magique
   
+  // ===== COMBAT =====
+  @type("boolean") inCombat: boolean = false;
+  @type("string") targetMonsterId: string = "";
+  @type("number") attackTimer: number = 0;
+  
+  // ===== MOUVEMENT =====
+  @type("number") posX: number = 0;
+  @type("number") posY: number = 0;
+  @type("number") posZ: number = 0;
+  @type("number") lastMovementTime: number = 0;
+  
+  // ===== AFK =====
+  @type("boolean") isAFK: boolean = false;
+  @type("boolean") isDead: boolean = false;
+  @type("number") deathTimer: number = 0;
+  
+  // ===== CONSOMMABLES (temporaire - placeholder) =====
+  @type("number") potionHP: number = 10;  // Nombre de potions HP
+  @type("number") food: number = 20;      // Nombre de nourriture
+  
   constructor(
     sessionId: string,
     playerId: string,
@@ -80,6 +100,7 @@ export class PlayerState extends Schema {
     this.race = characterRace;
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
+    this.lastMovementTime = Date.now();
   }
   
   /**
