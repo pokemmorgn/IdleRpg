@@ -96,32 +96,24 @@ export class CombatManager {
    * Détecte si un joueur immobile peut commencer un combat
    */
   private detectCombatOpportunity(player: PlayerState): void {
+    // Vérifier si le joueur est immobile depuis 1 seconde (ou en mode AFK)
     const now = Date.now();
-  
-    // 🔒 Anti-spam : on limite les checks à 1 par seconde
-    if (now - player.lastAFKCombatCheck < 1000) {
-      return;
-    }
-    player.lastAFKCombatCheck = now;
-  
-    // Vérifier si le joueur ne bouge plus depuis 1 seconde OU est en AFK
     const isIdle = (now - player.lastMovementTime) >= this.IDLE_THRESHOLD;
-  
+    
     if (!isIdle && !player.isAFK) {
-      return; // Joueur actif et pas AFK → pas d'auto-combat
+      return; // Joueur bouge et pas en AFK
     }
-  
+    
     // Chercher le monstre le plus proche dans les 40m
     const nearestMonster = this.findNearestMonster(player);
-  
+    
     if (!nearestMonster) {
-      return; // Aucun monstre à portée
+      return; // Pas de monstre à portée
     }
-  
-    // Démarrer le combat (une seule fois par seconde max)
+    
+    // Démarrer le combat
     this.startCombat(player, nearestMonster);
   }
-
   
   /**
    * Trouve le monstre le plus proche d'un joueur
@@ -154,6 +146,11 @@ export class CombatManager {
    * Démarre un combat entre un joueur et un monstre
    */
   private startCombat(player: PlayerState, monster: MonsterState): void {
+    // ✅ Vérifier que le joueur n'est pas déjà en combat avec CE monstre
+    if (player.inCombat && player.targetMonsterId === monster.monsterId) {
+      return; // Déjà en combat avec ce monstre, ne pas re-déclencher
+    }
+    
     // Marquer le joueur en combat
     player.inCombat = true;
     player.targetMonsterId = monster.monsterId;
@@ -196,30 +193,29 @@ export class CombatManager {
       monster.posX, monster.posY, monster.posZ
     );
     
-    // Si trop loin (> 40m pour AFK, leash), arrêter le combat
+    // Si trop loin (> 40m = leash), arrêter le combat
     if (distance > this.DETECTION_RANGE) {
-      console.log(`⚠️  [Combat] ${player.characterName} trop loin de ${monster.name}, combat arrêté`);
+      console.log(`⚠️  [Combat] ${player.characterName} trop loin de ${monster.name}, combat arrêté (leash)`);
       this.stopCombat(player);
       return;
     }
     
-    // Si en mode AFK, pas de déplacement - rester statique
-    if (player.isAFK) {
-      // Vérifier que le monstre est toujours à portée
-      if (distance > this.MELEE_RANGE) {
-        // Monstre trop loin en AFK, arrêter le combat
-        console.log(`⚠️  [Combat] Mode AFK: ${monster.name} trop loin (${distance.toFixed(2)}m), combat arrêté`);
-        this.stopCombat(player);
-        return;
+    // Si pas au corps à corps (> 2m), quelqu'un doit se déplacer
+    if (distance > this.MELEE_RANGE) {
+      if (player.isAFK) {
+        // Mode AFK : le MONSTRE se déplace vers le joueur (qui reste statique)
+        this.moveMonsterTowardsTarget(monster, player, deltaTime);
+        console.log(`🐾 [Combat] ${monster.name} se déplace vers ${player.characterName} (AFK) - distance: ${distance.toFixed(2)}m`);
+      } else {
+        // Mode Online : le JOUEUR se déplace vers le monstre
+        this.moveTowardsTarget(player, monster, deltaTime);
       }
-      // On est à portée, gérer les attaques
-      this.handleCombatAttacks(player, monster, deltaTime);
-      return;
+      return; // Pas encore d'attaque
     }
     
-    // Mode Online: Si pas au corps à corps, se déplacer progressivement
-    if (distance > this.MELEE_RANGE) {
-      this.moveTowardsTarget(player, monster, deltaTime);
+    // On est au corps à corps (≤ 2m), gérer les attaques
+    this.handleCombatAttacks(player, monster, deltaTime);
+  }
       return; // Pas encore d'attaque
     }
     
@@ -256,12 +252,45 @@ export class CombatManager {
     player.posY += dirY * moveDistance;
     player.posZ += dirZ * moveDistance;
     
-    // Envoyer update de position au client (toutes les 100ms environ)
+    // Envoyer update de position au client
     this.broadcastToPlayer(player.sessionId, "player_position_update", {
       x: player.posX,
       y: player.posY,
       z: player.posZ
     });
+  }
+  
+  /**
+   * Déplace progressivement le monstre vers le joueur (mode AFK uniquement)
+   */
+  private moveMonsterTowardsTarget(
+    monster: MonsterState,
+    player: PlayerState,
+    deltaTime: number
+  ): void {
+    // Calculer la direction
+    const dx = player.posX - monster.posX;
+    const dy = player.posY - monster.posY;
+    const dz = player.posZ - monster.posZ;
+    
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    
+    if (distance === 0) return;
+    
+    // Normaliser
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    const dirZ = dz / distance;
+    
+    // Calculer la vitesse du monstre (basée sur son stat speed)
+    // speed 100 = 5 m/s, speed 200 = 10 m/s
+    const monsterMoveSpeed = (monster.speed / 100) * 5;
+    const moveDistance = monsterMoveSpeed * (deltaTime / 1000);
+    
+    // Déplacer le monstre
+    monster.posX += dirX * moveDistance;
+    monster.posY += dirY * moveDistance;
+    monster.posZ += dirZ * moveDistance;
   }
   
   /**
