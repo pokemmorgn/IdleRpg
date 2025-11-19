@@ -1,9 +1,9 @@
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
+import { AFKManager } from "./AFKManager";
+import { AFKCombatSystem } from "./AFKCombatSystem";
 import { AFKBehaviorManager } from "./AFKBehaviorManager";
 import { OnlineCombatSystem } from "./OnlineCombatSystem";
-import { AFKCombatSystem } from "./AFKCombatSystem";
-import { AFKManager } from "./AFKManager";
 
 export class CombatManager {
 
@@ -12,48 +12,53 @@ export class CombatManager {
     private afkBehavior: AFKBehaviorManager;
 
     constructor(
-        private gameState: GameState,
-        private afkManager: AFKManager,
-        private broadcast: (sessionId: string, type: string, data: any) => void
+        private readonly gameState: GameState,
+        private readonly afkManager: AFKManager,
+        private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {
         this.afkBehavior = new AFKBehaviorManager();
 
+        // --- ONLINE COMBAT SYSTEM ---
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
             this.broadcast
         );
 
+        // --- AFK COMBAT SYSTEM ---
+        // Signature correcte :
+        // constructor(gameState, afkManager, broadcastFn, behavior?)
         this.afkSystem = new AFKCombatSystem(
             this.gameState,
             this.afkManager,
-            this.afkBehavior,
-            this.broadcast
+            this.broadcast,
+            this.afkBehavior
         );
     }
 
     /**
-     * Tick du combat : route vers ONLINE ou AFK
+     * Tick principal du combat.
+     * S'exécute à chaque frame depuis WorldRoom.update()
      */
     update(deltaTime: number) {
-        this.gameState.players.forEach(player => {
 
-            if (player.isDead) return;
+        for (const player of this.gameState.players.values()) {
 
-            // AFK mode → AFK system
+            if (player.isDead) continue;
+
+            // === AFK MODE ===
             if (player.isAFK) {
-                this.afkSystem.update(player, deltaTime);
+                this.afkSystem.update(deltaTime);
+                continue;
             }
 
-            // ONLINE mode → auto combat
-            else {
-                this.onlineSystem.update(player, deltaTime);
-            }
-        });
+            // === ONLINE MODE ===
+            this.onlineSystem.update(player, deltaTime);
+        }
     }
 
     /**
-     * Fonction publique pour arrêter proprement un combat
-     * appelée par WorldRoom.
+     * Appelé depuis WorldRoom quand un joueur bouge,
+     * afin d'annuler un combat en cours.
      */
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
