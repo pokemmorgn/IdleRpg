@@ -126,7 +126,19 @@ log.info(`Slot = ${profile.characterSlot}`);
 
     log.ok(`Connecté à la room ${room.roomId}`);
     log.info(`Session = ${room.sessionId}`);
-
+    // 4.1) Spawn d'un monstre TEST
+    log.section("4.1 Spawn du monstre TEST");
+    
+    room.send("spawn_test_monster", {
+      monsterId: "dummy_" + Date.now(),
+      name: "Training Dummy",
+      x: 105,
+      y: 0,
+      z: 105
+    });
+    
+    log.info("Commande spawn envoyée au serveur");
+    await wait(500);
     // 4) Écoute des messages combat/AFK
     log.section("4. Écoute des messages combat/AFK");
 
