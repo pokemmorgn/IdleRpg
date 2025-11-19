@@ -327,84 +327,44 @@ export class WorldRoom extends Room<GameState> {
     }
 
     // ===== TEST: SPAWN MONSTRE =====
-if (type === "spawn_test_monster") {
-  console.log("🧪 Spawn d'un monstre TEST demandé par", playerState.characterName);
-
-  const MonsterState = require("../schema/MonsterState").MonsterState;
-
-  const monster = new MonsterState(
-    message.monsterId || "test_" + Date.now(),
-    message.name || "Training Dummy",
-    "test",
-    1,
-    30,
-    30,
-    5,
-    0,
-    1,
-    "test_zone",
-    message.x || 105,
-    message.y || 0,
-    message.z || 105,
-    0,
-    0,
-    0,
-    "aggressive",
-    12,   // aggro range
-    20,   // leash range
-    2,    // attack range
-    5,    // XP
-    3,    // respawn time
-    false,// respawnOnDeath
-    "dummy_model",
-    true
-  );
-
-  this.state.addMonster(monster);
-
-  console.log("🟢 Monstre TEST ajouté :", monster.name);
-  return;
-}
-
-    // ===== TEST: SPAWN MONSTRE =====
-if (type === "spawn_test_monster") {
-  console.log("🧪 Spawn d'un monstre TEST demandé par", playerState.characterName);
-
-  const MonsterState = require("../schema/MonsterState").MonsterState;
-
-  const monster = new MonsterState(
-    message.monsterId || "test_" + Date.now(),
-    message.name || "Training Dummy",
-    "test",
-    1,
-    30,
-    30,
-    5,
-    0,
-    1,
-    "test_zone",
-    message.x || 105,
-    message.y || 0,
-    message.z || 105,
-    0,
-    0,
-    0,
-    "aggressive",
-    12,   // aggro range
-    20,   // leash range
-    2,    // attack range
-    5,    // XP
-    3,    // respawn time
-    false,// respawnOnDeath
-    "dummy_model",
-    true
-  );
-
-  this.state.addMonster(monster);
-
-  console.log("🟢 Monstre TEST ajouté :", monster.name);
-  return;
-}
+    if (type === "spawn_test_monster") {
+      console.log("🧪 Spawn d'un monstre TEST demandé par", playerState.characterName);
+    
+      const MonsterState = require("../schema/MonsterState").MonsterState;
+    
+      const monster = new MonsterState(
+        message.monsterId || "test_" + Date.now(),
+        message.name || "Training Dummy",
+        "test",
+        1,
+        30,
+        30,
+        5,
+        0,
+        1,
+        "test_zone",
+        message.x || 105,
+        message.y || 0,
+        message.z || 105,
+        0,
+        0,
+        0,
+        "aggressive",
+        12,   // aggro range
+        20,   // leash range
+        2,    // attack range
+        5,    // XP
+        3,    // respawn time
+        false,// respawnOnDeath
+        "dummy_model",
+        true
+      );
+    
+      this.state.addMonster(monster);
+    
+      console.log("🟢 Monstre TEST ajouté :", monster.name);
+      return;
+    }
 
     // ===== ADMIN =====
     if (type === "npc_reload" && this.isAdmin(playerState)) {
