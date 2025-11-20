@@ -1,4 +1,6 @@
 import { Router } from "express";
+
+// ===== CONTROLLERS CLASSES =====
 import {
   getAllClasses,
   getClassByName,
@@ -9,48 +11,99 @@ import {
   simulateLevelUp
 } from "../controllers/statsController";
 
+// ===== CONTROLLERS RACES =====
 import {
   getAllRaces,
   getRace,
-  getRaceAllowedClasses
+  getRaceAllowedClasses,
+  getCreationData
 } from "../controllers/raceController";
-
-import { getCreationData } from "../controllers/creationDataController";
-
 
 const router = Router();
 
-// ===== ROUTES CLASSES =====
-router.get("/creation-data", getCreationData);
+// ============================================================================
+// ==============================   CLASSES   =================================
+// ============================================================================
+
+/**
+ * GET /stats/classes
+ * Liste toutes les classes avec leurs stats (MongoDB)
+ */
 router.get("/classes", getAllClasses);
+
+/**
+ * GET /stats/classes/:className
+ * Récupère les stats d'une classe spécifique
+ */
 router.get("/classes/:className", getClassByName);
+
+/**
+ * POST /stats/classes
+ * Créer une nouvelle classe (ADMIN)
+ */
 router.post("/classes", createClass);
+
+/**
+ * PUT /stats/classes/:className
+ * Modifier les stats d'une classe (ADMIN)
+ */
 router.put("/classes/:className", updateClass);
 
-// ===== ROUTES RACES =====
+// ============================================================================
+// ==============================   RACES     =================================
+// ============================================================================
 
 /**
  * GET /stats/races
- * Liste toutes les races (clé nom, desc, lore, faction, bonus…)
+ * Liste toutes les races (depuis races.config)
  */
 router.get("/races", getAllRaces);
 
 /**
  * GET /stats/races/:raceId
- * Récupère une race spécifique
+ * Détails d'une race
  */
 router.get("/races/:raceId", getRace);
 
 /**
  * GET /stats/races/:raceId/classes
- * Récupère les classes autorisées pour cette race
+ * Liste des classes autorisées pour cette race
  */
 router.get("/races/:raceId/classes", getRaceAllowedClasses);
 
-// ===== ROUTES PLAYER =====
+// ============================================================================
+// ==========================   CREATION DATA   ================================
+// ============================================================================
 
+/**
+ * GET /stats/creation-data
+ * Renvoie tout ce qu'il faut pour l'écran de création :
+ * - races (config)
+ * - classes (config)
+ * - restrictions race → classes
+ */
+router.get("/creation-data", getCreationData);
+
+// ============================================================================
+// ===============================   PLAYER   =================================
+// ============================================================================
+
+/**
+ * GET /stats/player/:profileId
+ * Récupère les stats calculées d'un joueur
+ */
 router.get("/player/:profileId", getPlayerStats);
+
+/**
+ * POST /stats/player/:profileId/recalculate
+ * Force le recalcul des stats d'un joueur
+ */
 router.post("/player/:profileId/recalculate", recalculatePlayerStats);
+
+/**
+ * POST /stats/player/:profileId/level-up
+ * Simule un gain de niveau
+ */
 router.post("/player/:profileId/level-up", simulateLevelUp);
 
 export default router;
