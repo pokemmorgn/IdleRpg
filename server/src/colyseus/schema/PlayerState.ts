@@ -161,7 +161,7 @@ export class PlayerState extends Schema {
     this.race = characterRace;
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
-    this.lastMovementTime = Date.now();
+    this.lastMovementTime = Date.now() - 1000;
   }
   
   /**
