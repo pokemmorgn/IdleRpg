@@ -175,7 +175,8 @@ async function createCharacter(token: string, race: string, classId: string) {
     // Récupération des races/classes valides
     const creation = await getCreationData(token);
     if (!creation) return;
-
+    console.log("=== DEBUG CREATION DATA ===");
+    console.dir(creation, { depth: null });
     // Choix automatique d'une race
     const raceId = creation.races[0].id;
 
