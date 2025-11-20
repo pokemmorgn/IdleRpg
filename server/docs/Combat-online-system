@@ -1,0 +1,206 @@
+# Combat Online System Specification
+
+## Overview
+
+The Online Combat System is an **action-RPG auto-combat system** where the player can move freely, trigger skills manually, or let the system execute skills automatically according to a defined priority and rotation. Skills follow the player's custom order in their skill bar and respect cooldowns, resource costs, GCD, and animation locks.
+
+The system is designed for dynamic, fluid combat with pursuit, reaction to attacks, target switching, and proper timing.
+
+---
+
+## 1. Movement & Combat Interruption
+
+* Player movement **immediately cancels** any ongoing soft-lock skill.
+* Player movement **prevents** any new skill usage until the player stops.
+* Once the player stops moving, the auto-combat system resumes.
+
+---
+
+## 2. Target Selection
+
+### Automatic Targeting
+
+* The player automatically targets the **nearest monster**.
+* If the target dies, the system instantly selects the new nearest monster.
+
+### Manual Targeting
+
+* The player can manually select any monster.
+* Manual target overrides auto-target as long as the target is valid.
+
+### Reaction to Attacks
+
+* If an enemy attacks the player, the player automatically counter-attacks this monster.
+
+---
+
+## 3. Pursuit Behavior
+
+* The player **pursues the target without distance limit**.
+* No reset distance; in dungeons the player can chase through the whole map.
+* If the target disappears or dies, auto-targeting selects the next available target.
+
+---
+
+## 4. Skill Rotation
+
+### Priority
+
+The rotation follows the **exact order of the skill bar**, defined by the player:
+
+```
+slot1 → slot2 → slot3 → ...
+```
+
+No automatic optimization is applied.
+
+### Conditions for Skill Usage
+
+A skill is used if:
+
+* Cooldown is ready
+* Required resources (mana, energy, etc.) are available
+* Buff-type skill is not already active
+* Target is within skill range
+* Player is not under animation lock
+* Player satisfies any specific skill condition (states, status, etc.)
+
+If a skill cannot be used, the system moves to the next one.
+
+### Skills Auto ON/OFF
+
+* If a skill is set to **auto ON**, it is used automatically.
+* If set to **auto OFF**, it is only cast manually.
+
+---
+
+## 5. Skill Animation Lock Types
+
+Each skill specifies an `animationLockType`:
+
+### Full Lock
+
+* Player cannot move
+* No skills or auto-attacks can be triggered during the cast
+* Breakable only by crowd control (stun, knockback, fear, etc.)
+
+### Soft Lock
+
+* Player can move, but moving **cancels the cast**
+* No other skill may be cast during this time
+
+### No Lock
+
+* Pure animation, cosmetic
+* Skill is instant and does not block other actions
+
+---
+
+## 6. Global Cooldown (GCD)
+
+* After casting any skill, a **1 second GCD** begins.
+* While GCD is active:
+
+  * The player cannot cast another skill
+  * Auto-attacks **ignore GCD** (see section 7)
+
+---
+
+## 7. Auto-Attack System
+
+### Independent Timer
+
+* Auto-attacks occur based on weapon speed (e.g., every 3 seconds).
+* Auto-attacks are **not** affected by GCD.
+
+### Interaction with Animation Locks
+
+* Auto-attacks cannot fire during a full-lock cast.
+* If an auto-attack becomes ready during a cast:
+
+  * It is **stored**
+  * It fires immediately once the cast ends
+
+### Range
+
+* Auto-attacks use the weapon's melee range.
+
+---
+
+## 8. Action Queueing
+
+* While casting a skill, the player may input another skill.
+* This next skill is stored in a **queue**.
+* Once the cast ends and GCD allows it, the queued skill triggers immediately.
+
+This ensures fluidity and responsiveness.
+
+---
+
+## 9. Enemy Interaction
+
+### Counter-Attack
+
+* Being hit by an enemy automatically causes the system to target that enemy and respond.
+
+### Target Stability
+
+* A target is kept for the duration of a cast
+* If it moves out of range mid-cast, rules depend on skill type:
+
+  * Projectiles are cancelled if the target leaves range
+  * AOE is cast at the initial position
+
+---
+
+## 10. Skill Behaviors
+
+### AOE Skills
+
+* AOE is placed at the target's **position at cast start**.
+* Target movement after the cast begins does not affect AOE.
+
+### Projectiles
+
+* Projectiles track the target.
+* If the target moves out of range before the cast ends or during projectile travel → cast is cancelled.
+
+---
+
+## 11. Combat Flow Summary
+
+```
+If player is moving:
+    cancel soft-lock skills
+    block skill usage
+Else:
+    target nearest monster
+    if hit → respond to attacker
+    for each skill in bar order:
+        if skill is usable AND target in range:
+            cast skill
+            apply GCD
+            break
+    if no skill was cast:
+        if auto-attack ready AND target in melee range:
+            auto-attack
+Else:
+    wait for opportunities
+```
+
+---
+
+## 12. Summary
+
+The Online Combat System is:
+
+* Fully dynamic
+* Player-driven rotation order
+* Hard animation locks
+* Auto-attack with independent timing
+* Skill queueing for responsiveness
+* Unlimited pursuit
+* Reactive to attacks
+* Capable of manual overrides
+
+This file acts as the reference for the **Online Combat System**.
