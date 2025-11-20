@@ -31,7 +31,7 @@ export class OnlineCombatSystem {
             player.currentAnimationLockType = "none";
             
             // Notifier le client que le cast a été annulé
-            broadcast(player.sessionId, "cast_cancelled", {
+            this.broadcast(player.sessionId, "cast_cancelled", {
                 reason: "movement"
             });
         }
