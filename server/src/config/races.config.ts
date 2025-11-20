@@ -7,14 +7,14 @@
  * AURION
  * - Humains d'Élion : Architecture dorée, traits nobles, peau claire à bronze. Société centrée sur l'honneur, la connaissance et la stabilité.
  * - Nains de Pierre-Rune : Corpulence robuste, motifs runiques naturels, barbes ornementales. Forteresses souterraines, culture du métal et des runes.
- * - Murlocs
- * - Noxariens
-
- * OMBRE :
- * - Varkyns : Cornes asymétriques fractales, fourrure sombre, symboles rituels, silhouette élancée. Culture chamanique ancienne.
- * - Arkanids : Peau matte (bleu nuit, violet, noir), membres fins, yeux réfléchissants, ornements chitineux. Chasseurs furtifs nocturnes.
- * - Ghrannites orcs : Peau de pierre (granite, basalte, obsidienne), yeux de cristal, corps imposants. Culture souterraine liée à la chaleur.
- * - Sélénithes trolls : Peau noire ou gris bleu profond, cheveux blancs/argentés, pupilles verticales lumineuses. Magie lunaire sombre.
+ * - Murlocs : Petites créatures vives, agiles, instinctives.
+ * - Sylphides Forestiers : Silhouette fine, magie naturelle, très connectés au mana.
+ *
+ * OMBRE
+ * - Varkyns : Hybrides bestiaux massifs, très résistants et puissants.
+ * - Arkanids : Insectoïdes rapides, chitine légère, réflexes surdéveloppés.
+ * - Ghrannites : Orcs de pierre, robustesse extrême et densité corporelle élevée.
+ * - Sélénithes : Trolls lunaires, magie obscure, puissance magique innée.
  */
 
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../models/ServerProfile";
@@ -26,14 +26,11 @@ import { IPlayerPrimaryStats, IPlayerComputedStats } from "../models/ServerProfi
 export type Faction = "AURION" | "OMBRE";
 
 /**
- * Bonus raciaux
- * - Certains apportent des bonus primaires (STR/AGI…)
- * - D'autres affectent des stats secondaires (AP, armor, crit…)
- * - Aucun bonus n'est obligatoire
+ * Bonus raciaux en pourcentage
  */
 export interface RaceStatsModifiers {
-  primary?: Partial<IPlayerPrimaryStats>;
-  computed?: Partial<IPlayerComputedStats>;
+  primaryPercent?: Partial<IPlayerPrimaryStats>;
+  computedPercent?: Partial<IPlayerComputedStats>;
 }
 
 /**
@@ -43,9 +40,9 @@ export interface RaceConfig {
   raceId: string;
   nameKey: string;
   descriptionKey: string;
-  loreKey: string;                // AJOUT : clé texte lore approfondi
+  loreKey: string;
   faction: Faction;
-  statsModifiers?: RaceStatsModifiers;  // AJOUT : bonus raciaux optionnels
+  statsModifiers?: RaceStatsModifiers;
 }
 
 // ======================
@@ -59,7 +56,9 @@ const AURION_RACES: RaceConfig[] = [
     descriptionKey: "race.human_elion.description",
     loreKey: "race.human_elion.lore",
     faction: "AURION",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { endurance: 5, spirit: 5 }
+    }
   },
   {
     raceId: "dwarf_rune",
@@ -67,7 +66,9 @@ const AURION_RACES: RaceConfig[] = [
     descriptionKey: "race.dwarf_rune.description",
     loreKey: "race.dwarf_rune.lore",
     faction: "AURION",
-    statsModifiers: {}
+    statsModifiers: {
+      computedPercent: { maxHp: 5, armor: 5 }
+    }
   },
   {
     raceId: "murlocs",
@@ -75,7 +76,10 @@ const AURION_RACES: RaceConfig[] = [
     descriptionKey: "race.murlocs.description",
     loreKey: "race.murlocs.lore",
     faction: "AURION",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { agility: 5 },
+      computedPercent: { evasion: 5 }
+    }
   },
   {
     raceId: "sylphide_forest",
@@ -83,7 +87,10 @@ const AURION_RACES: RaceConfig[] = [
     descriptionKey: "race.sylphide_forest.description",
     loreKey: "race.sylphide_forest.lore",
     faction: "AURION",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { intelligence: 5 },
+      computedPercent: { manaRegen: 5 }
+    }
   }
 ];
 
@@ -98,7 +105,10 @@ const OMBRE_RACES: RaceConfig[] = [
     descriptionKey: "race.varkyns_beast.description",
     loreKey: "race.varkyns_beast.lore",
     faction: "OMBRE",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { strength: 5 },
+      computedPercent: { maxHp: 5 }
+    }
   },
   {
     raceId: "arkanids_insect",
@@ -106,7 +116,10 @@ const OMBRE_RACES: RaceConfig[] = [
     descriptionKey: "race.arkanids_insect.description",
     loreKey: "race.arkanids_insect.lore",
     faction: "OMBRE",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { agility: 5 },
+      computedPercent: { attackSpeed: 5 }
+    }
   },
   {
     raceId: "ghrannite_stone",
@@ -114,7 +127,10 @@ const OMBRE_RACES: RaceConfig[] = [
     descriptionKey: "race.ghrannite_stone.description",
     loreKey: "race.ghrannite_stone.lore",
     faction: "OMBRE",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { endurance: 5 },
+      computedPercent: { damageReduction: 5 }
+    }
   },
   {
     raceId: "selenite_lunar",
@@ -122,7 +138,10 @@ const OMBRE_RACES: RaceConfig[] = [
     descriptionKey: "race.selenite_lunar.description",
     loreKey: "race.selenite_lunar.lore",
     faction: "OMBRE",
-    statsModifiers: {}
+    statsModifiers: {
+      primaryPercent: { intelligence: 5 },
+      computedPercent: { spellPower: 5 }
+    }
   }
 ];
 
@@ -141,49 +160,36 @@ export const RACES_BY_ID = new Map<string, RaceConfig>(
 
 export const VALID_RACE_IDS = ALL_RACES.map(r => r.raceId);
 
-/** Vérifie si un raceId est valide */
 export function isValidRace(raceId: string): boolean {
   return RACES_BY_ID.has(raceId);
 }
 
-/** Récupère une race */
 export function getRaceById(raceId: string): RaceConfig | undefined {
   return RACES_BY_ID.get(raceId);
 }
 
-/** Filtrage par faction */
 export function getRacesByFaction(faction: Faction): RaceConfig[] {
   return ALL_RACES.filter(r => r.faction === faction);
 }
 
-// ======================
-// UTILITAIRE CLIENT
-// ======================
-
 /**
- * Transforme les bonus raciaux en texte lisible
- * (pour affichage côté client)
+ * Transforme les bonus raciaux en texte lisible pour le client
  */
 export function getReadableRaceBonuses(race: RaceConfig): string[] {
-  if (!race.statsModifiers) return [];
-
   const lines: string[] = [];
+  if (!race.statsModifiers) return lines;
 
-  // Stats primaires
-  if (race.statsModifiers.primary) {
-    for (const [stat, value] of Object.entries(race.statsModifiers.primary)) {
-      if (value === 0 || value === undefined) continue;
-      const prefix = value > 0 ? "+" : "";
-      lines.push(`${prefix}${value} ${stat}`);
+  const { primaryPercent, computedPercent } = race.statsModifiers;
+
+  if (primaryPercent) {
+    for (const [stat, value] of Object.entries(primaryPercent)) {
+      lines.push(`+${value}% ${stat}`);
     }
   }
 
-  // Stats secondaires
-  if (race.statsModifiers.computed) {
-    for (const [stat, value] of Object.entries(race.statsModifiers.computed)) {
-      if (value === 0 || value === undefined) continue;
-      const prefix = value > 0 ? "+" : "";
-      lines.push(`${prefix}${value} ${stat}`);
+  if (computedPercent) {
+    for (const [stat, value] of Object.entries(computedPercent)) {
+      lines.push(`+${value}% ${stat}`);
     }
   }
 
