@@ -1,110 +1,126 @@
 /**
- * Script de test combat :
- * - Connexion au serveur Colyseus
- * - Récupération token via l'API Login
- * - Connexion room world_test
- * - Déplacement auto
- * - Spawn d’un Training Dummy
- * - Activation AFK pour simuler un vrai combat
+ * TEST COMBAT — IdleRPG
+ * - Login API
+ * - Connexion Colyseus (world_test)
+ * - Spawn pack de 4 mobs
+ * - Combat auto toutes les 2 secondes
  */
 
 import WebSocket from "ws";
-import fetch from "node-fetch";
 
+// ------------------------
+// CONFIG
+// ------------------------
 const API_URL = "http://localhost:3000";
-const WS_URL = "ws://localhost:3000/world";
-
-const USERNAME = "combat_tester";
-const PASSWORD = "Test123!";
 const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 
+const USERNAME = "combat_tester";
+const PASSWORD = "Test123!";
+
+// ------------------------
+// LOGIN API
+// ------------------------
 async function login() {
     const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            username: USERNAME,
+            password: PASSWORD
+        })
     });
+
     const json = await res.json();
 
     if (!res.ok) {
-        console.error("❌ Login fail:", json);
+        console.error("❌ Login failed:", json);
         process.exit(1);
     }
 
-    console.log("✔ Login OK !");
+    console.log("✔ Login OK");
     return json.token;
 }
 
-async function startTest() {
-    const token = await login();
+// ------------------------
+// CONNEXION COLYSEUS
+// ------------------------
+async function connectToWorld(token: string) {
+    return new Promise<void>((resolve) => {
+        const ws = new WebSocket(
+            `ws://localhost:3000/world?token=${token}&serverId=${SERVER_ID}&characterSlot=${CHARACTER_SLOT}`
+        );
 
-    console.log("→ Connexion WebSocket au world_test...");
+        ws.on("open", () => {
+            console.log("🔌 WebSocket connecté !");
+        });
 
-    const ws = new WebSocket(
-        `${WS_URL}?serverId=${SERVER_ID}&token=${token}&characterSlot=${CHARACTER_SLOT}`
-    );
+        ws.on("message", (raw) => {
+            const msg = JSON.parse(raw.toString());
 
-    ws.on("open", () => {
-        console.log("🟢 WS connecté !");
-    });
+            if (msg.type === "welcome") {
+                console.log("🌍 Monde chargé !");
+                console.log(`Bienvenue ${msg.stats.hp}/${msg.stats.maxHp}`);
+                resolve();
 
-    ws.on("message", (data) => {
-        const msg = JSON.parse(data.toString());
+                // Spawn automatique du pack
+                spawnMobPack(ws);
+                startAutoAttack(ws);
+            }
 
-        if (msg.message && msg.message.includes("Bienvenue")) {
-            console.log("🎉 Message du serveur :", msg.message);
+            // Logs combat
+            if (msg.type === "combat_log") {
+                console.log("⚔️  Combat:", msg.text);
+            }
 
-            setTimeout(() => {
-                console.log("→ Activation mode AFK...");
-                ws.send(JSON.stringify(["activate_afk_mode", {}]));
-            }, 800);
-
-            setTimeout(() => {
-                console.log("→ Spawn d’un Training Dummy...");
-                ws.send(JSON.stringify([
-                    "spawn_test_monster",
-                    {
-                        name: "Dummy",
-                        monsterId: "dummy_" + Date.now(),
-                        x: 105,
-                        y: 0,
-                        z: 105
-                    }
-                ]));
-            }, 1500);
-
-            setTimeout(() => {
-                console.log("→ Déplacement vers la zone de combat...");
-                ws.send(JSON.stringify(["player_move", { x: 105, y: 0, z: 105 }]));
-            }, 2500);
-        }
-
-        // Logs combat
-        if (msg.type === "combat_tick") {
-            console.log(`⚔️ ${msg.attacker} → ${msg.target}: -${msg.damage} dmg`);
-        }
-
-        if (msg.type === "combat_start") {
-            console.log(`🔥 Combat engagé contre ${msg.monsterName}`);
-        }
-
-        if (msg.type === "combat_end") {
-            console.log(`🏆 Combat terminé : ${msg.result}`);
-        }
-
-        if (msg.type === "afk_gain") {
-            console.log(`💰 AFK Rewards:`, msg);
-        }
-    });
-
-    ws.on("close", () => {
-        console.log("🔴 WS fermé.");
-    });
-
-    ws.on("error", (err) => {
-        console.error("❌ WS error:", err);
+            if (msg.type === "error") {
+                console.log("❌ Error:", msg.message);
+            }
+        });
     });
 }
 
-startTest();
+// ------------------------
+// SPAWN PACK 4 MONSTRES
+// ------------------------
+function spawnMobPack(ws: WebSocket) {
+    console.log("🐗 Spawn d'un pack de 4 monstres…");
+
+    const baseX = 105;
+    const baseZ = 105;
+
+    for (let i = 0; i < 4; i++) {
+        ws.send(JSON.stringify({
+            type: "spawn_test_monster",
+            monsterId: `pack_${Date.now()}_${i}`,
+            name: "Training Dummy",
+            x: baseX + (i * 2),
+            y: 0,
+            z: baseZ + (i * 2)
+        }));
+    }
+}
+
+// ------------------------
+// AUTO ATTACK LOOP
+// ------------------------
+function startAutoAttack(ws: WebSocket) {
+    console.log("🔫 Auto-attaque activée (toutes les 2s)…");
+
+    setInterval(() => {
+        ws.send(JSON.stringify({
+            type: "queue_skill",
+            skillId: "auto_attack"
+        }));
+    }, 2000);
+}
+
+// ------------------------
+// MAIN
+// ------------------------
+(async () => {
+    console.log("=== 🧪 TEST COMBAT ===");
+
+    const token = await login();
+    await connectToWorld(token);
+})();
