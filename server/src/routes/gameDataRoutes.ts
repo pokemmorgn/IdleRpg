@@ -1,39 +1,27 @@
 import { Router } from "express";
-
 import { 
-  listClasses, 
-  listRaces, 
-  listFactions, 
+  listClasses,
+  listRaces,
+  listFactions,
   getAllowedClasses,
-  getCreationData   // <<< AJOUT ICI
+  getCreationData
 } from "../controllers/gameDataController";
 
 const router = Router();
 
-// =========================
-// ROUTE PRINCIPALE CREATION
-// =========================
-
-// GET /game-data/creation
-// Renvoie races + classes + bonus + lore + restrictions
-router.get("/creation", getCreationData);
-
-// =========================
-// AUTRES ROUTES
-// =========================
-
-// GET /game-data/classes
-// Query optionnel: ?role=TANK|DPS|HEALER|SUPPORT
+// === Classes ===
 router.get("/classes", listClasses);
 
-// GET /game-data/races
-// Query optionnel: ?faction=AURION|OMBRE
+// === Races ===
 router.get("/races", listRaces);
 
-// GET /game-data/factions
+// === Factions + regroupement des races ===
 router.get("/factions", listFactions);
 
-// GET /game-data/allowed-classes/:raceId
+// === Restrictions classes/races ===
 router.get("/allowed-classes/:raceId", getAllowedClasses);
+
+// === Pack complet pour l’écran de création ===
+router.get("/creation", getCreationData);
 
 export default router;
