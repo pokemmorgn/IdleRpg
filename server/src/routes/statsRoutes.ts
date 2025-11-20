@@ -1,5 +1,5 @@
 import { Router } from "express";
-
+console.log("🟢 LOADED: statsRoutes");
 // ===== CONTROLLERS CLASSES =====
 import {
   getAllClasses,
