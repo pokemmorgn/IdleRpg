@@ -172,23 +172,22 @@ async function createCharacter(token: string, race: string, classId: string) {
         return;
     }
 
-    // Récupération des races/classes valides
+    // Récupérer races + classes + restrictions
     const creation = await getCreationData(token);
     if (!creation) return;
 
-    console.log("=== DEBUG CREATION DATA ===");
-    console.dir(creation, { depth: null });
-
-    // Choix automatique d'une race (ex : "human_elion")
+    // Choisir automatiquement une race valide
     const raceId = creation.races[0].raceId;
 
-    // Choix d'une classe autorisée pour cette race (ex : "priest")
+    // Choisir automatiquement une classe autorisée pour cette race
     const classId = creation.byRace[raceId][0].classId;
 
     console.log(`→ Race choisie : ${raceId}`);
     console.log(`→ Classe choisie : ${classId}`);
 
+    // Création du personnage
     await createCharacter(token, raceId, classId);
 
 })();
+
 
