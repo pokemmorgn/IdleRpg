@@ -6,7 +6,6 @@ import { loadPlayerCharacter, isCharacterAlreadyConnected } from "../utils/playe
 import { NPCManager } from "../managers/NPCManager";
 import { MonsterManager } from "../managers/MonsterManager";
 import { CombatManager } from "../managers/CombatManager";
-import { AFKManager } from "../managers/AFKManager";
 import ServerProfile from "../../models/ServerProfile";
 
 interface JoinOptions {
@@ -33,7 +32,6 @@ export class WorldRoom extends Room<GameState> {
   private npcManager!: NPCManager;
   private monsterManager!: MonsterManager;
   private combatManager!: CombatManager;
-  private afkManager!: AFKManager;
 
   // ===========================================================
   // onCreate
@@ -48,43 +46,30 @@ export class WorldRoom extends Room<GameState> {
     // MANAGERS
     this.npcManager = new NPCManager(this.serverId, this.state);
     this.monsterManager = new MonsterManager(this.serverId, this.state);
-    this.afkManager = new AFKManager(
-      this.state,
-      (sessionId, type, data) => {
-        const client = this.clients.find(c => c.sessionId === sessionId);
-        if (client) client.send(type, data);
-      }
-    );
 
     this.combatManager = new CombatManager(
       this.state,
-      this.afkManager,
       (sessionId, type, data) => {
         const client = this.clients.find(c => c.sessionId === sessionId);
         if (client) client.send(type, data);
       }
     );
 
-    // Load NPCs & Monsters
+    // Load assets
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // Colyseus raw messages ("*")
+    // Raw Colyseus messages
     this.onMessage("*", (client, type, message) => {
       this.handleMessage(client, String(type), message);
     });
 
-    // 🔥 Patch JSON messages venant du WS client
+    // Raw JSON patch (test script)
     this.onMessage("raw", (client, raw: any) => {
       try {
-        const json =
-          typeof raw === "string" ? JSON.parse(raw) : raw;
-
+        const json = typeof raw === "string" ? JSON.parse(raw) : raw;
         if (!json?.type) return;
-
-        // Passe le type JSON à handleMessage EXACTEMENT comme Colyseus
         this.handleMessage(client, json.type, json);
-
       } catch (err) {
         console.error("❌ RAW JSON parse error:", err);
       }
@@ -224,24 +209,18 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
-    // ---------------------------------------------------------
-    // PLAYER MOVE
-    // ---------------------------------------------------------
+    // ---------------- MOVE ----------------
     if (type === "player_move") {
       player.posX = msg.x;
       player.posY = msg.y;
       player.posZ = msg.z;
       player.lastMovementTime = Date.now();
 
-      if (player.inCombat) {
-        this.combatManager.forceStopCombat(player);
-      }
+      if (player.inCombat) this.combatManager.forceStopCombat(player);
       return;
     }
 
-    // ---------------------------------------------------------
-    // SPAWN TEST MONSTER (RAW JSON)
-    // ---------------------------------------------------------
+    // ------------- SPAWN TEST MONSTER -------------
     if (type === "spawn_test_monster") {
 
       console.log("🔥 spawn_test_monster reçu :", msg);
@@ -279,17 +258,7 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // ---------------------------------------------------------
-    // AFK
-    // ---------------------------------------------------------
-    if (type === "activate_afk_mode") return this.afkManager.activateAFK(client, player);
-    if (type === "deactivate_afk_mode") return this.afkManager.deactivateAFK(client, player);
-    if (type === "claim_afk_summary") return this.afkManager.claimSummary(client, player);
-    if (type === "get_afk_summary") return this.afkManager.sendSummaryUpdate(client, player.profileId);
-
-    // ---------------------------------------------------------
-    // QUEUE SKILL
-    // ---------------------------------------------------------
+    // ---------------- SKILL QUEUE ----------------
     if (type === "queue_skill") {
       if (!player.inCombat) return;
       if (!msg?.skillId) return;
@@ -305,19 +274,11 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // ---------------------------------------------------------
-    // NPC
-    // ---------------------------------------------------------
-    if (type === "npc_interact") {
-      return this.npcManager.handleInteraction(client, player, msg);
-    }
-    if (type === "dialogue_choice") {
-      return this.npcManager.handleDialogueChoice(client, player, msg);
-    }
+    // ---------------- NPC ----------------
+    if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
+    if (type === "dialogue_choice") return this.npcManager.handleDialogueChoice(client, player, msg);
 
-    // ---------------------------------------------------------
-    // RELOAD
-    // ---------------------------------------------------------
+    // ---------------- RELOAD ----------------
     if (type === "npc_reload") {
       this.npcManager.reloadNPCs();
       return client.send("info", { message: "NPCs reloaded" });
@@ -334,7 +295,6 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   update(deltaTime: number) {
     this.combatManager.update(deltaTime);
-    this.afkManager.update(deltaTime);
   }
 
   onDispose() {
