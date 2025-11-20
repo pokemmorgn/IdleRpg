@@ -20,60 +20,126 @@ export class CombatManager {
     ) {
         this.afkBehavior = new AFKBehaviorManager();
 
-        // --- ONLINE COMBAT SYSTEM ---
+        // --- ONLINE SYSTEM ---
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
-            this.broadcast
+            (sessionId, type, data) => this.emitCombatEvent(sessionId, type, data)
         );
 
-        // --- AFK COMBAT SYSTEM ---
+        // --- AFK SYSTEM ---
         this.afkSystem = new AFKCombatSystem(
             this.gameState,
             this.afkManager,
-            this.broadcast,
+            (sessionId, type, data) => this.emitCombatEvent(sessionId, type, data),
             this.afkBehavior
         );
 
-        // --- MONSTER COMBAT SYSTEM ---
+        // --- MONSTER SYSTEM ---
         this.monsterSystem = new MonsterCombatSystem(
             this.gameState,
-            this.broadcast
+            (sessionId, type, data) => this.emitCombatEvent(sessionId, type, data)
         );
     }
 
     /**
-     * Tick principal du combat.
-     * S'exécute à chaque frame depuis WorldRoom.update()
+     * Unifie tous les events de combat → FORMAT B
+     */
+    private emitCombatEvent(
+        sessionId: string,
+        eventType: string,
+        data: any
+    ) {
+        // Les systèmes t'envoient un type interne comme:
+        // - "playerHit"
+        // - "monsterHit"
+        // - "monsterKilled"
+        // - "playerKilled"
+        //
+        // On les transforme en FORMAT B.
+
+        if (eventType === "playerHit") {
+            this.broadcast(sessionId, "combat_event", {
+                event: "hit",
+                source: "player",
+                sourceId: data.playerId,
+                target: "monster",
+                targetId: data.monsterId,
+                damage: data.damage,
+                remainingHp: data.remainingHp,
+                crit: data.crit ?? false,
+                time: Date.now()
+            });
+            return;
+        }
+
+        if (eventType === "monsterHit") {
+            this.broadcast(sessionId, "combat_event", {
+                event: "hit",
+                source: "monster",
+                sourceId: data.monsterId,
+                target: "player",
+                targetId: data.playerId,
+                damage: data.damage,
+                remainingHp: data.remainingHp,
+                crit: false,
+                time: Date.now()
+            });
+            return;
+        }
+
+        if (eventType === "monsterKilled") {
+            this.broadcast(sessionId, "combat_event", {
+                event: "death",
+                entity: "monster",
+                entityId: data.monsterId,
+                time: Date.now()
+            });
+            return;
+        }
+
+        if (eventType === "playerKilled") {
+            this.broadcast(sessionId, "combat_event", {
+                event: "death",
+                entity: "player",
+                entityId: data.playerId,
+                time: Date.now()
+            });
+            return;
+        }
+
+        // Fallback → relayer brut (utile debug)
+        this.broadcast(sessionId, eventType, data);
+    }
+
+    /**
+     * MAIN TICK
      */
     update(deltaTime: number) {
-        // 1. Mettre à jour la logique des monstres
+
+        // 1. Update monsters behaviour + attacks
         this.monsterSystem.update(deltaTime);
 
-        // 2. Parcourir tous les joueurs pour mettre à jour leurs états
+        // 2. Update each player's combat loop
         for (const player of this.gameState.players.values()) {
 
-            // Mettre à jour les timers de combat pour CE joueur
+            // Timers / cooldowns / regen
             player.updateCombatTimers(deltaTime);
 
             if (player.isDead) continue;
 
-            // === AFK MODE ===
+            // === AFK Mode ===
             if (player.isAFK) {
-                // NOTE: Cet appel est fait pour chaque joueur AFK. 
-                // Si AFKCombatSystem.update() est coûteux, cela pourrait être inefficace.
-                // Une optimisation serait de l'appeler une seule fois par tick et de le laisser gérer tous les joueurs AFK.
                 this.afkSystem.update(deltaTime);
                 continue;
             }
 
-            // === ONLINE MODE ===
+            // === Online Combat ===
             this.onlineSystem.update(player, deltaTime);
         }
     }
 
     /**
-     * Appelé depuis WorldRoom quand un joueur bouge,
-     * afin d'annuler un combat en cours.
+     * STOP COMBAT WHEN PLAYER MOVES
      */
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
