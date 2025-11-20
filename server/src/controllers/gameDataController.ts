@@ -74,7 +74,6 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
 
   res.json({
     raceId,
-    bonusesLocalized: race.bonusesLocalized,  // ⬅ IMPORTANT
     allowedClasses: getAllowedClassesForRace(raceId)
   });
 };
