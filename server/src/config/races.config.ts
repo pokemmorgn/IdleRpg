@@ -1,14 +1,12 @@
-/**
- * Configuration des races jouables
- */
-
-import { IPlayerPrimaryStats, IPlayerComputedStats } from "../models/ServerProfile";
+// ============================================================================
+// RACES CONFIGURATION (format final compatible Unity)
+// ============================================================================
 
 export type Faction = "AURION" | "OMBRE";
 
 export interface RaceStatsModifiers {
-  primaryPercent?: Partial<IPlayerPrimaryStats>;
-  computedPercent?: Partial<IPlayerComputedStats>;
+  primaryPercent?: Record<string, number>;
+  computedPercent?: Record<string, number>;
 }
 
 export interface RaceConfig {
@@ -17,45 +15,16 @@ export interface RaceConfig {
   descriptionKey: string;
   loreKey: string;
   faction: Faction;
-  statsModifiers?: RaceStatsModifiers;
 
-  // ➜ Clé user-friendly destinée au client Unity
-  bonusesLocalized: string[];
+  // Format 100% Unity-friendly
+  statsModifiers: RaceStatsModifiers;
 }
 
-// =========================================================
-// FUNCTION : Génère les clés lisibles pour Unity
-// =========================================================
-
-function generateLocalizedBonusKeys(mod: RaceStatsModifiers | undefined): string[] {
-  if (!mod) return [];
-
-  const list: string[] = [];
-
-  // Stat primaires (%)
-  if (mod.primaryPercent) {
-    for (const [stat, pct] of Object.entries(mod.primaryPercent)) {
-      list.push(`bonus.primary.${stat}.${pct}`);  
-      // Ex : bonus.primary.intelligence.5
-    }
-  }
-
-  // Stats computed (%)
-  if (mod.computedPercent) {
-    for (const [stat, pct] of Object.entries(mod.computedPercent)) {
-      list.push(`bonus.computed.${stat}.${pct}`);
-      // Ex : bonus.computed.maxHp.5
-    }
-  }
-
-  return list;
-}
-
-// =========================================================
+// ============================================================================
 // RACES
-// =========================================================
+// ============================================================================
 
-const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
+export const ALL_RACES: RaceConfig[] = [
   {
     raceId: "human_elion",
     nameKey: "race.human_elion.name",
@@ -63,9 +32,11 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
     loreKey: "race.human_elion.lore",
     faction: "AURION",
     statsModifiers: {
-      primaryPercent: { endurance: 5, spirit: 5 }
+      primaryPercent: { intelligence: 5 },
+      computedPercent: { manaRegen: 5 }
     }
   },
+
   {
     raceId: "dwarf_rune",
     nameKey: "race.dwarf_rune.name",
@@ -73,9 +44,13 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
     loreKey: "race.dwarf_rune.lore",
     faction: "AURION",
     statsModifiers: {
-      computedPercent: { maxHp: 5, armor: 5 }
+      computedPercent: {
+        maxHp: 5,
+        armor: 5
+      }
     }
   },
+
   {
     raceId: "murlocs",
     nameKey: "race.murlocs.name",
@@ -87,6 +62,7 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
       computedPercent: { evasion: 5 }
     }
   },
+
   {
     raceId: "sylphide_forest",
     nameKey: "race.sylphide_forest.name",
@@ -94,10 +70,11 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
     loreKey: "race.sylphide_forest.lore",
     faction: "AURION",
     statsModifiers: {
-      primaryPercent: { intelligence: 5 },
-      computedPercent: { manaRegen: 5 }
+      primaryPercent: { spirit: 5 },
+      computedPercent: { magicResistance: 5 }
     }
   },
+
   {
     raceId: "varkyns_beast",
     nameKey: "race.varkyns_beast.name",
@@ -106,9 +83,10 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
     faction: "OMBRE",
     statsModifiers: {
       primaryPercent: { strength: 5 },
-      computedPercent: { maxHp: 5 }
+      computedPercent: { armor: 5 }
     }
   },
+
   {
     raceId: "arkanids_insect",
     nameKey: "race.arkanids_insect.name",
@@ -120,6 +98,7 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
       computedPercent: { attackSpeed: 5 }
     }
   },
+
   {
     raceId: "ghrannite_stone",
     nameKey: "race.ghrannite_stone.name",
@@ -131,6 +110,7 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
       computedPercent: { damageReduction: 5 }
     }
   },
+
   {
     raceId: "selenite_lunar",
     nameKey: "race.selenite_lunar.name",
@@ -138,33 +118,21 @@ const BASE_RACES: Omit<RaceConfig, "bonusesLocalized">[] = [
     loreKey: "race.selenite_lunar.lore",
     faction: "OMBRE",
     statsModifiers: {
-      primaryPercent: { intelligence: 5 },
+      primaryPercent: { wisdom: 5 },
       computedPercent: { spellPower: 5 }
     }
   }
 ];
 
-// =========================================================
-// Génération AUTOMATIQUE du champ bonusesLocalized
-// =========================================================
+// ============================================================================
+// HELPERS
+// ============================================================================
 
-export const ALL_RACES: RaceConfig[] = BASE_RACES.map(r => ({
-  ...r,
-  bonusesLocalized: generateLocalizedBonusKeys(r.statsModifiers)
-}));
+export const getRaceById = (id: string) =>
+  ALL_RACES.find(r => r.raceId === id);
 
-export const RACES_BY_ID = new Map(ALL_RACES.map(r => [r.raceId, r]));
+export const isValidRace = (id: string) =>
+  ALL_RACES.some(r => r.raceId === id);
 
-export const VALID_RACE_IDS = ALL_RACES.map(r => r.raceId);
-
-export function isValidRace(raceId: string) {
-  return RACES_BY_ID.has(raceId);
-}
-
-export function getRaceById(raceId: string) {
-  return RACES_BY_ID.get(raceId);
-}
-
-export function getRacesByFaction(faction: Faction) {
-  return ALL_RACES.filter(r => r.faction === faction);
-}
+export const getRacesByFaction = (faction: Faction) =>
+  ALL_RACES.filter(r => r.faction === faction);
