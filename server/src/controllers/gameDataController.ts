@@ -10,7 +10,8 @@ import {
   ALL_RACES,
   getRacesByFaction,
   isValidRace,
-  Faction
+  Faction,
+  getRaceById
 } from "../config/races.config";
 
 /* ============================================================================
@@ -38,10 +39,20 @@ export const listClasses = async (req: Request, res: Response) => {
 
 /* ============================================================================
    GET /game-data/races
+   ➜ Maintenant inclut "bonusesLocalized"
 ============================================================================ */
 export const listRaces = async (req: Request, res: Response) => {
   try {
     const { faction } = req.query;
+
+    const formatted = ALL_RACES.map(race => ({
+      raceId: race.raceId,
+      nameKey: race.nameKey,
+      descriptionKey: race.descriptionKey,
+      loreKey: race.loreKey,
+      faction: race.faction,
+      bonusesLocalized: race.bonusesLocalized // 🔥 ajouté
+    }));
 
     if (faction && typeof faction === "string") {
       const f = faction.toUpperCase() as Faction;
@@ -52,11 +63,11 @@ export const listRaces = async (req: Request, res: Response) => {
 
       return res.json({
         filteredBy: f,
-        races: getRacesByFaction(f)
+        races: formatted.filter(r => r.faction === f)
       });
     }
 
-    res.json({ races: ALL_RACES });
+    res.json({ races: formatted });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -100,9 +111,11 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
     }
 
     const allowed = getAllowedClassesForRace(raceId);
+    const race = getRaceById(raceId)!;
 
     res.json({
       raceId,
+      bonusesLocalized: race.bonusesLocalized,   // 🔥 ajouté
       totalAllowed: allowed.length,
       totalClasses: ALL_CLASSES.length,
       allowedClasses: allowed
@@ -114,10 +127,19 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
 
 /* ============================================================================
    GET /game-data/creation
-   => Pack complet pour l’écran de création Unity
+   ➜ Pack complet pour Unity (classes + races + localized bonuses)
 ============================================================================ */
 export const getCreationData = async (req: Request, res: Response) => {
   try {
+    const racesFormatted = ALL_RACES.map(race => ({
+      raceId: race.raceId,
+      nameKey: race.nameKey,
+      descriptionKey: race.descriptionKey,
+      loreKey: race.loreKey,
+      faction: race.faction,
+      bonusesLocalized: race.bonusesLocalized // 🔥 ajouté ici aussi
+    }));
+
     const byRace: Record<string, any[]> = {};
 
     for (const race of ALL_RACES) {
@@ -125,7 +147,7 @@ export const getCreationData = async (req: Request, res: Response) => {
     }
 
     res.json({
-      races: ALL_RACES,
+      races: racesFormatted,
       classes: ALL_CLASSES,
       byRace
     });
