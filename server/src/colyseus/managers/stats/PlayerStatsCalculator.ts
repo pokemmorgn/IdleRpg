@@ -1,5 +1,6 @@
 import { IClassStats } from "../../../models/ClassStats";
-import { PlayerState } from "../schema/PlayerState";
+import { PlayerState } from "../../schema/PlayerState";
+
 
 /**
  * PlayerStatsCalculator
