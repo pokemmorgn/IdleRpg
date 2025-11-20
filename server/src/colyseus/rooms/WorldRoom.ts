@@ -321,7 +321,31 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
   }
-
+  // ------------------------------
+  // Skill Queueing
+  // ------------------------------
+  if (type === "queue_skill") {
+    const playerState = this.state.players.get(client.sessionId);
+    if (!playerState || !playerState.inCombat) return;
+  
+    const skillId = message.skillId;
+    if (!skillId) return;
+  
+    // Vérification simple : le joueur possède-t-il ce skill ?
+    if (playerState.skills.has(skillId)) {
+      playerState.queuedSkill = skillId;
+      console.log(`[Queue] ${playerState.characterName} a mis en file d'attente le skill: ${skillId}`);
+    }
+    return;
+  }
+  
+  if (type === "clear_skill_queue") {
+    const playerState = this.state.players.get(client.sessionId);
+    if (playerState) {
+      playerState.queuedSkill = "";
+    }
+    return;
+  }
   /**
    * Server tick
    */
