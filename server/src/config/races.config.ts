@@ -1,27 +1,9 @@
 /**
- * Configuration des races jouables
- * Organisées par faction
- * 
- * NOTE DEV - Traits physiques et culture par race (pour référence) :
- * 
- * AURION
- * - Humains d'Élion : Architecture dorée, traits nobles, peau claire à bronze. Société centrée sur l'honneur, la connaissance et la stabilité.
- * - Nains de Pierre-Rune : Corpulence robuste, motifs runiques naturels, barbes ornementales. Forteresses souterraines, culture du métal et des runes.
- * - Murlocs : Petites créatures vives, agiles, instinctives.
- * - Sylphides Forestiers : Silhouette fine, magie naturelle, très connectés au mana.
- *
- * OMBRE
- * - Varkyns : Hybrides bestiaux massifs, très résistants et puissants.
- * - Arkanids : Insectoïdes rapides, chitine légère, réflexes surdéveloppés.
- * - Ghrannites : Orcs de pierre, robustesse extrême et densité corporelle élevée.
- * - Sélénithes : Trolls lunaires, magie obscure, puissance magique innée.
+ * Configuration des races jouables — VERSION PRO
+ * Ajout de : bonusesReadable (liste pour UI)
  */
 
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../models/ServerProfile";
-
-// ======================
-// TYPES
-// ======================
 
 export type Faction = "AURION" | "OMBRE";
 
@@ -43,13 +25,39 @@ export interface RaceConfig {
   loreKey: string;
   faction: Faction;
   statsModifiers?: RaceStatsModifiers;
+
+  // AJOUT : Bonus lisibles pour l’UI
+  bonusesReadable: string[];
 }
 
-// ======================
-// FACTION AURION
-// ======================
+// ----------------------------------------------------
+// Générateur de texte lisible
+// ----------------------------------------------------
+function makeReadableBonuses(mod?: RaceStatsModifiers): string[] {
+  if (!mod) return [];
 
-const AURION_RACES: RaceConfig[] = [
+  const list: string[] = [];
+
+  if (mod.primaryPercent) {
+    for (const [stat, value] of Object.entries(mod.primaryPercent)) {
+      if (value) list.push(`+${value}% ${stat}`);
+    }
+  }
+
+  if (mod.computedPercent) {
+    for (const [stat, value] of Object.entries(mod.computedPercent)) {
+      if (value) list.push(`+${value}% ${stat}`);
+    }
+  }
+
+  return list;
+}
+
+// ----------------------------------------------------
+// FACTION AURION
+// ----------------------------------------------------
+
+const AURION_RACES_BASE = [
   {
     raceId: "human_elion",
     nameKey: "race.human_elion.name",
@@ -94,11 +102,11 @@ const AURION_RACES: RaceConfig[] = [
   }
 ];
 
-// ======================
+// ----------------------------------------------------
 // FACTION OMBRE
-// ======================
+// ----------------------------------------------------
 
-const OMBRE_RACES: RaceConfig[] = [
+const OMBRE_RACES_BASE = [
   {
     raceId: "varkyns_beast",
     nameKey: "race.varkyns_beast.name",
@@ -145,53 +153,30 @@ const OMBRE_RACES: RaceConfig[] = [
   }
 ];
 
-// ======================
-// EXPORT GLOBAL
-// ======================
+// ----------------------------------------------------
+// FINAL : Construction avec bonusesReadable
+// ----------------------------------------------------
 
 export const ALL_RACES: RaceConfig[] = [
-  ...AURION_RACES,
-  ...OMBRE_RACES
-];
+  ...AURION_RACES_BASE,
+  ...OMBRE_RACES_BASE
+].map(race => ({
+  ...race,
+  bonusesReadable: makeReadableBonuses(race.statsModifiers)
+}));
 
-export const RACES_BY_ID = new Map<string, RaceConfig>(
+export const RACES_BY_ID = new Map(
   ALL_RACES.map(r => [r.raceId, r])
 );
 
 export const VALID_RACE_IDS = ALL_RACES.map(r => r.raceId);
 
-export function isValidRace(raceId: string): boolean {
-  return RACES_BY_ID.has(raceId);
+export function isValidRace(id: string) {
+  return RACES_BY_ID.has(id);
 }
-
-export function getRaceById(raceId: string): RaceConfig | undefined {
-  return RACES_BY_ID.get(raceId);
+export function getRaceById(id: string) {
+  return RACES_BY_ID.get(id);
 }
-
-export function getRacesByFaction(faction: Faction): RaceConfig[] {
+export function getRacesByFaction(faction: Faction) {
   return ALL_RACES.filter(r => r.faction === faction);
-}
-
-/**
- * Transforme les bonus raciaux en texte lisible pour le client
- */
-export function getReadableRaceBonuses(race: RaceConfig): string[] {
-  const lines: string[] = [];
-  if (!race.statsModifiers) return lines;
-
-  const { primaryPercent, computedPercent } = race.statsModifiers;
-
-  if (primaryPercent) {
-    for (const [stat, value] of Object.entries(primaryPercent)) {
-      lines.push(`+${value}% ${stat}`);
-    }
-  }
-
-  if (computedPercent) {
-    for (const [stat, value] of Object.entries(computedPercent)) {
-      lines.push(`+${value}% ${stat}`);
-    }
-  }
-
-  return lines;
 }
