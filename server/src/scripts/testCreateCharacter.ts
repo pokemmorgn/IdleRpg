@@ -286,21 +286,20 @@ function handleJSONMessage(msg: any) {
 async function spawnTestMobs(ws: WebSocket) {
     console.log("→ Spawn de 2 mobs…");
 
-    ws.send(JSON.stringify({
-        type: "spawn_test_monster",
-        monsterId: "mob_01",
-        name: "Dummy A",
-        x: 102, y: 0, z: 104
-    }));
+await ws.send(JSON.stringify({
+    type: "spawn_test_monster",
+    monsterId: "mob_01",
+    name: "Dummy A",
+    x: 0, y: 0, z: 1
+}));
 
-    await sleep(200);
+await ws.send(JSON.stringify({
+    type: "spawn_test_monster",
+    monsterId: "mob_02",
+    name: "Dummy B",
+    x: 0, y: 0, z: 2
+}));
 
-    ws.send(JSON.stringify({
-        type: "spawn_test_monster",
-        monsterId: "mob_02",
-        name: "Dummy B",
-        x: 108, y: 0, z: 102
-    }));
 }
 
 async function startCombat(ws: WebSocket) {
