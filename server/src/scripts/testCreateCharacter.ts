@@ -166,28 +166,28 @@ async function createCharacter(token: string, race: string, classId: string) {
     const token = await loginAccount();
     if (!token) return;
 
-    const existing = await checkExistingProfile(token);
-    if (existing) {
-        console.log("✔ Aucun besoin de créer : perso déjà existant.");
-        return;
+    // Vérifier si le perso existe
+    let profile = await checkExistingProfile(token);
+    if (profile) {
+        console.log("✔ Personnage existant trouvé :", profile.characterName);
+    } else {
+        // Sinon on le crée
+        const creation = await getCreationData(token);
+        if (!creation) return;
+
+        const raceId = creation.races[0].raceId;
+        const classId = creation.byRace[raceId][0].classId;
+
+        console.log(`→ Race choisie : ${raceId}`);
+        console.log(`→ Classe choisie : ${classId}`);
+
+        profile = await createCharacter(token, raceId, classId);
     }
 
-    // Récupérer races + classes + restrictions
-    const creation = await getCreationData(token);
-    if (!creation) return;
+    // ✔ Et MAINTENANT on continue : connexion Colyseus
+    console.log("→ Connexion au serveur Colyseus avec le profil :", profile.profileId);
 
-    // Choisir automatiquement une race valide
-    const raceId = creation.races[0].raceId;
-
-    // Choisir automatiquement une classe autorisée pour cette race
-    const classId = creation.byRace[raceId][0].classId;
-
-    console.log(`→ Race choisie : ${raceId}`);
-    console.log(`→ Classe choisie : ${classId}`);
-
-    // Création du personnage
-    await createCharacter(token, raceId, classId);
-
+    // TODO : appel du script Colyseus
 })();
 
 
