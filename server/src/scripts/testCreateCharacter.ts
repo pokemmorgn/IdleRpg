@@ -1,267 +1,124 @@
-/**
- * TEST COMPLET :
- * - Register
- * - Login
- * - Récup perso
- * - Connexion Colyseus
- * - Spawn 2 mobs
- * - Combat auto
- * - HUD dynamique
- */
-
 import WebSocket from "ws";
 
-// ===============================
-// CONFIG
-// ===============================
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
 
-const USERNAME = "combat_tester";
-const PASSWORD = "Test123!";
-const EMAIL = "combat_tester@example.com";
+// === Compte test ===
+const TEST_USERNAME = "combat_tester";
+const TEST_PASSWORD = "Test123!";
+const TEST_EMAIL = "combat_tester@example.com";
 
 const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TestCharacter";
 
-// ===============================
-// HELPERS
-// ===============================
-function sleep(ms: number) {
-    return new Promise(res => setTimeout(res, ms));
-}
-
-function clean(raw: Buffer) {
-    try {
-        return raw.toString("utf8").replace(/\u0000/g, "");
-    } catch {
-        return "";
-    }
-}
-
-// ===============================
-// ACCOUNT SYSTEM
-// ===============================
-async function register() {
-    console.log("→ Tentative d'inscription...");
-
-    const res = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            username: USERNAME,
-            email: EMAIL,
-            password: PASSWORD
-        })
+// =========================
+// Helpers
+// =========================
+async function api(path: string, method = "GET", body: any = null, token: string | null = null) {
+    const res = await fetch(API_URL + path, {
+        method,
+        headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: body ? JSON.stringify(body) : null
     });
 
-    const json = await res.json();
+    return res.json();
+}
 
-    if (res.ok) {
-        console.log("✔ Compte créé !");
-        return true;
-    }
+// =========================
+// REGISTER
+// =========================
+async function registerAccount() {
+    console.log("→ Tentative d'inscription...");
+
+    const json = await api("/auth/register", "POST", {
+        username: TEST_USERNAME,
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD
+    });
 
     if (json.error === "Username already taken") {
         console.log("ℹ Compte déjà existant, on continue.");
-        return true;
+        return;
     }
 
-    console.error("❌ register:", json);
-    return false;
+    console.log("✔ Compte créé !");
 }
 
-async function login() {
+// =========================
+// LOGIN
+// =========================
+async function loginAccount(): Promise<string> {
     console.log("→ Connexion...");
 
-    const res = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            username: USERNAME,
-            password: PASSWORD
-        })
+    const json = await api("/auth/login", "POST", {
+        username: TEST_USERNAME,
+        password: TEST_PASSWORD
     });
 
-    const json = await res.json();
-
-    if (!res.ok) {
-        console.error("❌ login:", json);
-        return null;
+    if (json.token) {
+        console.log("✔ Connecté !");
+        return json.token;
     }
 
-    console.log("✔ Connecté !");
-    return json.token;
+    throw new Error("Login failed");
 }
 
-// ===============================
-// PROFILE SYSTEM
-// ===============================
-async function getProfile(token: string) {
-    const res = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
-        headers: { "Authorization": `Bearer ${token}` }
-    });
-
-    const json = await res.json();
-
-    if (!res.ok) {
-        console.error("❌ getProfile:", json);
-        return null;
-    }
+// =========================
+// Check existing profile
+// =========================
+async function checkExistingProfile(token: string) {
+    const json = await api(`/profile/${SERVER_ID}`, "GET", null, token);
 
     return json.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) || null;
 }
 
-async function getCreation(token: string) {
-    const res = await fetch(`${API_URL}/game-data/creation`, {
-        headers: { "Authorization": `Bearer ${token}` }
-    });
-    const json = await res.json();
-
-    if (!res.ok) {
-        console.error("❌ creation:", json);
-        return null;
-    }
-
-    return json;
-}
-
+// =========================
+// Create character
+// =========================
 async function createCharacter(token: string, race: string, classId: string) {
-    console.log(`→ Création du personnage ${CHARACTER_NAME}...`);
+    const json = await api(`/profile/${SERVER_ID}`, "POST", {
+        characterSlot: CHARACTER_SLOT,
+        characterName: CHARACTER_NAME,
+        characterClass: classId,
+        characterRace: race
+    }, token);
 
-    const res = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            characterSlot: CHARACTER_SLOT,
-            characterName: CHARACTER_NAME,
-            characterClass: classId,
-            characterRace: race
-        })
-    });
-
-    const json = await res.json();
-
-    if (!res.ok) {
-        console.error("❌ create:", json);
-        return null;
-    }
-
-    console.log("✔ Personnage créé !");
     return json.profile;
 }
 
-// ===============================
-// MATCHMAKING
-// ===============================
-async function reserveSeat(token: string, characterSlot: number) {
-    console.log("→ Matchmaking Colyseus…");
-
-    const res = await fetch(`${API_URL}/matchmaking/join-world`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            serverId: SERVER_ID,
-            characterSlot
-        })
+// =========================
+// Matchmaking
+// =========================
+async function reserveSeat(token: string) {
+    const json = await api(`/matchmaking/join-world`, "POST", {
+        token,
+        serverId: SERVER_ID,
+        characterSlot: CHARACTER_SLOT
     });
 
-    const json = await res.json();
-
-    if (!res.ok) {
-        console.error("❌ matchmaking:", json);
-        process.exit(1);
+    if (!json.sessionId || !json.room?.roomId) {
+        console.log("BAD MATCHMAKING RESPONSE:", json);
+        throw new Error("Bad matchmaking response");
     }
 
-    return json;
+    return {
+        roomId: json.room.roomId,
+        sessionId: json.sessionId
+    };
 }
 
-// ===============================
-// HANDLE MESSAGES
-// ===============================
-interface MonsterHP {
-    id: string;
-    hp: number;
-    max: number;
-}
-const monstersHUD: Record<string, MonsterHP> = {};
-let playerHP = 0;
-let playerMaxHP = 0;
+// =========================
+// Connect WebSocket
+// =========================
+async function connectWebSocket(roomId: string, sessionId: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+        const url = `${WS_URL}/${roomId}?sessionId=${sessionId}`;
+        console.log("WS URL =", url);
 
-function drawHUD() {
-    console.clear();
-
-    console.log("=== 🟩 COMBAT HUD LIVE ===");
-    console.log(`🧍 Player: ${playerHP}/${playerMaxHP}\n`);
-
-    console.log("=== 👹 Monsters ===");
-    for (const m of Object.values(monstersHUD)) {
-        console.log(` - ${m.id}: ${m.hp}/${m.max}`);
-    }
-
-    console.log("\n(Logs en temps réel ci-dessous…)\n");
-}
-
-function handleColyseusMessage(type: string, data: any) {
-    switch (type) {
-        case "welcome":
-            playerHP = data.stats.hp;
-            playerMaxHP = data.stats.maxHp;
-            drawHUD();
-            break;
-
-        case "monster_spawned":
-            monstersHUD[data.monsterId] = {
-                id: data.monsterId,
-                hp: data.maxHp,
-                max: data.maxHp
-            };
-            drawHUD();
-            break;
-
-        case "monsterHit":
-            if (monstersHUD[data.monsterId]) {
-                monstersHUD[data.monsterId].hp = data.hpLeft;
-            }
-            console.log(`🟩 HIT → ${data.monsterName} (${data.damage} dmg)`);
-            drawHUD();
-            break;
-
-        case "monsterKilled":
-            delete monstersHUD[data.monsterId];
-            console.log(`💀 Monster slain: ${data.monsterName}`);
-            drawHUD();
-            break;
-
-        case "playerDamaged":
-            playerHP = data.hpLeft;
-            console.log(`🟥 Monster hit you for ${data.damage} dmg`);
-            drawHUD();
-            break;
-
-        case "playerKilled":
-            playerHP = 0;
-            console.log(`💀 YOU DIED to ${data.monsterName}`);
-            drawHUD();
-            break;
-    }
-}
-
-// ===============================
-// CONNECT WS
-// ===============================
-async function connect(room: any, sessionId: string) {
-    return new Promise<WebSocket>((resolve) => {
-        console.log("→ Connexion WebSocket…");
-
-        const url = `${WS_URL}/${room.roomId}?sessionId=${sessionId}`;
         const ws = new WebSocket(url);
 
         ws.on("open", () => {
@@ -269,65 +126,51 @@ async function connect(room: any, sessionId: string) {
             resolve(ws);
         });
 
-        ws.on("message", (raw: WebSocket.RawData) => {
-            const msg = clean(raw as Buffer);
+        ws.on("error", (err) => {
+            console.error("WS error:", err);
+            reject(err);
+        });
 
-            if (!msg.startsWith("8")) return; // 8 = message
-            try {
-                const json = JSON.parse(msg.substring(1));
-                handleColyseusMessage(json.type, json.data);
-            } catch { }
+        ws.on("message", (raw) => {
+            if (!(raw instanceof Buffer)) return;
+            console.log("📩 Raw message:", raw.length, "bytes");
         });
     });
 }
 
-// ===============================
-// SPAWN MOBS
-// ===============================
-function spawn(ws: WebSocket) {
-    console.log("→ Spawn de 2 mobs…");
-    ws.send(JSON.stringify({
-        type: "spawn_test_monster",
-        monsterId: `mob_${Date.now()}`,
-        name: "Wolf",
-        x: 100, y: 0, z: 100
-    }));
-    ws.send(JSON.stringify({
-        type: "spawn_test_monster",
-        monsterId: `mob2_${Date.now()}`,
-        name: "Wolf",
-        x: 104, y: 0, z: 100
-    }));
-}
-
-// ===============================
+// =========================
 // MAIN
-// ===============================
+// =========================
 (async () => {
     console.log("=== 🧪 TEST CREATION PERSONNAGE ===");
 
-    if (!await register()) return;
+    await registerAccount();
+    const token = await loginAccount();
 
-    const token = await login();
-    if (!token) return;
-
-    let profile = await getProfile(token);
+    let profile = await checkExistingProfile(token);
 
     if (profile) {
         console.log("✔ Personnage :", profile.characterName);
     } else {
-        const creation = await getCreation(token);
-        const race = creation.races[0].raceId;
-        const classId = creation.byRace[race][0].classId;
-        profile = await createCharacter(token, race, classId);
+        // Get races + classes
+        const creation = await api("/game-data/creation", "GET", null, token);
+        const raceId = creation.races[0].raceId;
+        const classId = creation.byRace[raceId][0].classId;
+
+        profile = await createCharacter(token, raceId, classId);
+        console.log("✔ Personnage créé :", profile.characterName);
     }
 
-    // MATCHMAKING
-    const match = await reserveSeat(token, CHARACTER_SLOT);
-    const ws = await connect(match.room, match.sessionId);
+    console.log("→ Matchmaking Colyseus…");
+    const seat = await reserveSeat(token);
 
-    // COMBAT
-    spawn(ws);
+    console.log("→ Connexion WebSocket…");
+    const ws = await connectWebSocket(seat.roomId, seat.sessionId);
+
+    console.log("→ Spawn de 2 mobs…");
+    ws.send(JSON.stringify({ type: "spawn_test_monster" }));
+    ws.send(JSON.stringify({ type: "spawn_test_monster" }));
+
     console.log("→ Combat auto activé…");
-
+    ws.send(JSON.stringify({ type: "activate_afk_mode" }));
 })();
