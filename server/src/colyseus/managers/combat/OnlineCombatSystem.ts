@@ -23,6 +23,19 @@ export class OnlineCombatSystem {
         // anti-mouvement (soft replace isMoving)
         const isMoving = (Date.now() - player.lastMovementTime) < 150;
 
+        // Nouvelle fonctionnalité : annuler les soft-locks si le joueur bouge
+        if (isMoving && player.currentAnimationLockType === "soft") {
+            player.castLockRemaining = 0;
+            player.currentCastingSkillId = "";
+            player.animationLockRemaining = 0;
+            player.currentAnimationLockType = "none";
+            
+            // Notifier le client que le cast a été annulé
+            broadcast(player.sessionId, "cast_cancelled", {
+                reason: "movement"
+            });
+        }
+
         if (player.isDead || player.isAFK) return;
 
         // Première détection combat
@@ -57,6 +70,11 @@ export class OnlineCombatSystem {
         if (dist > this.CHASE_RANGE) {
             player.inCombat = false;
             player.targetMonsterId = "";
+            return;
+        }
+
+        // Si le joueur est en mouvement, ne pas lancer de nouvelles compétences
+        if (isMoving) {
             return;
         }
 
