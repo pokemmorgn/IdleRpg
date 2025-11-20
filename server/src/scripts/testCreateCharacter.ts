@@ -212,46 +212,73 @@ async function connectWebSocket(room: any, sessionId: string) {
 // TRAITEMENT DES MESSAGES
 // =============================
 function handleIncomingMessage(buffer: Buffer) {
-    // Colyseus envoie des messages binaires, mais TES événements personnalisés sont JSON
-    if (buffer[0] === 0x7B) {
-        // "{"
-        try {
-            const json = JSON.parse(buffer.toString());
-            handleJSONMessage(json);
-        } catch {
-            // Not JSON
-        }
+    // Colyseus = binary patch → on ignore
+    // Nos events custom = JSON → on les traite
+    if (buffer[0] !== 0x7B) return;
+
+    let msg: any;
+    try {
+        msg = JSON.parse(buffer.toString());
+    } catch {
+        return;
     }
+
+    handleJSONMessage(msg);
 }
 
 function handleJSONMessage(msg: any) {
-    if (msg.type === "combat_event") {
-        /**
-         * FORMAT B:
-         * {
-         *  event: "hit",
-         *  source: "player" | "monster",
-         *  sourceId: "",
-         *  target: "player" | "monster",
-         *  targetId: "",
-         *  damage: number,
-         *  crit: boolean,
-         *  time: timestamp
-         * }
-         */
-        if (msg.target === "player") {
-            HUD_PLAYER_HP = msg.remainingHp ?? HUD_PLAYER_HP;
-        } else if (msg.target === "monster") {
-            if (!HUD_MOBS[msg.targetId]) {
-                HUD_MOBS[msg.targetId] = { hp: 0, maxHp: 0 };
-            }
-            HUD_MOBS[msg.targetId].hp = msg.remainingHp;
+    // ========== HANDLER COMBAT ==========
+    if (msg.type === "monster_attack") {
+        // Format serveur:
+        // { type: "monster_attack", attackerId, damage, hpLeft }
+
+        HUD_PLAYER_HP = msg.hpLeft;
+        HUD_TARGET = msg.attackerId;
+
+        console.log(`🟥 Le monstre ${msg.attackerId} t’inflige ${msg.damage} → HP ${msg.hpLeft}`);
+
+        renderHUD();
+        return;
+    }
+
+    if (msg.type === "player_hit") {
+        // Format serveur:
+        // { type: "player_hit", monsterId, damage, hpLeft }
+
+        if (!HUD_MOBS[msg.monsterId]) {
+            HUD_MOBS[msg.monsterId] = { hp: msg.hpLeft, maxHp: msg.hpLeft };
+        } else {
+            HUD_MOBS[msg.monsterId].hp = msg.hpLeft;
         }
 
-        HUD_TARGET = msg.targetId ?? HUD_TARGET;
+        HUD_TARGET = msg.monsterId;
+
+        console.log(`🟦 Tu frappes ${msg.monsterId} → ${msg.damage} dégâts (HP ${msg.hpLeft})`);
+
         renderHUD();
+        return;
+    }
+
+    if (msg.type === "monster_dead") {
+        console.log(`💀 Monstre ${msg.monsterId} tué !`);
+        delete HUD_MOBS[msg.monsterId];
+        renderHUD();
+        return;
+    }
+
+    if (msg.type === "player_dead") {
+        console.log(`💀 Tu es mort !`);
+        HUD_PLAYER_HP = 0;
+        renderHUD();
+        return;
+    }
+
+    // Logs génériques
+    if (msg.type === "combat_log") {
+        console.log(`📘 Log: ${msg.message}`);
     }
 }
+
 
 // =============================
 // SPAWN + COMBAT AUTO
