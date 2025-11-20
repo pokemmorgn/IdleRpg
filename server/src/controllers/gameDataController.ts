@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { 
+import {
   ALL_CLASSES,
   getClassesByRole,
   getAllowedClassesForRace,
@@ -43,6 +43,7 @@ export const listRaces = async (req: Request, res: Response) => {
 
     if (faction && typeof faction === "string") {
       const f = faction.toUpperCase() as Faction;
+
       if (f !== "AURION" && f !== "OMBRE") {
         return res.status(400).json({ error: "Invalid faction" });
       }
@@ -53,8 +54,9 @@ export const listRaces = async (req: Request, res: Response) => {
       });
     }
 
-    // IMPORTANT : on envoie statsModifiers aussi ici
-    res.json({ races: ALL_RACES });
+    res.json({
+      races: ALL_RACES
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -97,10 +99,13 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Race not found", raceId });
     }
 
+    const allowed = getAllowedClassesForRace(raceId);
+
     res.json({
       raceId,
+      totalAllowed: allowed.length,
       totalClasses: ALL_CLASSES.length,
-      allowedClasses: getAllowedClassesForRace(raceId)
+      allowedClasses: allowed
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -109,6 +114,7 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
 
 /* ============================================================================
    GET /game-data/creation
+   => Pack complet pour Unity
 ============================================================================ */
 export const getCreationData = async (req: Request, res: Response) => {
   try {
@@ -119,9 +125,9 @@ export const getCreationData = async (req: Request, res: Response) => {
     }
 
     res.json({
-      races: ALL_RACES,   // ✔ inclut statsModifiers
+      races: ALL_RACES,   // toutes les races déjà au bon format
       classes: ALL_CLASSES,
-      byRace              // ✔ classes autorisées
+      byRace
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
