@@ -1,9 +1,10 @@
 /**
  * Script de test pour la configuration des races et les routes de statistiques
- * Usage: npx ts-node test-races-and-routes.ts
+ * Usage: npx ts-node src/scripts/test-races-and-routes.ts
  */
 
 import http from "http";
+// CORRECTION 1: Chemin d'importation correct
 import {
   ALL_RACES,
   RACES_BY_ID,
@@ -13,8 +14,8 @@ import {
   getRacesByFaction,
   getReadableRaceBonuses,
   Faction,
-  RaceConfig
-} from './races.config'; // Adaptez le chemin si nécessaire
+  RaceConfig // Import du type pour le typage
+} from '../config/races.config';
 
 // --- Configuration du serveur API ---
 const API_HOST = "localhost";
@@ -58,7 +59,7 @@ function makeRequest(method: string, path: string): Promise<HttpResponse> {
   });
 }
 
-// --- Helper pour un affichage coloré et lisible (similaire à votre exemple) ---
+// --- Helper pour un affichage coloré et lisible ---
 const colors = {
   reset: "\x1b[0m",
   green: "\x1b[32m",
@@ -101,7 +102,8 @@ async function runTests() {
   try {
     // Test 1: Cohérence des données
     log.info("Test 1.1: Vérification de la cohérence des données de race");
-    ALL_RACES.forEach(race => {
+    // CORRECTION 2: Ajout du type 'RaceConfig' au paramètre du callback
+    ALL_RACES.forEach((race: RaceConfig) => {
       if (!race.raceId || !race.nameKey || !race.faction) {
         log.error(`La race ${race.raceId || 'INCONNUE'} est mal formée.`);
         allTestsPassed = false;
@@ -138,13 +140,15 @@ async function runTests() {
     log.info("Test 1.4: Vérification de la fonction getRacesByFaction");
     const aurionRaces = getRacesByFaction('AURION');
     const ombreRaces = getRacesByFaction('OMBRE');
-    if (aurionRaces.length === 4 && aurionRaces.every(r => r.faction === 'AURION')) {
+    // CORRECTION 2: Ajout du type 'RaceConfig' au paramètre du callback
+    if (aurionRaces.length === 4 && aurionRaces.every((r: RaceConfig) => r.faction === 'AURION')) {
       log.success("getRacesByFaction filtre correctement la faction AURION.");
     } else {
       log.error("getRacesByFaction a échoué pour la faction AURION.");
       allTestsPassed = false;
     }
-    if (ombreRaces.length === 4 && ombreRaces.every(r => r.faction === 'OMBRE')) {
+    // CORRECTION 2: Ajout du type 'RaceConfig' au paramètre du callback
+    if (ombreRaces.length === 4 && ombreRaces.every((r: RaceConfig) => r.faction === 'OMBRE')) {
       log.success("getRacesByFaction filtre correctement la faction OMBRE.");
     } else {
       log.error("getRacesByFaction a échoué pour la faction OMBRE.");
@@ -153,9 +157,9 @@ async function runTests() {
 
     // Test 5: getReadableRaceBonuses
     log.info("Test 1.5: Vérification de la fonction getReadableRaceBonuses");
-    ALL_RACES.forEach(race => {
+    // CORRECTION 2: Ajout du type 'RaceConfig' au paramètre du callback
+    ALL_RACES.forEach((race: RaceConfig) => {
         const bonuses = getReadableRaceBonuses(race);
-        // Actuellement, tous les bonus sont vides
         if (bonuses.length === 0) {
             log.success(`Bonus vides correctement gérés pour ${race.raceId}`);
         } else {
@@ -178,14 +182,15 @@ async function runTests() {
     // Test 1: GET /races
     log.info("Test 2.1: GET /races");
     const resRaces = await makeRequest("GET", "/races");
-    if (resRaces.statusCode === 200 && Array.isArray(resRaces.data) && resRaces.data.length === ALL_RACES.length) {
-      log.success(`GET /races a retourné ${resRaces.data.length} races, comme attendu.`);
+    // CORRECTION 3: Vérification de la structure de la réponse { races: [...] }
+    if (resRaces.statusCode === 200 && Array.isArray(resRaces.data.races) && resRaces.data.races.length === ALL_RACES.length) {
+      log.success(`GET /races a retourné ${resRaces.data.races.length} races, comme attendu.`);
     } else {
       log.error(`GET /races a échoué. Status: ${resRaces.statusCode}, Data: ${JSON.stringify(resRaces.data)}`);
       allTestsPassed = false;
     }
 
-    // Test 2: GET /races/:raceId
+    // Test 2: GET /races/:raceId (valide)
     log.info("Test 2.2: GET /races/human_elion");
     const resRace = await makeRequest("GET", "/races/human_elion");
     if (resRace.statusCode === 200 && resRace.data.raceId === 'human_elion') {
@@ -195,18 +200,29 @@ async function runTests() {
       allTestsPassed = false;
     }
 
+    // Test 2b: GET /races/:raceId (inexistant)
+    log.info("Test 2.3: GET /races/race_inexistante (doit retourner 404)");
+    const resRaceNotFound = await makeRequest("GET", "/races/race_inexistante");
+    if (resRaceNotFound.statusCode === 404) {
+        log.success("GET /races/:raceId retourne bien 404 pour une race inexistante.");
+    } else {
+        log.error(`GET /races/:raceId aurait dû retourner 404. Status: ${resRaceNotFound.statusCode}`);
+        allTestsPassed = false;
+    }
+
     // Test 3: GET /races/:raceId/classes
-    log.info("Test 2.3: GET /races/human_elion/classes");
+    log.info("Test 2.4: GET /races/human_elion/classes");
     const resRaceClasses = await makeRequest("GET", "/races/human_elion/classes");
-    if (resRaceClasses.statusCode === 200 && Array.isArray(resRaceClasses.data)) {
-      log.success(`GET /races/:raceId/classes a retourné une liste de ${resRaceClasses.data.length} classes.`);
+    // CORRECTION 3: Vérification de la structure de la réponse { classes: [...] }
+    if (resRaceClasses.statusCode === 200 && Array.isArray(resRaceClasses.data.classes)) {
+      log.success(`GET /races/:raceId/classes a retourné une liste de ${resRaceClasses.data.classes.length} classes.`);
     } else {
       log.error(`GET /races/:raceId/classes a échoué. Status: ${resRaceClasses.statusCode}`);
       allTestsPassed = false;
     }
     
     // Test 4: GET /classes
-    log.info("Test 2.4: GET /classes");
+    log.info("Test 2.5: GET /classes");
     const resClasses = await makeRequest("GET", "/classes");
     if (resClasses.statusCode === 200 && Array.isArray(resClasses.data)) {
       log.success(`GET /classes a retourné une liste de ${resClasses.data.length} classes.`);
@@ -216,7 +232,7 @@ async function runTests() {
     }
 
     // Test 5: GET /creation-data
-    log.info("Test 2.5: GET /creation-data");
+    log.info("Test 2.6: GET /creation-data");
     const resCreationData = await makeRequest("GET", "/creation-data");
     const hasCorrectKeys = resCreationData.data && 
                           typeof resCreationData.data === 'object' &&
