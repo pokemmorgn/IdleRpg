@@ -30,7 +30,7 @@ const SKILL_IDS = {
 // === FIN DE LA CONFIGURATION ==================================
 // =================================================================
 
-// --- Helper pour les appels API (repris de votre script) ---
+// --- Helper pour les appels API ---
 function makeRequest(method: string, path: string, body?: any, token?: string): Promise<any> {
     return new Promise((resolve, reject) => {
         const postData = body ? JSON.stringify(body) : "";
@@ -52,7 +52,7 @@ function makeRequest(method: string, path: string, body?: any, token?: string): 
     });
 }
 
-// --- Logging avec couleurs (repris de votre script) ---
+// --- Logging avec couleurs ---
 const colors = { reset: "\x1b[0m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", blue: "\x1b[34m", cyan: "\x1b[36m" };
 const log = {
     success: (msg: string) => console.log(`${colors.green}✅ ${msg}${colors.reset}`),
@@ -82,10 +82,17 @@ async function setup() {
     const token = registerRes.data.token;
     log.success("Compte créé.");
 
-    // Récupérer les données de création pour la première race/classe
+    // Récupérer les données de création
     const creationDataRes = await makeRequest("GET", "/stats/creation-data");
-    const race = creationDataRes.data.races[0];
-    const classId = creationDataRes.data.restrictions[race.raceId][0];
+    const creationData = creationDataRes.data;
+    const race = creationData.races[0];
+    
+    // Trouver une classe valide pour la race choisie
+    const allowedClassIds = creationData.restrictions[race.raceId] || creationData.classes.map((c: any) => c.classId);
+    const classId = allowedClassIds[0];
+    
+    log.info(`Race test: ${race.raceId}`);
+    log.info(`Classe test: ${classId}`);
     
     const profileRes = await makeRequest("POST", "/profile/s1", { characterSlot: 1, characterName: "TestFighter", characterClass: classId, characterRace: race.raceId }, token);
     if (profileRes.statusCode !== 201) throw new Error(`Profile creation failed: ${profileRes.data.error}`);
@@ -100,7 +107,6 @@ async function setup() {
 
     // Attendre un peu pour que le state initial soit synchronisé
     await new Promise(resolve => setTimeout(resolve, 500));
-    // CORRECTION : Utiliser room.sessionId au lieu de client.sessionId
     playerState = (room.state as any).players.get(room.sessionId);
     if (!playerState) throw new Error("Impossible de récupérer l'état du joueur.");
     log.success(`Joueur ${playerState.characterName} récupéré.`);
@@ -136,7 +142,7 @@ async function testBasicCombat() {
     // Attendre quelques cycles d'attaque
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    // Vérifier que le monstre a perdu des PV et que le joueur a été attaqué en retour
+    // Vérifier que le monstre a perdu des PV
     if (monster1.hp < monster1.maxHp) {
         log.success(`Le monstre 1 a perdu des PV (${monster1.hp}/${monster1.maxHp}).`);
     } else {
@@ -242,10 +248,6 @@ async function cleanup() {
     if (room) {
         log.info("Déconnexion de la room...");
         await room.leave();
-    }
-    if (client) {
-        log.info("Déconnexion du serveur Colyseus.");
-        // client.close() n'existe pas toujours, mais leave() suffit.
     }
     log.success("Nettoyage terminé.");
 }
