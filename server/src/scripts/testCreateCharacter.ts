@@ -1,9 +1,13 @@
 /**
  * SCRIPT DE TEST : REGISTER → LOGIN → JOIN → WEBSOCKET → COMBAT AUTO + HUD
+ * Compatible Node 18+ (fetch natif)
  */
 
 import WebSocket, { RawData } from "ws";
 
+// =====================
+// CONSTANTES
+// =====================
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
 
@@ -15,15 +19,11 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TestCharacter";
 
+// =====================
+// UTILS
+// =====================
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function rawToBuffer(raw: RawData): Buffer {
-    if (raw instanceof Buffer) return raw;
-    if (typeof raw === "string") return Buffer.from(raw);
-    if (raw instanceof ArrayBuffer) return Buffer.from(new Uint8Array(raw));
-    return Buffer.from(raw as Uint8Array);
 }
 
 // HUD ================================
@@ -55,9 +55,8 @@ function renderHUD() {
 }
 
 // =============================
-// API
+// API WRAPPERS
 // =============================
-
 async function registerAccount(): Promise<boolean> {
     console.log("→ Tentative d'inscription...");
 
@@ -179,7 +178,7 @@ async function reserveSeat(token: string, profile: any) {
         throw new Error("⚠ Matchmaking failed: " + JSON.stringify(json));
     }
 
-    return json;
+    return json; // { room, sessionId }
 }
 
 // =============================
@@ -201,85 +200,81 @@ async function connectWebSocket(room: any, sessionId: string) {
 }
 
 // =============================
-// MESSAGE HANDLING
+// 🔥 PARSER COLYSEUS PATCHÉ
 // =============================
-function handleIncomingMessage(buffer: Buffer) {
-    if (buffer[0] !== 0x7B) return;
+function handleIncomingMessage(raw: RawData) {
+    let text = "";
 
-    let msg: any;
+    if (typeof raw === "string") text = raw;
+    else if (raw instanceof Buffer) text = raw.toString();
+    else return;
+
+    // Format Colyseus : "eventName\0{json}"
+    const sep = text.indexOf("\0");
+    if (sep === -1) return;
+
+    const eventName = text.substring(0, sep);
+    const jsonStr = text.substring(sep + 1);
+
+    let payload;
     try {
-        msg = JSON.parse(buffer.toString());
+        payload = JSON.parse(jsonStr);
     } catch {
         return;
     }
 
-    handleJSONMessage(msg);
+    handleCustomEvent(eventName, payload);
 }
 
-// PATCH : handlers POUR LES VRAIS TYPES ENVOYÉS PAR LE SERVEUR
-function handleJSONMessage(msg: any) {
+// =============================
+// HANDLER DES EVENTS CUSTOM
+// =============================
+function handleCustomEvent(event: string, data: any) {
 
-    // 🟥 Player Damaged (ancien monster_attack)
-    if (msg.type === "playerDamaged") {
-        const data = msg.data;
-
+    if (event === "playerDamaged") {
         HUD_PLAYER_HP = data.hpLeft;
         HUD_TARGET = data.monsterId;
 
-        console.log(`🟥 ${data.monsterName} t’inflige ${data.damage} → HP ${data.hpLeft}`);
+        console.log(`🟥 Le monstre ${data.monsterId} t’inflige ${data.damage} → HP ${data.hpLeft}`);
         renderHUD();
         return;
     }
 
-    // 🟦 Player auto-attack (ancien player_hit)
-    if (msg.type === "auto_attack") {
-        const d = msg.data;
-
-        if (!HUD_MOBS[d.targetId]) {
-            HUD_MOBS[d.targetId] = { hp: d.hpLeft, maxHp: d.hpLeft };
+    if (event === "auto_attack") {
+        if (!HUD_MOBS[data.targetId]) {
+            HUD_MOBS[data.targetId] = { hp: data.hpLeft, maxHp: data.hpLeft };
         } else {
-            HUD_MOBS[d.targetId].hp = d.hpLeft;
+            HUD_MOBS[data.targetId].hp = data.hpLeft;
         }
 
-        HUD_TARGET = d.targetId;
-
-        console.log(`🟦 Tu frappes ${d.targetId} → ${d.damage} dégâts (HP ${d.hpLeft})`);
+        HUD_TARGET = data.targetId;
+        console.log(`🟦 Tu frappes ${data.targetId} → ${data.damage} dégâts`);
         renderHUD();
         return;
     }
 
-    // 💀 Combat Event → mob mort
-    if (msg.type === "combat_event") {
-        const ev = msg.data;
-
-        if (ev.event === "death" && ev.target === "monster") {
-            delete HUD_MOBS[ev.targetId];
-            console.log(`💀 Monstre ${ev.targetId} tué !`);
-            renderHUD();
-        }
+    if (event === "monsterKilled") {
+        delete HUD_MOBS[data.monsterId];
+        console.log(`💀 Monstre ${data.monsterId} tué !`);
+        renderHUD();
         return;
-    }
-
-    // logs génériques
-    if (msg.type === "combat_log") {
-        console.log(`📘 Log: ${msg.message}`);
     }
 }
 
 // =============================
-// SPAWN DES MOBS
+// SPAWN + COMBAT AUTO
 // =============================
 async function spawnTestMobs(ws: WebSocket) {
     console.log("→ Spawn de 2 mobs…");
 
-    await ws.send(JSON.stringify({
+    ws.send(JSON.stringify({
         type: "spawn_test_monster",
         monsterId: "mob_01",
         name: "Dummy A",
         x: 0, y: 0, z: 1
     }));
 
-    await ws.send(JSON.stringify({
+    ws.send(JSON.stringify({
         type: "spawn_test_monster",
         monsterId: "mob_02",
         name: "Dummy B",
@@ -317,10 +312,11 @@ async function startCombat(ws: WebSocket) {
     const mm = await reserveSeat(token, profile);
     const ws = await connectWebSocket(mm.room, mm.sessionId);
 
-    ws.on("message", (raw) => handleIncomingMessage(rawToBuffer(raw)));
+    ws.on("message", (raw) => handleIncomingMessage(raw));
 
     await sleep(300);
 
     await spawnTestMobs(ws);
     await startCombat(ws);
+
 })();
