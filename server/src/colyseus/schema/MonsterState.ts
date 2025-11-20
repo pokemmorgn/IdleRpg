@@ -7,9 +7,8 @@ export class MonsterState extends Schema {
   @type("number") level: number = 1;
   
   // Stats de base
-  @type("number") hp: number = 100;              // Gardé pour compatibilité
+  @type("number") hp: number = 100;              // Source de vérité unique pour les HP
   @type("number") maxHp: number = 100;
-  @type("number") _currentHp: number = 100;      // Stockage interne des HP
   @type("number") attack: number = 10;
   @type("number") defense: number = 5;
   @type("number") speed: number = 100;
@@ -76,9 +75,7 @@ export class MonsterState extends Schema {
     this.name = name;
     this.type = type;
     this.level = level;
-    this.hp = hp;
     this.maxHp = maxHp;
-    this._currentHp = hp; // Initialiser _currentHp au maxHp
     this.attack = attack;
     this.defense = defense;
     this.speed = speed;
@@ -98,29 +95,36 @@ export class MonsterState extends Schema {
     this.respawnOnDeath = respawnOnDeath;
     this.modelId = modelId;
     this.isActive = isActive;
-    this.isAlive = true;
-    this.isDead = false;
+    
+    // Initialiser les HP et l'état de vie via la méthode centralisée
+    this.setHp(hp);
   }
 
-  // Getter pour accéder aux HP actuels
-  get currentHp(): number {
-    return this._currentHp;
-  }
-
-  // Setter pour modifier les HP actuels avec validation
-  set currentHp(value: number) {
-    this._currentHp = Math.max(0, Math.min(value, this.maxHp));
-    this.isAlive = this._currentHp > 0;
+  /**
+   * Méthode centralisée pour modifier les HP du monstre.
+   * Garantit la cohérence des états `isAlive` et `isDead`.
+   * @param value La nouvelle valeur des HP.
+   */
+  setHp(value: number) {
+    const wasAlive = this.isAlive;
+    this.hp = Math.max(0, Math.min(value, this.maxHp));
+    
+    this.isAlive = this.hp > 0;
     this.isDead = !this.isAlive;
+
+    // Optionnel: logger les changements d'état pour le debug
+    if (wasAlive && this.isDead) {
+        console.log(`[MonsterState] ${this.name} (${this.monsterId}) est mort.`);
+    } else if (!wasAlive && this.isAlive) {
+        console.log(`[MonsterState] ${this.name} (${this.monsterId}) a réapparu.`);
+    }
   }
 
-  // Getter pour maintenir la compatibilité avec le code existant
-  get hp(): number {
-    return this.currentHp;
-  }
-
-  // Setter pour maintenir la compatibilité avec le code existant
-  set hp(value: number) {
-    this.currentHp = value;
+  /**
+   * Getter pour la compatibilité, au cas où du code utiliserait encore `currentHp`.
+   * @deprecated Utilisez la propriété `hp` directement.
+   */
+  get currentHp(): number {
+    return this.hp;
   }
 }
