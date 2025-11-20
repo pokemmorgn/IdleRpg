@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { getRoom } from "@colyseus/core";
-import { validateToken } from "../utils/authHelper";
-import { loadPlayerCharacter } from "../utils/playerLoader";
+import jwt from "jsonwebtoken";
+import { matchMaker } from "colyseus";
+
+const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
 const router = Router();
 
@@ -11,47 +12,44 @@ const router = Router();
  */
 router.post("/join-world", async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) {
-            return res.status(401).json({ error: "Missing token" });
+        // Vérification token
+        const header = req.headers.authorization;
+        if (!header) {
+            return res.status(401).json({ error: "Missing Authorization header" });
         }
 
-        const token = authHeader.replace("Bearer ", "");
-        const validation = await validateToken(token);
+        const token = header.replace("Bearer ", "");
+        let decoded: any;
 
-        if (!validation.valid) {
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+        } catch {
             return res.status(401).json({ error: "Invalid token" });
         }
 
+        const playerId = decoded.playerId;
+        if (!playerId) {
+            return res.status(401).json({ error: "Invalid token payload" });
+        }
+
         const { serverId, characterSlot } = req.body;
+
         if (!serverId || characterSlot == null) {
-            return res.status(400).json({ error: "Missing serverId or characterSlot" });
+            return res.status(400).json({ error: "serverId & characterSlot required" });
         }
 
-        // Charger le perso
-        const load = await loadPlayerCharacter(validation.playerId, serverId, characterSlot);
-        if (!load.success || !load.profile) {
-            return res.status(404).json({ error: "Character not found" });
-        }
-
-        // Colyseus → trouver ou créer la room world_xxx
-        const room = await getRoom("world", { serverId });
-
-        if (!room) {
-            return res.status(500).json({ error: "No world room found" });
-        }
-
-        const seat = await room.reserveSeat({
-            token,
+        // Réservation de place dans une WorldRoom
+        const seat = await matchMaker.joinOrCreate("world", {
             serverId,
+            token,
             characterSlot
         });
 
         return res.json({
             room: {
-                name: room.name,
-                roomId: room.roomId,
-                serverId: room.options.serverId
+                name: seat.room.name,
+                roomId: seat.room.roomId,
+                processId: seat.room.processId
             },
             sessionId: seat.sessionId
         });
