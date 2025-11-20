@@ -209,7 +209,7 @@ export class WorldRoom extends Room<GameState> {
         0,      // spellPower
         1,      // attackSpeed
         "test_zone",
-        100, 0, 100, // position
+        0, 0, 0, // position
         0, 0, 0,     // rotation
         "aggressive",
         10,     // detectionRange
@@ -233,7 +233,7 @@ export class WorldRoom extends Room<GameState> {
         0,
         1,
         "test_zone",
-        103, 0, 103,
+        1, 0, 1,
         0, 0, 0,
         "aggressive",
         12,
