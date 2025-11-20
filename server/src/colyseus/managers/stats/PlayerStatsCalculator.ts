@@ -10,45 +10,55 @@ import {
 } from "../../../models/ServerProfile";
 
 // =======================================================================
-// FONCTIONS BONUS RACIAUX
+// BONUS RACIAUX (PERCENTAGE)
 // =======================================================================
 
 /**
- * Applique les bonus raciaux sur les stats primaires
+ * Applique les bonus raciaux (%) sur les stats primaires
+ * Exemple : +5% strength = strength * 1.05
  */
 function applyPrimaryRaceBonuses(
   primary: IPlayerPrimaryStats,
   race?: RaceConfig
 ): IPlayerPrimaryStats {
-  if (!race || !race.statsModifiers?.primary) return primary;
+  if (!race || !race.statsModifiers?.primaryPercent) return primary;
 
   const result: IPlayerPrimaryStats = { ...primary };
 
-  for (const [stat, value] of Object.entries(race.statsModifiers.primary)) {
-    if (value === undefined) continue;
+  for (const [stat, percent] of Object.entries(race.statsModifiers.primaryPercent)) {
+    if (percent === undefined || percent === null) continue;
 
-    // TS sait que 'stat' correspond à une clé valide de IPlayerPrimaryStats
-    result[stat as keyof IPlayerPrimaryStats] += value;
+    const key = stat as keyof IPlayerPrimaryStats;
+    const baseValue = result[key];
+
+    // +5% → baseValue * 1.05
+    result[key] = Math.round(baseValue * (1 + percent / 100));
   }
 
   return result;
 }
 
 /**
- * Applique les bonus raciaux sur les stats computed
+ * Applique les bonus raciaux (%) sur les stats calculées
+ * Exemple : +5% maxHp = maxHp * 1.05
  */
 function applyComputedRaceBonuses(
   computed: IPlayerComputedStats,
   race?: RaceConfig
 ): IPlayerComputedStats {
-  if (!race || !race.statsModifiers?.computed) return computed;
+  if (!race || !race.statsModifiers?.computedPercent) return computed;
 
   const result: IPlayerComputedStats = { ...computed };
 
-  for (const [stat, value] of Object.entries(race.statsModifiers.computed)) {
-    if (value === undefined) continue;
+  for (const [stat, percent] of Object.entries(race.statsModifiers.computedPercent)) {
+    if (percent === undefined || percent === null) continue;
 
-    result[stat as keyof IPlayerComputedStats] += value;
+    const key = stat as keyof IPlayerComputedStats;
+    const baseValue = result[key];
+
+    if (typeof baseValue === "number") {
+      result[key] = Math.round(baseValue * (1 + percent / 100));
+    }
   }
 
   return result;
@@ -65,9 +75,6 @@ function applyComputedRaceBonuses(
  * - de sa classe (ClassStats)
  * - de son niveau
  * - de sa race (bonus raciaux)
- * 
- * ⚠️ IMPORTANT :
- * Pas encore de buffs, pas encore d'équipement.
  */
 export class PlayerStatsCalculator {
 
@@ -88,7 +95,7 @@ export class PlayerStatsCalculator {
     };
 
     // ============================
-    // 1B) BONUS RACIAL PRIMAIRE
+    // 1B) BONUS RACIAL PRIMAIRE (%)
     // ============================
     primaryStats = applyPrimaryRaceBonuses(primaryStats, race);
 
@@ -99,12 +106,12 @@ export class PlayerStatsCalculator {
     const SPI = primaryStats.spirit;
 
     // ============================
-    // 2) COMBAT DE BASE
+    // 2) STATS COMPUTED (BASE)
     // ============================
     let computed: IPlayerComputedStats = {
-      // Vie
+      // HP
       maxHp: 100 + END * 5,
-      hp: 0, // sera remplacé à la fin
+      hp: 0, // sera mis à maxHp ensuite
 
       // Ressource
       maxResource: 0,
@@ -133,7 +140,7 @@ export class PlayerStatsCalculator {
       // Mobilité
       moveSpeed: classStats.baseMoveSpeed,
 
-      // Stats avancées
+      // Divers
       precision: 0,
       evasion: AGI * 0.5,
       penetration: 0,
@@ -143,7 +150,7 @@ export class PlayerStatsCalculator {
     };
 
     // ============================
-    // 3) RESSOURCE PAR TYPE
+    // 3) TYPE DE RESSOURCE
     // ============================
     switch (classStats.resourceType) {
       case "mana":
@@ -153,7 +160,6 @@ export class PlayerStatsCalculator {
 
       case "rage":
         computed.maxResource = 100;
-        computed.rageRegen = 0;
         break;
 
       case "energy":
@@ -163,12 +169,12 @@ export class PlayerStatsCalculator {
     }
 
     // ============================
-    // 4) BONUS RACIAL (COMPUTED)
+    // 4) BONUS RACIAL COMPUTED (%)
     // ============================
     computed = applyComputedRaceBonuses(computed, race);
 
     // ============================
-    // 5) OUTPUT FINAL
+    // 5) FINALISATION
     // ============================
     computed.hp = computed.maxHp;
     computed.resource = computed.maxResource;
