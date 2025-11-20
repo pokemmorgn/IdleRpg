@@ -31,7 +31,7 @@ async function runTest() {
       characterSlot: CHARACTER_SLOT
     });
 
-    console.log("🟢 Connecté à la room:", room.id);
+   console.log("🟢 Connecté à la room:", room.name);
 
     // Listener générique
     room.onMessage("*", (type, message) => {
