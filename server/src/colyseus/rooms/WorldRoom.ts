@@ -35,23 +35,19 @@ export class WorldRoom extends Room<GameState> {
   private combatManager!: CombatManager;
   private afkManager!: AFKManager;
 
-  /**
-   * Création de la room
-   */
+  // ===========================================================
+  // onCreate
+  // ===========================================================
   async onCreate(options: { serverId: string }) {
     this.serverId = options.serverId;
     this.roomId = `world_${this.serverId}`;
 
-    // Init state
     this.setState(new GameState(this.serverId));
-
     console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
 
-    // Managers NPC / MONSTERS
+    // MANAGERS
     this.npcManager = new NPCManager(this.serverId, this.state);
     this.monsterManager = new MonsterManager(this.serverId, this.state);
-
-    // AFK MANAGER (Version B — RAM only)
     this.afkManager = new AFKManager(
       this.state,
       (sessionId, type, data) => {
@@ -60,7 +56,6 @@ export class WorldRoom extends Room<GameState> {
       }
     );
 
-    // COMBAT MANAGER
     this.combatManager = new CombatManager(
       this.state,
       this.afkManager,
@@ -74,56 +69,69 @@ export class WorldRoom extends Room<GameState> {
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // Messages
+    // Colyseus raw messages ("*")
     this.onMessage("*", (client, type, message) => {
       this.handleMessage(client, String(type), message);
     });
 
-    // Simulation interval (30 FPS)
-    this.setSimulationInterval((deltaTime) => this.update(deltaTime), 33);
+    // 🔥 Patch JSON messages venant du WS client
+    this.onMessage("raw", (client, raw: any) => {
+      try {
+        const json =
+          typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    // Update world time every second
+        if (!json?.type) return;
+
+        // Passe le type JSON à handleMessage EXACTEMENT comme Colyseus
+        this.handleMessage(client, json.type, json);
+
+      } catch (err) {
+        console.error("❌ RAW JSON parse error:", err);
+      }
+    });
+
+    // Tick
+    this.setSimulationInterval((delta) => this.update(delta), 33);
+
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
   }
 
-  /**
-   * Authentification
-   */
+  // ===========================================================
+  // AUTH
+  // ===========================================================
   async onAuth(client: Client, options: JoinOptions): Promise<AuthData | false> {
     try {
       if (!options.token || !options.serverId || !options.characterSlot) return false;
       if (options.serverId !== this.serverId) return false;
 
-      const tokenValidation = await validateToken(options.token);
-      if (!tokenValidation.valid || !tokenValidation.playerId) return false;
+      const valid = await validateToken(options.token);
+      if (!valid.valid || !valid.playerId) return false;
 
-      const playerId = tokenValidation.playerId;
-
-      const characterLoad = await loadPlayerCharacter(
-        playerId,
+      const load = await loadPlayerCharacter(
+        valid.playerId,
         options.serverId,
         options.characterSlot
       );
 
-      if (!characterLoad.success || !characterLoad.profile) return false;
+      if (!load.success || !load.profile) return false;
 
-      const profile = characterLoad.profile;
-
-      if (isCharacterAlreadyConnected(this.state.players, profile.profileId)) {
-        console.log(`❌ Personnage déjà connecté`);
+      if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
+        console.log("❌ Personnage déjà connecté");
         return false;
       }
 
+      const p = load.profile;
+
       return {
-        playerId: profile.playerId,
-        profileId: profile.profileId,
-        characterName: profile.characterName,
-        level: profile.level,
-        characterClass: profile.class,
-        characterRace: profile.race,
-        characterSlot: profile.characterSlot
+        playerId: p.playerId,
+        profileId: p.profileId,
+        characterName: p.characterName,
+        level: p.level,
+        characterClass: p.class,
+        characterRace: p.race,
+        characterSlot: p.characterSlot
       };
 
     } catch (err) {
@@ -132,12 +140,12 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
-  /**
-   * Join
-   */
+  // ===========================================================
+  // JOIN
+  // ===========================================================
   async onJoin(client: Client, options: JoinOptions, auth: AuthData) {
     try {
-      const playerState = new PlayerState(
+      const player = new PlayerState(
         client.sessionId,
         auth.playerId,
         auth.profileId,
@@ -148,16 +156,13 @@ export class WorldRoom extends Room<GameState> {
         auth.characterRace
       );
 
-      // Load stats from DB
-      const fullProfile = await ServerProfile.findById(auth.profileId);
-      if (fullProfile?.computedStats) {
-        playerState.loadStatsFromProfile(fullProfile.computedStats);
+      const profile = await ServerProfile.findById(auth.profileId);
+      if (profile?.computedStats) {
+        player.loadStatsFromProfile(profile.computedStats);
       }
 
-      // Add to state
-      this.state.addPlayer(playerState);
+      this.state.addPlayer(player);
 
-      // Welcome message
       client.send("welcome", {
         message: `Bienvenue ${auth.characterName} sur ${this.serverId} !`,
         serverId: this.serverId,
@@ -165,18 +170,17 @@ export class WorldRoom extends Room<GameState> {
         npcCount: this.npcManager.getNPCCount(),
         monsterCount: this.monsterManager.getMonsterCount(),
         stats: {
-          hp: playerState.hp,
-          maxHp: playerState.maxHp,
-          resource: playerState.resource,
-          maxResource: playerState.maxResource,
-          attackPower: playerState.attackPower,
-          spellPower: playerState.spellPower,
-          attackSpeed: playerState.attackSpeed,
-          moveSpeed: playerState.moveSpeed
+          hp: player.hp,
+          maxHp: player.maxHp,
+          resource: player.resource,
+          maxResource: player.maxResource,
+          attackPower: player.attackPower,
+          spellPower: player.spellPower,
+          attackSpeed: player.attackSpeed,
+          moveSpeed: player.moveSpeed
         }
       });
 
-      // update lastOnline
       await this.updateLastOnline(auth.profileId);
 
     } catch (err) {
@@ -184,178 +188,150 @@ export class WorldRoom extends Room<GameState> {
     }
   }
 
-  /**
-   * Leave
-   */
+  // ===========================================================
+  // LEAVE
+  // ===========================================================
   async onLeave(client: Client, consented: boolean) {
-    const playerState = this.state.players.get(client.sessionId);
-    if (!playerState) return;
-
-    const profileId = playerState.profileId;
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
 
     try {
       if (consented) {
-        await this.savePlayerStats(profileId, playerState);
-        await this.updateLastOnline(profileId);
+        await this.savePlayerStats(player.profileId, player);
+        await this.updateLastOnline(player.profileId);
         this.state.removePlayer(client.sessionId);
+
       } else {
         try {
           await this.allowReconnection(client, 30);
         } catch {
-          await this.savePlayerStats(profileId, playerState);
-          await this.updateLastOnline(profileId);
+          await this.savePlayerStats(player.profileId, player);
+          await this.updateLastOnline(player.profileId);
           this.state.removePlayer(client.sessionId);
         }
       }
+
     } catch (err) {
       console.error("❌ onLeave error:", err);
     }
   }
 
-  /**
-   * Messages
-   */
-  private handleMessage(client: Client, type: string | number, message: any) {
-    const playerState = this.state.players.get(client.sessionId);
-    if (!playerState) return;
+  // ===========================================================
+  // HANDLE MESSAGE
+  // ===========================================================
+  private handleMessage(client: Client, type: string, msg: any) {
 
-    // ------------------------------
-    // Move
-    // ------------------------------
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+
+    // ---------------------------------------------------------
+    // PLAYER MOVE
+    // ---------------------------------------------------------
     if (type === "player_move") {
-      playerState.posX = message.x;
-      playerState.posY = message.y;
-      playerState.posZ = message.z;
-      playerState.lastMovementTime = Date.now();
+      player.posX = msg.x;
+      player.posY = msg.y;
+      player.posZ = msg.z;
+      player.lastMovementTime = Date.now();
 
-      if (playerState.inCombat) {
-        this.combatManager.forceStopCombat(playerState);
+      if (player.inCombat) {
+        this.combatManager.forceStopCombat(player);
       }
       return;
     }
 
-    // ------------------------------
+    // ---------------------------------------------------------
+    // SPAWN TEST MONSTER (RAW JSON)
+    // ---------------------------------------------------------
+    if (type === "spawn_test_monster") {
+
+      console.log("🔥 spawn_test_monster reçu :", msg);
+
+      const MonsterState = require("../schema/MonsterState").MonsterState;
+
+      const mon = new MonsterState(
+        msg.monsterId || "test_" + Date.now(),
+        msg.name || "Training Dummy",
+        "test",
+        1,
+        30,
+        30,
+        5,
+        0,
+        1,
+        "test_zone",
+        msg.x || 105,
+        msg.y || 0,
+        msg.z || 105,
+        0, 0, 0,
+        "aggressive",
+        12,
+        20,
+        2,
+        5,
+        3,
+        false,
+        "dummy_model",
+        true
+      );
+
+      this.state.addMonster(mon);
+      console.log("🟢 Monstre ajouté :", mon.monsterId);
+      return;
+    }
+
+    // ---------------------------------------------------------
     // AFK
-    // ------------------------------
-    if (type === "activate_afk_mode") {
-      this.afkManager.activateAFK(client, playerState);
-      return;
-    }
+    // ---------------------------------------------------------
+    if (type === "activate_afk_mode") return this.afkManager.activateAFK(client, player);
+    if (type === "deactivate_afk_mode") return this.afkManager.deactivateAFK(client, player);
+    if (type === "claim_afk_summary") return this.afkManager.claimSummary(client, player);
+    if (type === "get_afk_summary") return this.afkManager.sendSummaryUpdate(client, player.profileId);
 
-    if (type === "deactivate_afk_mode") {
-      this.afkManager.deactivateAFK(client, playerState);
-      return;
-    }
-
-    if (type === "claim_afk_summary") {
-      this.afkManager.claimSummary(client, playerState);
-      return;
-    }
-
-    if (type === "get_afk_summary") {
-      this.afkManager.sendSummaryUpdate(client, playerState.profileId);
-      return;
-    }
-
-    // ------------------------------
-    // Skill Queueing
-    // ------------------------------
+    // ---------------------------------------------------------
+    // QUEUE SKILL
+    // ---------------------------------------------------------
     if (type === "queue_skill") {
-      const playerState = this.state.players.get(client.sessionId);
-      if (!playerState || !playerState.inCombat) return;
+      if (!player.inCombat) return;
+      if (!msg?.skillId) return;
+      if (!player.skills.has(msg.skillId)) return;
 
-      const skillId = message.skillId;
-      if (!skillId) return;
-
-      // Vérification simple : le joueur possède-t-il ce skill ?
-      if (playerState.skills.has(skillId)) {
-        playerState.queuedSkill = skillId;
-        console.log(`[Queue] ${playerState.characterName} a mis en file d'attente le skill: ${skillId}`);
-      }
+      player.queuedSkill = msg.skillId;
+      console.log(`[Queue] ${player.characterName} queue skill: ${msg.skillId}`);
       return;
     }
 
     if (type === "clear_skill_queue") {
-      const playerState = this.state.players.get(client.sessionId);
-      if (playerState) {
-        playerState.queuedSkill = "";
-      }
+      player.queuedSkill = "";
       return;
     }
 
-    // ------------------------------
+    // ---------------------------------------------------------
     // NPC
-    // ------------------------------
+    // ---------------------------------------------------------
     if (type === "npc_interact") {
-      this.npcManager.handleInteraction(client, playerState, message);
-      return;
+      return this.npcManager.handleInteraction(client, player, msg);
     }
-
     if (type === "dialogue_choice") {
-      this.npcManager.handleDialogueChoice(client, playerState, message);
-      return;
+      return this.npcManager.handleDialogueChoice(client, player, msg);
     }
 
-// ------------------------------
-// Spawn test monster (debug)
-// ------------------------------
-if (type === "spawn_test_monster") {
-
-  console.log("⚠️ [TEST] spawn_test_monster reçu :", message);
-
-  const MonsterState = require("../schema/MonsterState").MonsterState;
-
-  const monster = new MonsterState(
-    message.monsterId || "test_" + Date.now(),
-    message.name || "Training Dummy",
-    "test",          // type
-    1,               // level
-    30,              // hp
-    30,              // maxHp
-    5,               // attack
-    0,               // defense
-    1,               // speed
-    "test_zone",     // zoneId
-    message.x ?? 105,
-    message.y ?? 0,
-    message.z ?? 105,
-    0, 0, 0,         // rotation
-    "aggressive",    // behavior
-    12,              // aggroRange
-    9999,            // leashRange (illimité)
-    3,               // attackRange
-    5,               // xpReward
-    3,               // respawnTime
-    false,           // respawnOnDeath
-    "dummy_model",
-    true             // isActive
-  );
-
-  this.state.addMonster(monster);
-
-  console.log(`✔ Monstre ajouté : ${monster.monsterId} @ (${monster.posX},${monster.posY},${monster.posZ})`);
-  return;
-}
-
-    // ------------------------------
-    // ADMIN
-    // ------------------------------
+    // ---------------------------------------------------------
+    // RELOAD
+    // ---------------------------------------------------------
     if (type === "npc_reload") {
       this.npcManager.reloadNPCs();
-      client.send("info", { message: "NPCs reloaded" });
-      return;
+      return client.send("info", { message: "NPCs reloaded" });
     }
 
     if (type === "monster_reload") {
       this.monsterManager.reloadMonsters();
-      client.send("info", { message: "Monsters reloaded" });
-      return;
+      return client.send("info", { message: "Monsters reloaded" });
     }
   }
 
-  /**
-   * Server tick
-   */
+  // ===========================================================
+  // TICK
+  // ===========================================================
   update(deltaTime: number) {
     this.combatManager.update(deltaTime);
     this.afkManager.update(deltaTime);
@@ -365,15 +341,18 @@ if (type === "spawn_test_monster") {
     if (this.updateInterval) this.updateInterval.clear();
   }
 
+  // ===========================================================
+  // SAVE
+  // ===========================================================
   private async updateLastOnline(profileId: string) {
     await ServerProfile.findByIdAndUpdate(profileId, { lastOnline: new Date() });
   }
 
-  private async savePlayerStats(profileId: string, playerState: PlayerState) {
+  private async savePlayerStats(profileId: string, player: PlayerState) {
     const profile = await ServerProfile.findById(profileId);
     if (profile) {
-      profile.computedStats.hp = playerState.hp;
-      profile.computedStats.resource = playerState.resource;
+      profile.computedStats.hp = player.hp;
+      profile.computedStats.resource = player.resource;
       await profile.save();
     }
   }
