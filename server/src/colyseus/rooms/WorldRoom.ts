@@ -47,21 +47,19 @@ export class WorldRoom extends Room<GameState> {
 
     // Colyseus messages (room.send)
     this.onMessage("*", (client, type, msg) => {
-      console.log("📨 onMessage(*)", { type, msg });
+      console.log("📨 RAW onMessage(*):");
+      console.log("   type =", type);
+      console.log("   msg  =", msg);
+      console.log("   typeof type =", typeof type);
+      console.log("   typeof msg =", typeof msg);
       this.handleMessage(client, String(type), msg);
     });
 
+
     // WebSocket brut (JSON)
-    this.onMessage("raw", (client, raw) => {
-      console.log("📩 RAW RECEIVED:", raw);
-      try {
-        const json = typeof raw === "string" ? JSON.parse(raw) : raw;
-        console.log("📩 RAW → JSON:", json);
-        if (json.type) this.handleMessage(client, json.type, json);
-      } catch (e) {
-        console.log("❌ RAW JSON ERROR:", e);
-      }
-    });
+   this.onMessage("raw", (client, raw) => {
+  console.log("📩 RAW (exact WebSocket):", raw);
+});
 
     // Tick
     this.setSimulationInterval((dt) => {
