@@ -77,10 +77,11 @@ router.get("/races/:raceId/classes", getRaceAllowedClasses);
 
 /**
  * GET /stats/creation-data
- * Renvoie tout ce qu'il faut pour l'écran de création :
+ * Version ADVANCED :
  * - races (config)
  * - classes (config)
- * - restrictions race → classes
+ * - restrictions (race → classId[])
+ * - byRace (race → objets classes complets)
  */
 router.get("/creation-data", getCreationData);
 
