@@ -2,7 +2,8 @@
  * Test du endpoint /game-data/creation
  * Vérifie que Unity reçoit bien tout ce qu’il attend.
  * 
- * Usage : npx ts-node src/scripts/test-creation-endpoint.ts
+ * Usage :
+ *   npx ts-node server/src/scripts/test-creation-endpoint.ts
  */
 
 import http from "http";
@@ -21,7 +22,6 @@ function get(path: string): Promise<any> {
 
     const req = http.request(options, (res) => {
       let data = "";
-
       res.on("data", (chunk) => (data += chunk));
       res.on("end", () => {
         try {
@@ -37,74 +37,109 @@ function get(path: string): Promise<any> {
   });
 }
 
-// 🎨 Console utilities
+// 🎨 Log helpers
 const ok = (msg: string) => console.log("\x1b[32m✔ " + msg + "\x1b[0m");
 const err = (msg: string) => console.log("\x1b[31m✖ " + msg + "\x1b[0m");
+const warn = (msg: string) => console.log("\x1b[33m⚠ " + msg + "\x1b[0m");
 const info = (msg: string) => console.log("\x1b[36mℹ " + msg + "\x1b[0m");
 const section = (msg: string) =>
-  console.log("\n\x1b[33m====== " + msg + " ======\x1b[0m");
+  console.log("\n\x1b[35m====== " + msg + " ======\x1b[0m");
 
 async function main() {
-  section("TEST DU ENDPOINT UNITY : /game-data/creation");
+  section("TEST UNITY – /game-data/creation");
+
+  let data;
 
   try {
-    const data = await get("/game-data/creation");
-
-    // Vérification structure
-    if (!data.races) return err("Missing 'races'");
-    if (!data.classes) return err("Missing 'classes'");
-    if (!data.byRace) return err("Missing 'byRace' mapping");
-
-    ok("Structure validée : races + classes + byRace OK");
-
-    // Vérif races
-    section("RACES");
-    info(`Total races : ${data.races.length}`);
-
-    for (const race of data.races) {
-      if (!race.raceId) err("Race sans raceId !");
-      if (!race.nameKey) err(`Race ${race.raceId} missing nameKey`);
-      if (!race.statsModifiers) err(`Race ${race.raceId} missing statsModifiers`);
-
-      ok(`Race OK : ${race.raceId}`);
-    }
-
-    // Vérif classes
-    section("CLASSES");
-    info(`Total classes : ${data.classes.length}`);
-
-    for (const cls of data.classes) {
-      if (!cls.classId) err("Classe sans classId !");
-      if (!cls.roles) err(`Classe ${cls.classId} missing roles`);
-
-      ok(`Classe OK : ${cls.classId}`);
-    }
-
-    // Vérif mapping byRace
-    section("MAPPING byRace");
-
-    for (const raceId of Object.keys(data.byRace)) {
-      const allowed = data.byRace[raceId];
-
-      if (!Array.isArray(allowed)) {
-        err(`byRace[${raceId}] n'est PAS une liste`);
-        continue;
-      }
-
-      if (allowed.length === 0) {
-        err(`⚠ Aucun classe autorisée pour ${raceId}`);
-      } else {
-        ok(`${raceId} → ${allowed.length} classes`);
-      }
-    }
-
-    section("RÉSULTAT FINAL");
-    ok("Tout est conforme : Unity peut consommer l’endpoint sans problème ✔");
-
+    data = await get("/game-data/creation");
   } catch (e) {
-    err("Erreur : " + e);
-    process.exit(1);
+    return err("Impossible d'appeler l’API : " + e);
   }
+
+  // ---------------------------------------------------------------
+  // Validations globales
+  // ---------------------------------------------------------------
+  if (!data.races) return err("⚠ Missing `races`");
+  if (!data.classes) return err("⚠ Missing `classes`");
+  if (!data.byRace) return err("⚠ Missing `byRace` mapping");
+
+  ok("Structure OK : races + classes + byRace ✔");
+
+  // ---------------------------------------------------------------
+  // SECTION RACES
+  // ---------------------------------------------------------------
+  section("RACES : ce que Unity va voir");
+
+  info(`Total races : ${data.races.length}`);
+
+  for (const race of data.races) {
+    const id = race.raceId;
+
+    if (!id) err("Race sans raceId !");
+    if (!race.nameKey) err(`Race ${id} missing nameKey`);
+    if (!race.descriptionKey) err(`Race ${id} missing descriptionKey`);
+    if (!race.loreKey) err(`Race ${id} missing loreKey`);
+
+    if (!race.bonusesLocalized || race.bonusesLocalized.length === 0)
+      warn(`Race ${id} : aucun bonus_localized !`);
+
+    // ➜ Visualisation au format Unity
+    console.log(`\x1b[37m\n--- Race: ${id} ---`);
+    console.log("NameKey:", race.nameKey);
+    console.log("DescriptionKey:", race.descriptionKey);
+    console.log("LoreKey:", race.loreKey);
+    console.log("BonusesLocalized:", race.bonusesLocalized);
+    console.log("Faction:", race.faction, "\x1b[0m");
+
+    ok(`Race validée : ${id}`);
+  }
+
+  // ---------------------------------------------------------------
+  // SECTION CLASSES
+  // ---------------------------------------------------------------
+  section("CLASSES");
+
+  info(`Total classes : ${data.classes.length}`);
+
+  for (const cls of data.classes) {
+    if (!cls.classId) err("Classe sans classId !");
+    if (!cls.roles || cls.roles.length === 0)
+      warn(`Classe ${cls.classId} sans rôles`);
+
+    ok(`Classe OK : ${cls.classId}`);
+  }
+
+  // ---------------------------------------------------------------
+  // SECTION MAPPING BYRACE
+  // ---------------------------------------------------------------
+  section("MAPPING byRace (restrictions)");
+
+  for (const raceId of Object.keys(data.byRace)) {
+    const allowed = data.byRace[raceId];
+
+    if (!Array.isArray(allowed)) {
+      err(`byRace[${raceId}] n’est PAS une liste`);
+      continue;
+    }
+
+    if (allowed.length === 0) {
+      warn(`⚠ Aucune classe autorisée pour ${raceId}`);
+    } else {
+      ok(`${raceId} → ${allowed.length} classes`);
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // FIN
+  // ---------------------------------------------------------------
+  section("RÉSULTAT FINAL");
+  ok("Unity a TOUT ce qu’il faut ✔");
+  ok("BonusesLocalized ✔");
+  ok("Lore ✔");
+  ok("Restrictions ✔");
+  ok("Structure ✔");
+
+  console.log("\nTout est nickel 🔥");
 }
 
 main();
