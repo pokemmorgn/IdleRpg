@@ -58,7 +58,7 @@ export class OnlineCombatSystem {
     }
 
     update(player: PlayerState, dt: number) {
-
+console.log(`[OnlineCombatSystem] update player=${player.characterName}, inCombat=${player.inCombat}, target=${player.targetMonsterId}`);
         const isMoving = (Date.now() - player.lastMovementTime) < 150;
 
         // Annulation de cast si mouvement
