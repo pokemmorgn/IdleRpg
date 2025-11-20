@@ -1,91 +1,63 @@
 import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
-import { SkillDefinition } from "../../types/SkillDefinition"; // à créer : data statique du skill
+import { SkillDefinition } from "../../types/SkillDefinition";
 
 export class SkillRotation {
 
     /**
      * Retourne le meilleur skill immédiatement lançable
-     * selon l'ordre de la barre de skills du joueur.
-     * 
-     * IMPORTANT :
-     * - respecte auto ON/OFF
-     * - respecte le GCD
-     * - respecte cooldown individuel
-     * - respecte buff déjà actif
+     * selon l'ordre de la barre du joueur.
      */
-    static chooseSkill(
+    static getNextSkill(
         player: PlayerState,
         monster: MonsterState
     ): SkillDefinition | null {
 
-        // Si en GCD → impossible de lancer un sort
+        // GCD actif → aucun sort
         if (player.gcdRemaining > 0) return null;
 
-        // Liste des skills dans l'ordre défini par le joueur
-        const bar = player.skillBar; // array of skillIds
+        const now = Date.now();
 
-        for (const skillId of bar) {
+        for (const skillId of player.skillBar) {
 
-            const skill = player.skills[skillId] as SkillDefinition;
+            const skill = player.skills.get(skillId) as SkillDefinition;
             if (!skill) continue;
 
             // Auto OFF → ignoré
             if (skill.autoCast === false) continue;
 
             // Cooldown pas prêt
-            if (!this.cooldownReady(player, skill)) continue;
+            const cd = player.cooldowns.get(skill.id);
+            if (cd && cd > now) continue;
 
-            // Buff déjà actif → ignorer les sorts buff
-            if (skill.type === "buff" && this.buffAlreadyUp(player, skill)) {
+            // Buff déjà actif → ignorer
+            if (skill.type === "buff" && skill.buffId && player.activeBuffs.has(skill.buffId)) {
                 continue;
             }
 
-            // Vérifier les ressources requises
-            if (!this.hasResources(player, skill)) continue;
+            // Vérifier ressource du joueur
+            if (skill.manaCost && player.resource < skill.manaCost) continue;
+            if (skill.energyCost && player.resource < skill.energyCost) continue;
 
             // Vérifier la portée
             const dist = this.dist(player, monster);
             if (dist > skill.range) continue;
 
-            // Ce skill est valable
+            // OK → skill utilisable
             return skill;
         }
 
         return null;
     }
 
-
     /**
-     * Permet au moteur de savoir quel skill sera choisi ensuite,
-     * utile pour déterminer si on doit se déplacer.
+     * Alias utile pour OnlineCombatSystem
      */
     static peekNextSkill(
         player: PlayerState,
         monster: MonsterState
     ): SkillDefinition | null {
-        return this.chooseSkill(player, monster);
-    }
-
-
-    // -------------------------------------------------------
-    // CONDITIONS DE CAST
-    // -------------------------------------------------------
-
-    static cooldownReady(player: PlayerState, skill: SkillDefinition): boolean {
-        const now = Date.now();
-        return !player.cooldowns[skill.id] || player.cooldowns[skill.id] <= now;
-    }
-
-    static buffAlreadyUp(player: PlayerState, skill: SkillDefinition): boolean {
-        if (!skill.buffId) return false;
-        return !!player.activeBuffs[skill.buffId];
-    }
-
-    static hasResources(player: PlayerState, skill: SkillDefinition): boolean {
-        if (skill.manaCost && player.mana < skill.manaCost) return false;
-        if (skill.energyCost && player.energy < skill.energyCost) return false;
-        return true;
+        return this.getNextSkill(player, monster);
     }
 
     // -------------------------------------------------------
