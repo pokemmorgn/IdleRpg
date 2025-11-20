@@ -12,7 +12,7 @@
  * 
  * OMBRE :
  * - Varkyns : Cornes asymétriques fractales, fourrure sombre, symboles rituels, silhouette élancée. Culture chamanique ancienne.
- * - Morhri : Peau matte (bleu nuit, violet, noir), membres fins, yeux réfléchissants, ornements chitineux. Chasseurs furtifs nocturnes.
+ * - Morhri remplacé par Arkanids : Peau matte (bleu nuit, violet, noir), membres fins, yeux réfléchissants, ornements chitineux. Chasseurs furtifs nocturnes.
  * - Ghrannites : Peau de pierre (granite, basalte, obsidienne), yeux de cristal, corps imposants. Culture souterraine liée à la chaleur.
  * - Sélénithes : Peau noire ou gris bleu profond, cheveux blancs/argentés, pupilles verticales lumineuses. Magie lunaire sombre.
  */
@@ -49,9 +49,9 @@ const AURION_RACES: RaceConfig[] = [
     faction: "AURION"
   },
   {
-    raceId: "winged_lunaris",
-    nameKey: "race.winged_lunaris.name",
-    descriptionKey: "race.winged_lunaris.description",
+    raceId: "murlocs",
+    nameKey: "race.murlocs.name",
+    descriptionKey: "race.murlocs.description",
     faction: "AURION"
   },
   {
@@ -76,9 +76,9 @@ const OMBRE_RACES: RaceConfig[] = [
     faction: "OMBRE"
   },
   {
-    raceId: "morhri_insect",
-    nameKey: "race.morhri_insect.name",
-    descriptionKey: "race.morhri_insect.description",
+    raceId: "arkanids_insect",
+    nameKey: "race.arkanids_insect.name",
+    descriptionKey: "race.arkanids_insect.description",
     faction: "OMBRE"
   },
   {
