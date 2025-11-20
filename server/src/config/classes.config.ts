@@ -71,13 +71,29 @@ export const ALL_CLASSES: ClassConfig[] = [
  * Si une race n'est pas listée ici, toutes les classes sont autorisées
  */
 export const CLASS_RACE_RESTRICTIONS: { [raceId: string]: string[] } = {
-  // Humains : Toutes les classes SAUF Druide
-  "human_elion": ["priest", "mage", "paladin", "rogue", "warrior"],
-  
-  // Autres races : à définir plus tard (pour l'instant, toutes autorisées)
-  // "dwarf_rune": ["priest", "paladin", "warrior"],
-  // "winged_lunaris": ["priest", "mage", "paladin"],
-  // etc.
+  // Arkanids (Undeads)
+  "arkanids_insect": ["mage", "priest", "rogue", "warrior"],
+
+  // Elion Humans (Humains)
+  "human_elion": ["mage", "priest", "rogue", "warrior", "paladin"],
+
+  // Ghrannite Orcs (Orcs)
+  "ghrannite_stone": ["rogue", "warrior"],
+
+  // Murlocs (Gnomes)
+  "murlocs": ["rogue", "warrior", "paladin"],
+
+  // Noxariens (Elfes de la nuit)
+  "sylphide_forest": ["mage", "druid"],
+
+  // Runic Dwarfs (Nains)
+  "dwarf_rune": ["priest", "warrior", "paladin"],
+
+  // Selenith Trolls (Trolls)
+  "selenite_lunar": ["mage", "priest", "rogue", "druid"],
+
+  // Varkyns (Taurens)
+  "varkyns_beast": ["warrior", "paladin", "druid"]
 };
 
 /**
