@@ -16,7 +16,7 @@ export class SkillExecutor {
         broadcast: (sessionId: string, type: string, data: any) => void
     ): boolean {
 
-        const skill = SkillRotation.chooseSkill(player, monster);
+        const skill = SkillRotation.getNextSkill(player, monster);
         if (!skill) return false;
 
         this.cast(player, monster, skill, broadcast, gameState);
@@ -38,7 +38,7 @@ export class SkillExecutor {
 
         // 2. Déclencher cooldown
         const now = Date.now();
-        player.cooldowns.set(skill.id, now + skill.cooldown);
+        player.cooldowns.set(skill.id, now + (skill.cooldown ?? 0));
 
         // 3. Consommer ressource
         this.consumeResources(player, skill);
@@ -47,7 +47,6 @@ export class SkillExecutor {
         if (skill.castTime > 0) {
             this.startCasting(player, skill, broadcast);
         } else {
-            // Instant
             this.applyAnimationLock(player, skill);
             this.applySkillEffect(player, monster, skill, broadcast, gameState);
         }
@@ -62,8 +61,8 @@ export class SkillExecutor {
         broadcast: (sessionId: string, type: string, data: any) => void
     ) {
         player.currentCastingSkillId = skill.id;
-        player.castLockRemaining = skill.castTime;
-        player.currentAnimationLockType = skill.lockType;
+        player.castLockRemaining = skill.castTime ?? 0;
+        player.currentAnimationLockType = skill.lockType ?? "none";
 
         broadcast(player.sessionId, "cast_start", {
             skillId: skill.id,
@@ -96,13 +95,8 @@ export class SkillExecutor {
     private static applyAnimationLock(player: PlayerState, skill: SkillDefinition) {
         const lock = skill.animationLock ?? 0;
 
-        if (lock <= 0) {
-            player.animationLockRemaining = 0;
-            return;
-        }
-
         player.animationLockRemaining = lock;
-        player.currentAnimationLockType = skill.lockType;
+        player.currentAnimationLockType = skill.lockType ?? "none";
     }
 
     // =====================================================
@@ -138,9 +132,7 @@ export class SkillExecutor {
         broadcast(player.sessionId, "skill_cast", { skillId: skill.id });
     }
 
-    // =====================================================
     // DAMAGE
-    // =====================================================
     private static applyDamageSkill(
         player: PlayerState,
         monster: MonsterState,
@@ -158,9 +150,7 @@ export class SkillExecutor {
         });
     }
 
-    // =====================================================
     // HEAL
-    // =====================================================
     private static applyHeal(
         player: PlayerState,
         skill: SkillDefinition,
@@ -176,9 +166,7 @@ export class SkillExecutor {
         });
     }
 
-    // =====================================================
     // BUFF
-    // =====================================================
     private static applyBuff(
         player: PlayerState,
         skill: SkillDefinition,
@@ -186,21 +174,18 @@ export class SkillExecutor {
     ) {
         if (!skill.buffId) return;
 
-        player.activeBuffs.set(
-            skill.buffId,
-            Date.now() + (skill.duration ?? 0)
-        );
+        const duration = skill.duration ?? 0;
+
+        player.activeBuffs.set(skill.buffId, Date.now() + duration);
 
         broadcast(player.sessionId, "skill_buff", {
             skillId: skill.id,
             buffId: skill.buffId,
-            duration: skill.duration ?? 0
+            duration
         });
     }
 
-    // =====================================================
     // AOE
-    // =====================================================
     private static applyAoeSkill(
         player: PlayerState,
         skill: SkillDefinition,
@@ -227,17 +212,16 @@ export class SkillExecutor {
         });
     }
 
-    // =====================================================
-    // RESOURCE CONSUMPTION
-    // =====================================================
+    // RESOURCE
     private static consumeResources(player: PlayerState, skill: SkillDefinition) {
-        if (skill.manaCost) player.resource = Math.max(0, player.resource - skill.manaCost);
-        if (skill.energyCost) player.resource = Math.max(0, player.resource - skill.energyCost);
+        if (skill.manaCost)
+            player.resource = Math.max(0, player.resource - skill.manaCost);
+
+        if (skill.energyCost)
+            player.resource = Math.max(0, player.resource - skill.energyCost);
     }
 
-    // =====================================================
     // UTILS
-    // =====================================================
     private static dist(a: PlayerState, b: MonsterState): number {
         return Math.sqrt(
             (a.posX - b.posX) ** 2 +
