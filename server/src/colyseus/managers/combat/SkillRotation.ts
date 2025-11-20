@@ -1,13 +1,9 @@
 import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
 import { SkillDefinition } from "../../types/SkillDefinition";
+import { CombatUtils } from "./CombatUtils"; // <-- Importer CombatUtils
 
 export class SkillRotation {
-
-    /**
-     * Retourne le meilleur skill immédiatement lançable
-     * selon l'ordre de la barre du joueur.
-     */
     static getNextSkill(
         player: PlayerState,
         monster: MonsterState
@@ -16,13 +12,12 @@ export class SkillRotation {
         // GCD actif → aucun sort
         if (player.gcdRemaining > 0) return null;
 
-        // AJOUT : Vérifier si le joueur est sous un animation lock
-        if (player.animationLockRemaining > 0) return null;
+        // MODIFIÉ : Utiliser l'utilitaire pour vérifier les locks
+        if (CombatUtils.isLockedForActions(player)) return null;
 
         const now = Date.now();
 
         for (const skillId of player.skillBar) {
-
             const skill = player.skills.get(skillId) as SkillDefinition;
             if (!skill) continue;
 
@@ -33,7 +28,6 @@ export class SkillRotation {
             const cd = player.cooldowns.get(skill.id);
             if (cd && cd > now) continue;
 
-            // ----- FIX ICI -----
             // Buff déjà actif → ignorer
             if (
                 skill.effectType === "buff" &&
@@ -63,10 +57,6 @@ export class SkillRotation {
     ): SkillDefinition | null {
         return this.getNextSkill(player, monster);
     }
-
-    // -------------------------------------------------------
-    // UTILS
-    // -------------------------------------------------------
 
     private static dist(p: PlayerState, m: MonsterState): number {
         return Math.sqrt(
