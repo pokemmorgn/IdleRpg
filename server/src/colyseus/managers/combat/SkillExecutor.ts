@@ -19,8 +19,6 @@ export class SkillExecutor {
         const skill = SkillRotation.chooseSkill(player, monster);
         if (!skill) return false;
 
-        player.queuedSkill = skill.id;
-
         this.cast(player, monster, skill, broadcast, gameState);
         return true;
     }
@@ -35,7 +33,7 @@ export class SkillExecutor {
         broadcast: (sessionId: string, type: string, data: any) => void,
         gameState: GameState
     ) {
-        // 1. Global Cooldown
+        // 1. Appliquer GCD
         player.gcdRemaining = skill.globalCooldown ?? 1000;
 
         // 2. Déclencher cooldown
@@ -49,7 +47,7 @@ export class SkillExecutor {
         if (skill.castTime > 0) {
             this.startCasting(player, skill, broadcast);
         } else {
-            // Instantané
+            // Instant
             this.applyAnimationLock(player, skill);
             this.applySkillEffect(player, monster, skill, broadcast, gameState);
         }
@@ -140,7 +138,9 @@ export class SkillExecutor {
         broadcast(player.sessionId, "skill_cast", { skillId: skill.id });
     }
 
+    // =====================================================
     // DAMAGE
+    // =====================================================
     private static applyDamageSkill(
         player: PlayerState,
         monster: MonsterState,
@@ -158,7 +158,9 @@ export class SkillExecutor {
         });
     }
 
+    // =====================================================
     // HEAL
+    // =====================================================
     private static applyHeal(
         player: PlayerState,
         skill: SkillDefinition,
@@ -174,7 +176,9 @@ export class SkillExecutor {
         });
     }
 
+    // =====================================================
     // BUFF
+    // =====================================================
     private static applyBuff(
         player: PlayerState,
         skill: SkillDefinition,
@@ -184,7 +188,7 @@ export class SkillExecutor {
 
         player.activeBuffs.set(
             skill.buffId,
-            Date.now() + (skill.duration ?? 0) // fix TypeScript
+            Date.now() + (skill.duration ?? 0)
         );
 
         broadcast(player.sessionId, "skill_buff", {
@@ -194,7 +198,9 @@ export class SkillExecutor {
         });
     }
 
+    // =====================================================
     // AOE
+    // =====================================================
     private static applyAoeSkill(
         player: PlayerState,
         skill: SkillDefinition,
