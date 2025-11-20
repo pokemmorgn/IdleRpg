@@ -70,25 +70,42 @@ export class SkillExecutor {
         });
     }
 
-    // =====================================================
-    // CAST FINISH
-    // =====================================================
-    static finishCast(
-        player: PlayerState,
-        monster: MonsterState,
-        gameState: GameState,
-        broadcast: (sessionId: string, type: string, data: any) => void
-    ) {
-        const skill = player.skills.get(player.currentCastingSkillId) as SkillDefinition;
-        if (!skill) return;
+// =====================================================
+// CAST FINISH
+// =====================================================
+static finishCast(
+    player: PlayerState,
+    monster: MonsterState,
+    gameState: GameState,
+    broadcast: (sessionId: string, type: string, data: any) => void
+) {
+    const skill = player.skills.get(player.currentCastingSkillId) as SkillDefinition;
+    if (!skill) return;
 
-        this.applyAnimationLock(player, skill);
-        this.applySkillEffect(player, monster, skill, broadcast, gameState);
+    // --- AJOUT : Vérification de portée pour les projectiles ---
+    if (skill.effectType === "projectile") {
+        const dist = this.dist(player, monster);
+        if (dist > skill.range) {
+            // La cible est sortie de portée, le sort échoue
+            player.castLockRemaining = 0;
+            player.currentCastingSkillId = "";
+            player.animationLockRemaining = 0;
+            player.currentAnimationLockType = "none";
 
-        player.castLockRemaining = 0;
-        player.currentCastingSkillId = "";
+            broadcast(player.sessionId, "cast_interrupted", {
+                reason: "target_out_of_range",
+                skillId: skill.id
+            });
+            return; // On arrête tout ici
+        }
     }
 
+    this.applyAnimationLock(player, skill);
+    this.applySkillEffect(player, monster, skill, broadcast, gameState);
+
+    player.castLockRemaining = 0;
+    player.currentCastingSkillId = "";
+}
     // =====================================================
     // ANIMATION LOCK
     // =====================================================
