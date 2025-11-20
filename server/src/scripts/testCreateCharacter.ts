@@ -196,29 +196,35 @@ async function reserveSeat(token: string): Promise<MatchmakingRoom | null> {
 // =========================
 // CONNECT WEBSOCKET
 // =========================
-async function connectWebSocket(room: MatchmakingRoom): Promise<WebSocket> {
-    return new Promise(resolve => {
-        console.log("→ Connexion WebSocket…");
+async function connectWebSocket(room: any, sessionId: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
 
-        const ws = new WebSocket(
-            `${room.wsEndpoint}?sessionId=${room.sessionId}`
-        );
+        const wsUrl = `ws://localhost:3000/world/${room.roomId}?sessionId=${sessionId}`;
+        console.log("🌐 WebSocket URL =", wsUrl);
+
+        const ws = new WebSocket(wsUrl);
 
         ws.on("open", () => {
             console.log("🔌 WebSocket connecté !");
+            resolve(ws);
         });
 
-        ws.on("message", (raw: Buffer | string) => {
-            if (raw instanceof Buffer) return;
+        ws.on("error", (err) => {
+            console.error("❌ WebSocket error:", err);
+            reject(err);
+        });
 
+        ws.on("close", () => {
+            console.log("⚠ WebSocket fermé.");
+        });
+
+        // (Optionnel) debug messages
+        ws.on("message", (raw: any) => {
             try {
                 const msg = JSON.parse(raw.toString());
-                if (msg.type === "welcome") {
-                    console.log("🌍 Bienvenue :", msg.message);
-                    resolve(ws);
-                }
+                console.log("📨 [server]", msg);
             } catch {
-                return;
+                console.log("🔹 Message non-JSON reçu.");
             }
         });
     });
