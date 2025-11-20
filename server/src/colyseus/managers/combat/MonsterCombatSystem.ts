@@ -24,7 +24,13 @@ export class MonsterCombatSystem {
         monster.attackTimer += dt;
 
         // Pas de cible → idle
-        if (!monster.targetPlayerId) return;
+        if (!monster.targetPlayerId) {
+            const nearest = this.findNearestPlayer(monster, 25); // range d’aggro 25
+            if (nearest) {
+                monster.targetPlayerId = nearest.sessionId;
+                console.log(`👁‍🗨 Monster ${monster.monsterId} aggro ${nearest.characterName}`);
+            }
+        }
 
         const target = this.gameState.players.get(monster.targetPlayerId);
         if (!target || target.isDead) {
@@ -78,6 +84,22 @@ export class MonsterCombatSystem {
             return;
         }
     }
+        private findNearestPlayer(monster: MonsterState, range: number): PlayerState | null {
+            let nearest: PlayerState | null = null;
+            let bestDist = range;
+        
+            this.gameState.players.forEach(player => {
+                if (player.isDead) return;
+        
+                const d = this.getDistance(monster, player);
+                if (d < bestDist) {
+                    bestDist = d;
+                    nearest = player;
+                }
+            });
+        
+            return nearest;
+        }
 
     private getDistance(a: MonsterState, b: PlayerState): number {
         const dx = a.posX - b.posX;
