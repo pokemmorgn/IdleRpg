@@ -33,287 +33,217 @@ export class WorldRoom extends Room<GameState> {
   private monsterManager!: MonsterManager;
   private combatManager!: CombatManager;
 
-  // ===========================================================
-  // onCreate
-  // ===========================================================
   async onCreate(options: { serverId: string }) {
+    console.log("======================================================");
+    console.log("🧪 DEBUG WORLD ROOM START");
+    console.log("======================================================");
+
+    console.log("onCreate OPTIONS:", options);
+
     this.serverId = options.serverId;
     this.roomId = `world_${this.serverId}`;
-
     this.setState(new GameState(this.serverId));
-    console.log(`🌍 WorldRoom créée pour serveur: ${this.serverId}`);
 
-    // MANAGERS
     this.npcManager = new NPCManager(this.serverId, this.state);
     this.monsterManager = new MonsterManager(this.serverId, this.state);
 
     this.combatManager = new CombatManager(
       this.state,
+      null as any, // on s’en fout pour debug
       (sessionId, type, data) => {
+        console.log("📡 BROADCAST:", { sessionId, type, data });
         const client = this.clients.find(c => c.sessionId === sessionId);
         if (client) client.send(type, data);
       }
     );
 
-    // Load assets
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // Raw Colyseus messages
+    console.log("🟢 NPC + Monsters loaded");
+
+    // ---------------------------------------------------
+    // 1) Handler COLYSEUS NORMAL
+    // ---------------------------------------------------
     this.onMessage("*", (client, type, message) => {
+      console.log("💬 RAW COLYSEUS * message");
+      console.log("  type =", type);
+      console.log("  message =", message);
       this.handleMessage(client, String(type), message);
     });
 
-    // Raw JSON patch (test script)
-    this.onMessage("raw", (client, raw: any) => {
+    // ---------------------------------------------------
+    // 2) Handler JSON PATCH MANUEL
+    // ---------------------------------------------------
+    this.onMessage("json", (client, raw) => {
+      console.log("💬 JSON MESSAGE RECEIVED:", raw);
       try {
-        const json = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (!json?.type) return;
-        this.handleMessage(client, json.type, json);
+        const msg = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (msg.type) {
+          console.log("👉 Passing JSON type =", msg.type);
+          this.handleMessage(client, msg.type, msg);
+        }
       } catch (err) {
-        console.error("❌ RAW JSON parse error:", err);
+        console.log("❌ JSON parse error:", err);
       }
     });
 
-    // Tick
-    this.setSimulationInterval((delta) => this.update(delta), 33);
+    // ---------------------------------------------------
+    // 3) Handler RAW BINAIRE (pour scripts)
+    // ---------------------------------------------------
+    this.onMessage("message", (client, raw) => {
+      console.log("💬 MESSAGE EVENT (fallback) =", raw);
+    });
+
+    // ---------------------------------------------------
+    // TICK SYSTEM
+    // ---------------------------------------------------
+    this.setSimulationInterval((delta) => {
+      this.combatManager.update(delta);
+    }, 33);
 
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
   }
 
-  // ===========================================================
-  // AUTH
-  // ===========================================================
   async onAuth(client: Client, options: JoinOptions): Promise<AuthData | false> {
-    try {
-      if (!options.token || !options.serverId || !options.characterSlot) return false;
-      if (options.serverId !== this.serverId) return false;
+    console.log("======================================================");
+    console.log("🔐 AUTH REQUEST");
+    console.log("options =", options);
 
-      const valid = await validateToken(options.token);
-      if (!valid.valid || !valid.playerId) return false;
+    if (!options.token) return false;
 
-      const load = await loadPlayerCharacter(
-        valid.playerId,
-        options.serverId,
-        options.characterSlot
-      );
+    const valid = await validateToken(options.token);
+    console.log("validateToken =", valid);
 
-      if (!load.success || !load.profile) return false;
+    if (!valid.valid) return false;
 
-      if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
-        console.log("❌ Personnage déjà connecté");
-        return false;
-      }
+    const load = await loadPlayerCharacter(valid.playerId, options.serverId, options.characterSlot);
+    console.log("loadPlayerCharacter =", load);
 
-      const p = load.profile;
+    if (!load.success || !load.profile) return false;
 
-      return {
-        playerId: p.playerId,
-        profileId: p.profileId,
-        characterName: p.characterName,
-        level: p.level,
-        characterClass: p.class,
-        characterRace: p.race,
-        characterSlot: p.characterSlot
-      };
-
-    } catch (err) {
-      console.error("❌ Auth error:", err);
+    if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
+      console.log("❌ Already connected");
       return false;
     }
+
+    const p = load.profile;
+
+    console.log("🔓 AUTH OK :", p.characterName);
+
+    return {
+      playerId: p.playerId,
+      profileId: p.profileId,
+      characterName: p.characterName,
+      level: p.level,
+      characterClass: p.class,
+      characterRace: p.race,
+      characterSlot: p.characterSlot
+    };
   }
 
-  // ===========================================================
-  // JOIN
-  // ===========================================================
   async onJoin(client: Client, options: JoinOptions, auth: AuthData) {
-    try {
-      const player = new PlayerState(
-        client.sessionId,
-        auth.playerId,
-        auth.profileId,
-        auth.characterSlot,
-        auth.characterName,
-        auth.level,
-        auth.characterClass,
-        auth.characterRace
-      );
+    console.log("======================================================");
+    console.log("👤 onJoin");
+    console.log("client.sessionId =", client.sessionId);
+    console.log("auth =", auth);
 
-      const profile = await ServerProfile.findById(auth.profileId);
-      if (profile?.computedStats) {
-        player.loadStatsFromProfile(profile.computedStats);
-      }
+    const player = new PlayerState(
+      client.sessionId,
+      auth.playerId,
+      auth.profileId,
+      auth.characterSlot,
+      auth.characterName,
+      auth.level,
+      auth.characterClass,
+      auth.characterRace
+    );
 
-      this.state.addPlayer(player);
+    console.log("🟢 PlayerState created:", player);
 
-      client.send("welcome", {
-        message: `Bienvenue ${auth.characterName} sur ${this.serverId} !`,
-        serverId: this.serverId,
-        onlinePlayers: this.state.onlineCount,
-        npcCount: this.npcManager.getNPCCount(),
-        monsterCount: this.monsterManager.getMonsterCount(),
-        stats: {
-          hp: player.hp,
-          maxHp: player.maxHp,
-          resource: player.resource,
-          maxResource: player.maxResource,
-          attackPower: player.attackPower,
-          spellPower: player.spellPower,
-          attackSpeed: player.attackSpeed,
-          moveSpeed: player.moveSpeed
-        }
-      });
+    this.state.addPlayer(player);
+    console.log("Players in room:", this.state.players.size);
 
-      await this.updateLastOnline(auth.profileId);
-
-    } catch (err) {
-      console.error("❌ onJoin error:", err);
-    }
+    client.send("welcome", {
+      msg: "OK",
+      serverId: this.serverId
+    });
   }
 
-  // ===========================================================
-  // LEAVE
-  // ===========================================================
-  async onLeave(client: Client, consented: boolean) {
-    const player = this.state.players.get(client.sessionId);
-    if (!player) return;
-
-    try {
-      if (consented) {
-        await this.savePlayerStats(player.profileId, player);
-        await this.updateLastOnline(player.profileId);
-        this.state.removePlayer(client.sessionId);
-
-      } else {
-        try {
-          await this.allowReconnection(client, 30);
-        } catch {
-          await this.savePlayerStats(player.profileId, player);
-          await this.updateLastOnline(player.profileId);
-          this.state.removePlayer(client.sessionId);
-        }
-      }
-
-    } catch (err) {
-      console.error("❌ onLeave error:", err);
-    }
-  }
-
-  // ===========================================================
-  // HANDLE MESSAGE
-  // ===========================================================
   private handleMessage(client: Client, type: string, msg: any) {
+    console.log("======================================================");
+    console.log("📨 handleMessage RECEIVED:");
+    console.log(" client =", client.sessionId);
+    console.log(" type =", type);
+    console.log(" msg =", msg);
 
     const player = this.state.players.get(client.sessionId);
-    if (!player) return;
-
-    // ---------------- MOVE ----------------
-    if (type === "player_move") {
-      player.posX = msg.x;
-      player.posY = msg.y;
-      player.posZ = msg.z;
-      player.lastMovementTime = Date.now();
-
-      if (player.inCombat) this.combatManager.forceStopCombat(player);
+    if (!player) {
+      console.log("❌ PLAYER NOT FOUND IN STATE!");
       return;
     }
 
-    // ------------- SPAWN TEST MONSTER -------------
+    // ---------------------------------------------
+    // 🔥 SPAWN TEST MONSTER
+    // ---------------------------------------------
     if (type === "spawn_test_monster") {
-
-      console.log("🔥 spawn_test_monster reçu :", msg);
+      console.log("🔥🔥🔥 spawn_test_monster TRIGGERED !!!");
 
       const MonsterState = require("../schema/MonsterState").MonsterState;
 
       const mon = new MonsterState(
         msg.monsterId || "test_" + Date.now(),
-        msg.name || "Training Dummy",
+        msg.name || "TrainingDummy",
         "test",
         1,
-        30,
-        30,
-        5,
+        50,
+        50,
+        10,
         0,
         1,
-        "test_zone",
+        "zone",
         msg.x || 105,
         msg.y || 0,
         msg.z || 105,
         0, 0, 0,
         "aggressive",
-        12,
-        20,
-        2,
+        10,
+        10,
+        1,
         5,
-        3,
+        2,
         false,
-        "dummy_model",
+        "dummy",
         true
       );
 
+      console.log("🟢 ADDING MONSTER:", mon.monsterId);
       this.state.addMonster(mon);
-      console.log("🟢 Monstre ajouté :", mon.monsterId);
+      console.log("Total monsters =", this.state.monsters.size);
+
       return;
     }
 
-    // ---------------- SKILL QUEUE ----------------
-    if (type === "queue_skill") {
-      if (!player.inCombat) return;
-      if (!msg?.skillId) return;
-      if (!player.skills.has(msg.skillId)) return;
-
-      player.queuedSkill = msg.skillId;
-      console.log(`[Queue] ${player.characterName} queue skill: ${msg.skillId}`);
+    // ---------------------------------------------
+    // MOVE
+    // ---------------------------------------------
+    if (type === "player_move") {
+      console.log("MOVE:", msg);
+      player.posX = msg.x;
+      player.posY = msg.y;
+      player.posZ = msg.z;
       return;
-    }
-
-    if (type === "clear_skill_queue") {
-      player.queuedSkill = "";
-      return;
-    }
-
-    // ---------------- NPC ----------------
-    if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
-    if (type === "dialogue_choice") return this.npcManager.handleDialogueChoice(client, player, msg);
-
-    // ---------------- RELOAD ----------------
-    if (type === "npc_reload") {
-      this.npcManager.reloadNPCs();
-      return client.send("info", { message: "NPCs reloaded" });
-    }
-
-    if (type === "monster_reload") {
-      this.monsterManager.reloadMonsters();
-      return client.send("info", { message: "Monsters reloaded" });
     }
   }
 
-  // ===========================================================
-  // TICK
-  // ===========================================================
   update(deltaTime: number) {
+    console.log(`🕒 TICK delta=${deltaTime}ms | players=${this.state.players.size} | monsters=${this.state.monsters.size}`);
     this.combatManager.update(deltaTime);
   }
 
   onDispose() {
-    if (this.updateInterval) this.updateInterval.clear();
-  }
-
-  // ===========================================================
-  // SAVE
-  // ===========================================================
-  private async updateLastOnline(profileId: string) {
-    await ServerProfile.findByIdAndUpdate(profileId, { lastOnline: new Date() });
-  }
-
-  private async savePlayerStats(profileId: string, player: PlayerState) {
-    const profile = await ServerProfile.findById(profileId);
-    if (profile) {
-      profile.computedStats.hp = player.hp;
-      profile.computedStats.resource = player.resource;
-      await profile.save();
-    }
+    console.log("🗑 WorldRoom disposed");
   }
 }
