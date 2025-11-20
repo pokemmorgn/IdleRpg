@@ -2,6 +2,7 @@ import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
 import { GameState } from "../../schema/GameState";
 import { SkillDefinition } from "../../types/SkillDefinition";
+import { SkillRotation } from "./SkillRotation";
 
 export class SkillExecutor {
 
@@ -15,7 +16,7 @@ export class SkillExecutor {
         broadcast: (sessionId: string, type: string, data: any) => void
     ): boolean {
 
-        const skill = player.nextSkill;
+        const skill = SkillRotation.chooseSkill(player, monster);
         if (!skill) return false;
 
         this.cast(player, monster, skill, broadcast, gameState);
@@ -79,7 +80,7 @@ export class SkillExecutor {
         gameState: GameState,
         broadcast: (sessionId: string, type: string, data: any) => void
     ) {
-        const skill: SkillDefinition = player.skills.get(player.currentCastingSkillId);
+        const skill = player.skills.get(player.currentCastingSkillId) as SkillDefinition;
         if (!skill) return;
 
         this.applyAnimationLock(player, skill);
@@ -137,7 +138,9 @@ export class SkillExecutor {
         broadcast(player.sessionId, "skill_cast", { skillId: skill.id });
     }
 
+    // =====================================================
     // DAMAGE
+    // =====================================================
     private static applyDamageSkill(
         player: PlayerState,
         monster: MonsterState,
@@ -155,7 +158,9 @@ export class SkillExecutor {
         });
     }
 
+    // =====================================================
     // HEAL
+    // =====================================================
     private static applyHeal(
         player: PlayerState,
         skill: SkillDefinition,
@@ -171,7 +176,9 @@ export class SkillExecutor {
         });
     }
 
+    // =====================================================
     // BUFF
+    // =====================================================
     private static applyBuff(
         player: PlayerState,
         skill: SkillDefinition,
@@ -188,7 +195,9 @@ export class SkillExecutor {
         });
     }
 
+    // =====================================================
     // AOE
+    // =====================================================
     private static applyAoeSkill(
         player: PlayerState,
         skill: SkillDefinition,
