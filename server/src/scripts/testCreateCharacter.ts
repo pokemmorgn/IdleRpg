@@ -77,7 +77,7 @@ async function loginAccount() {
 async function getCreationData(token: string) {
     console.log("→ Récupération des races/classes...");
 
-    const res = await fetch(`${API_URL}/game/creation`, {
+    const res = await fetch(`${API_URL}/game-data/creation`, {
         headers: {
             "Authorization": `Bearer ${token}`
         }
@@ -86,13 +86,14 @@ async function getCreationData(token: string) {
     const json = await res.json();
 
     if (!res.ok) {
-        console.error("❌ Erreur game/creation:", json);
+        console.error("❌ Erreur game-data/creation:", json);
         return null;
     }
 
     console.log("✔ Données de création reçues !");
     return json;
 }
+
 
 // =========================
 // Vérifier le profil existant
