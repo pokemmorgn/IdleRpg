@@ -1,3 +1,14 @@
+/**
+ * TEST COMPLET IdleRPG :
+ * - Register + Login
+ * - Création personnage si absent
+ * - Connexion Colyseus
+ * - Pack de 4 monstres
+ * - Auto combat
+ */
+
+import WebSocket from "ws";
+
 const API_URL = "http://localhost:3000";
 
 // === Compte test ===
@@ -65,9 +76,6 @@ async function loginAccount() {
     }
 
     console.log("✔ Connecté !");
-    console.log("🔑 TOKEN =", json.token);
-    console.log("🧑 PLAYER =", json.playerId);
-
     return json.token;
 }
 
@@ -75,25 +83,13 @@ async function loginAccount() {
 // GET CREATION DATA
 // =========================
 async function getCreationData(token: string) {
-    console.log("→ Récupération des races/classes...");
-
     const res = await fetch(`${API_URL}/game-data/creation`, {
-        headers: {
-            "Authorization": `Bearer ${token}`
-        }
+        headers: { "Authorization": `Bearer ${token}` }
     });
 
     const json = await res.json();
-
-    if (!res.ok) {
-        console.error("❌ Erreur game-data/creation:", json);
-        return null;
-    }
-
-    console.log("✔ Données de création reçues !");
-    return json;
+    return res.ok ? json : null;
 }
-
 
 // =========================
 // Vérifier le profil existant
@@ -104,29 +100,15 @@ async function checkExistingProfile(token: string) {
     });
 
     const json = await res.json();
+    if (!res.ok) return null;
 
-    if (!res.ok) {
-        console.error("❌ Erreur getProfile:", json);
-        return null;
-    }
-
-    for (const p of json.profiles) {
-        if (p.characterSlot === CHARACTER_SLOT) {
-            console.log("ℹ Personnage existant:");
-            console.log(p);
-            return p;
-        }
-    }
-
-    return null;
+    return json.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) || null;
 }
 
 // =========================
 // CREATE CHARACTER
 // =========================
 async function createCharacter(token: string, race: string, classId: string) {
-    console.log(`→ Création du personnage (${race}/${classId})...`);
-
     const res = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
         method: "POST",
         headers: {
@@ -142,52 +124,92 @@ async function createCharacter(token: string, race: string, classId: string) {
     });
 
     const json = await res.json();
+    return res.ok ? json.profile : null;
+}
 
-    if (!res.ok) {
-        console.error("❌ Erreur createProfile:", json);
-        return null;
+// =========================
+// CONNEXION COLYSEUS
+// =========================
+function connectToColyseus(token: string, profileId: string) {
+    return new Promise<WebSocket>((resolve) => {
+        const ws = new WebSocket(
+            `ws://localhost:3000/world?token=${token}&serverId=${SERVER_ID}&characterSlot=${CHARACTER_SLOT}`
+        );
+
+        ws.on("open", () => console.log("🔌 WebSocket connecté !"));
+
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString());
+
+            if (msg.type === "welcome") {
+                console.log("🌍 Monde chargé !");
+                resolve(ws);
+            }
+
+            if (msg.type === "combat_log") {
+                console.log("⚔️", msg.text);
+            }
+        });
+    });
+}
+
+// =========================
+// SPAWN PACK DE 4 MONSTRES
+// =========================
+function spawnMobPack(ws: WebSocket) {
+    console.log("🐗 Spawn pack de 4 monstres…");
+
+    for (let i = 0; i < 4; i++) {
+        ws.send(JSON.stringify({
+            type: "spawn_test_monster",
+            monsterId: `pack_${Date.now()}_${i}`,
+            name: "Training Dummy",
+            x: 100 + (i * 2),
+            y: 0,
+            z: 100 + (i * 2)
+        }));
     }
+}
 
-    console.log("✔ Personnage créé !");
-    console.log(json.profile);
+// =========================
+// AUTO COMBAT
+// =========================
+function startAutoAttack(ws: WebSocket) {
+    console.log("🔫 Auto-attaque toutes les 2 sec…");
 
-    return json.profile;
+    setInterval(() => {
+        ws.send(JSON.stringify({
+            type: "queue_skill",
+            skillId: "auto_attack"
+        }));
+    }, 2000);
 }
 
 // =========================
 // MAIN
 // =========================
 (async () => {
-    console.log("=== 🧪 TEST CREATION PERSONNAGE ===");
+    console.log("=== 🧪 TEST COMPLET IdleRPG ===");
 
-    const ok = await registerAccount();
-    if (!ok) return;
-
+    await registerAccount();
     const token = await loginAccount();
     if (!token) return;
 
-    // Vérifier si le perso existe
     let profile = await checkExistingProfile(token);
-    if (profile) {
-        console.log("✔ Personnage existant trouvé :", profile.characterName);
-    } else {
-        // Sinon on le crée
-        const creation = await getCreationData(token);
-        if (!creation) return;
 
+    if (!profile) {
+        console.log("→ Aucun perso existant. Création…");
+        const creation = await getCreationData(token);
         const raceId = creation.races[0].raceId;
         const classId = creation.byRace[raceId][0].classId;
 
-        console.log(`→ Race choisie : ${raceId}`);
-        console.log(`→ Classe choisie : ${classId}`);
-
         profile = await createCharacter(token, raceId, classId);
+        console.log("✔ Perso créé !");
     }
 
-    // ✔ Et MAINTENANT on continue : connexion Colyseus
-    console.log("→ Connexion au serveur Colyseus avec le profil :", profile.profileId);
+    console.log("→ Connexion Colyseus…");
+    const ws = await connectToColyseus(token, profile.profileId);
 
-    // TODO : appel du script Colyseus
+    spawnMobPack(ws);
+    startAutoAttack(ws);
 })();
-
-
