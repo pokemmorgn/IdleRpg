@@ -30,8 +30,13 @@ export class SkillRotation {
             const cd = player.cooldowns.get(skill.id);
             if (cd && cd > now) continue;
 
+            // ----- FIX ICI -----
             // Buff déjà actif → ignorer
-            if (skill.type === "buff" && skill.buffId && player.activeBuffs.has(skill.buffId)) {
+            if (
+                skill.effectType === "buff" &&
+                skill.buffId &&
+                player.activeBuffs.has(skill.buffId)
+            ) {
                 continue;
             }
 
@@ -43,16 +48,12 @@ export class SkillRotation {
             const dist = this.dist(player, monster);
             if (dist > skill.range) continue;
 
-            // OK → skill utilisable
             return skill;
         }
 
         return null;
     }
 
-    /**
-     * Alias utile pour OnlineCombatSystem
-     */
     static peekNextSkill(
         player: PlayerState,
         monster: MonsterState
