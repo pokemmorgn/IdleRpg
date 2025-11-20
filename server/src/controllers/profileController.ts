@@ -2,9 +2,8 @@ import { Request, Response } from "express";
 import ServerProfile from "../models/ServerProfile";
 import Server from "../models/Server";
 import { isValidCharacterSlot } from "../config/character.config";
-import { isValidClass } from "../config/classes.config";
+import { isValidClass, isClassAllowedForRace } from "../config/classes.config";
 import { isValidRace } from "../config/races.config";
-import { isClassAllowedForRace } from "../config/classes.config";
 import { StatsManager } from "../managers/StatsManager";
 
 // 🔥 Typer proprement les requêtes authentifiées
@@ -180,7 +179,7 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
     }
 
     // === CRÉATION DU PERSONNAGE ===
-
+    // On met tout à zéro → StatsManager fera le vrai calcul
     const newProfile = await ServerProfile.create({
       playerId,
       serverId,
@@ -191,28 +190,30 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
       gold: 0,
       class: characterClass,
       race: characterRace,
+
       primaryStats: {
-        strength: 10,
-        agility: 10,
-        intelligence: 10,
-        endurance: 10,
-        spirit: 10
+        strength: 0,
+        agility: 0,
+        intelligence: 0,
+        endurance: 0,
+        spirit: 0
       },
+
       computedStats: {
-        hp: 100,
-        maxHp: 100,
-        resource: 100,
-        maxResource: 100,
+        hp: 0,
+        maxHp: 0,
+        resource: 0,
+        maxResource: 0,
         manaRegen: 0,
         rageRegen: 0,
         energyRegen: 0,
-        attackPower: 10,
-        spellPower: 10,
-        attackSpeed: 2.5,
+        attackPower: 0,
+        spellPower: 0,
+        attackSpeed: 0,
         criticalChance: 0,
         criticalDamage: 150,
         damageReduction: 0,
-        moveSpeed: 5.0,
+        moveSpeed: 0,
         armor: 0,
         magicResistance: 0,
         precision: 0,
@@ -222,13 +223,14 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         lifesteal: 0,
         spellPenetration: 0
       },
+
       lastOnline: new Date()
     });
 
-    // Initialiser les stats
+    // === CALCUL INITIAL DES STATS ===
     await StatsManager.initializeNewCharacter(String(newProfile._id));
 
-    // Reload
+    // Recharger depuis Mongo avec les stats calculées
     const profileWithStats = await ServerProfile.findById(newProfile._id);
 
     res.status(201).json({
