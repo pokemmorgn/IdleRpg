@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { WorldRoom } from "./colyseus/rooms/WorldRoom";
+import matchmakingRoutes from "./routes/matchmakingRoutes";
 
 // --- Routes ---
 import authRoutes from "./routes/authRoutes";
@@ -95,6 +96,7 @@ app.get("/health", async (req: Request, res: Response) => {
 //      ROUTES
 // -------------------------
 app.use("/auth", authRoutes);
+app.use("/matchmaking", matchmakingRoutes);
 app.use("/servers", serverRoutes);
 app.use("/profile", profileRoutes);
 app.use("/invitation", invitationRoutes);
