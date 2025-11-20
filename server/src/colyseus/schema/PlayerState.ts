@@ -62,6 +62,7 @@ export class PlayerState extends Schema {
   // ===== COMBAT =====
   @type("boolean") inCombat: boolean = false;
   @type("string") targetMonsterId: string = "";
+  @type("string") lastAttackerId: string = "";
   @type("number") attackTimer: number = 0;
   @type("number") gcdRemaining: number = 0;
   
