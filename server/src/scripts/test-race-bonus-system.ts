@@ -1,23 +1,25 @@
 /**
- * Script de test complet du système racial :
- * - Vérifie la route /stats/creation-data
- * - Vérifie l'application des bonus raciaux (internes)
- * 
- * Usage: npx ts-node src/scripts/test-race-bonus-system.ts
+ * Test du système de bonus raciaux
+ * Usage : npx ts-node src/scripts/test-race-bonus-system.ts
  */
 
-import http from "http";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+
 import { ALL_RACES, getRaceById } from "../config/races.config";
+import { ALL_CLASSES } from "../config/classes.config";
+
 import { PlayerStatsCalculator } from "../colyseus/managers/stats/PlayerStatsCalculator";
-import { getClassById } from "../config/classes.config";
-import { PlayerState } from "../colyseus/schema/PlayerState";
+import ClassStatsModel, { IClassStats } from "../models/ClassStats";
 
-const API_HOST = "localhost";
-const API_PORT = 3000;
+dotenv.config();
 
-/* ==========================================================================
-    HELPERS COLORS
-========================================================================== */
+const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/idlerpg";
+
+// ======================================================
+// LOGGING
+// ======================================================
+
 const colors = {
   reset: "\x1b[0m",
   green: "\x1b[32m",
@@ -32,146 +34,77 @@ const log = {
   err: (msg: string) => console.log(colors.red + "✖ " + msg + colors.reset),
   info: (msg: string) => console.log(colors.blue + "ℹ " + msg + colors.reset),
   section: (msg: string) =>
-    console.log("\n" + colors.cyan + "==== " + msg + " ====" + colors.reset),
+    console.log("\n" + colors.cyan + "====== " + msg + " ======" + colors.reset),
+  warning: (msg: string) =>
+    console.log(colors.yellow + "⚠ " + msg + colors.reset),
 };
 
-/* ==========================================================================
-    HTTP REQUEST HELPER
-========================================================================== */
-function request(path: string, method = "GET"): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: API_HOST,
-      port: API_PORT,
-      path,
-      method,
-    };
+// ======================================================
+// PLAYER MOCK
+// ======================================================
 
-    const req = http.request(options, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(
-            new Error("Réponse non JSON: " + data.substring(0, 200))
-          );
-        }
-      });
-    });
-
-    req.on("error", reject);
-    req.end();
-  });
+function createMockPlayer(raceId: string) {
+  return {
+    race: raceId,
+    level: 1,
+    attackSpeed: 2.5,
+  } as any;
 }
 
-/* ==========================================================================
-    TEST 1: ROUTE /stats/creation-data
-========================================================================== */
-async function testCreationData() {
-  log.section("TEST HTTP: /stats/creation-data");
+// ======================================================
+// MAIN
+// ======================================================
 
-  try {
-    const json = await request("/stats/creation-data");
+async function main() {
+  log.section("Connexion MongoDB");
 
-    if (!json.races || !Array.isArray(json.races))
-      throw new Error("races manquant");
+  await mongoose.connect(MONGO_URI);
+  log.ok("MongoDB connecté.");
 
-    if (!json.classes || !Array.isArray(json.classes))
-      throw new Error("classes manquant");
+  log.section("Chargement Classes Stats");
 
-    if (!json.restrictions)
-      throw new Error("restrictions manquant");
-
-    log.ok("Route accessible ✔");
-
-    // Vérifier présence des bonus raciaux
-    for (const race of json.races) {
-      if (!race.statsModifiers) continue;
-
-      const hasPrimary = !!race.statsModifiers.primaryPercent;
-      const hasComputed = !!race.statsModifiers.computedPercent;
-
-      if (!hasPrimary && !hasComputed) {
-        log.err(`Race ${race.raceId} n'a aucun bonus (OK si voulu)`);        
-      } else {
-        log.ok(`Race ${race.raceId} → bonuses détectés`);
-      }
-    }
-
-    return true;
-  } catch (e: any) {
-    log.err("Erreur: " + e.message);
-    return false;
+  const classStats: IClassStats[] = await ClassStatsModel.find({});
+  if (classStats.length === 0) {
+    log.err("Aucune classe trouvée dans la base ! Impossible de tester.");
+    process.exit(1);
   }
-}
 
-/* ==========================================================================
-    TEST 2 : CALCUL COMPLET DES BONUS RACIAUX
-========================================================================== */
-async function testInternalRaceBonuses() {
-  log.section("TEST CALCUL INTERNE DES BONUS RACIAUX");
-
-  // Classe de test (Mage) — peu importe
-  const testClass = getClassById("mage");
-
-  if (!testClass) {
-    log.err("Classe mage introuvable");
-    return false;
+  const mageStats = classStats.find((c) => c.class === "mage");
+  if (!mageStats) {
+    log.err("Stats de la classe 'mage' introuvables.");
+    process.exit(1);
   }
+
+  log.ok("Classe 'mage' chargée pour les tests.");
+
+  // ======================================================
+  // TEST DE CHAQUE RACE
+  // ======================================================
+
+  log.section("Test des bonus raciaux");
 
   for (const race of ALL_RACES) {
-    log.info(`Race test: ${race.raceId}`);
+    log.info(`Test race : ${race.raceId}`);
 
-    // Fake PlayerState minimal
-    const player: any = {
-      level: 1,
-      race: race.raceId,
-      attackSpeed: 2.5,
-      classId: "mage",
-    };
+    const mockPlayer = createMockPlayer(race.raceId);
 
-    // Fake classStats simplifiés
-    const fakeClassStats: any = {
-      resourceType: "mana",
-      baseMoveSpeed: 5,
-      baseStats: {
-        strength: 10,
-        agility: 10,
-        intelligence: 10,
-        endurance: 10,
-        spirit: 10,
-      },
-      statsPerLevel: {
-        strength: 1,
-        agility: 1,
-        intelligence: 1,
-        endurance: 1,
-        spirit: 1,
-      },
-    };
+    // Sans bonus
+    const baseStats = PlayerStatsCalculator.compute(mockPlayer, mageStats);
 
-    // Stats sans bonus
-    const noRaceStats = PlayerStatsCalculator.compute(
-      { ...player, race: "human_elion" },
-      fakeClassStats
-    );
+    // Avec bonus
+    const bonusRace = getRaceById(race.raceId);
+    const finalStats = PlayerStatsCalculator.compute(mockPlayer, mageStats);
 
-    // Stats avec race réelle
-    const raceStats = PlayerStatsCalculator.compute(player, fakeClassStats);
-
-    // Comparer les bonus réellement appliqués
+    // Détection des changements
     const diffs: string[] = [];
 
-    for (const key of Object.keys(raceStats)) {
-      if (typeof (raceStats as any)[key] !== "number") continue;
+    for (const key of Object.keys(baseStats)) {
+      const k = key as keyof typeof baseStats;
+      const before = baseStats[k];
+      const after = finalStats[k];
 
-      const base = (noRaceStats as any)[key];
-      const val = (raceStats as any)[key];
-
-      if (val !== base) {
-        diffs.push(`- ${key}: ${base} → ${val}  (${((val / base - 1) * 100).toFixed(1)}%)`);
+      if (before !== after) {
+        diffs.push(`${key}: ${before} → ${after}`);
       }
     }
 
@@ -179,27 +112,18 @@ async function testInternalRaceBonuses() {
       log.warning(`Aucun bonus détecté pour ${race.raceId}`);
     } else {
       log.ok(`Bonus appliqués pour ${race.raceId}:`);
-      diffs.forEach((d) => console.log("   " + d));
+      for (const d of diffs) {
+        console.log("   - " + d);
+      }
     }
   }
 
-  return true;
+  log.section("Fin du test");
+  await mongoose.disconnect();
+  log.ok("MongoDB déconnecté.");
 }
 
-/* ==========================================================================
-    RUN ALL TESTS
-========================================================================== */
-async function run() {
-  log.section("Lancement des tests raciaux");
-
-  const httpOK = await testCreationData();
-  if (!httpOK) return log.err("❌ Test HTTP échoué");
-
-  const calcOK = await testInternalRaceBonuses();
-  if (!calcOK) return log.err("❌ Test interne échoué");
-
-  log.section("FIN DES TESTS");
-  log.ok("🎉 Tous les tests ont été exécutés !");
-}
-
-run();
+main().catch((err) => {
+  log.err("Erreur critique : " + err);
+  process.exit(1);
+});
