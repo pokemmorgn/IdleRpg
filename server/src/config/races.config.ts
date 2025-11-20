@@ -12,126 +12,180 @@
  * 
  * OMBRE :
  * - Varkyns : Cornes asymétriques fractales, fourrure sombre, symboles rituels, silhouette élancée. Culture chamanique ancienne.
- * - Morhri remplacé par Arkanids : Peau matte (bleu nuit, violet, noir), membres fins, yeux réfléchissants, ornements chitineux. Chasseurs furtifs nocturnes.
+ * - Arkanids : Peau matte (bleu nuit, violet, noir), membres fins, yeux réfléchissants, ornements chitineux. Chasseurs furtifs nocturnes.
  * - Ghrannites : Peau de pierre (granite, basalte, obsidienne), yeux de cristal, corps imposants. Culture souterraine liée à la chaleur.
  * - Sélénithes : Peau noire ou gris bleu profond, cheveux blancs/argentés, pupilles verticales lumineuses. Magie lunaire sombre.
  */
 
+import { IPlayerPrimaryStats, IPlayerComputedStats } from "../models/ServerProfile";
+
+// ======================
+// TYPES
+// ======================
+
 export type Faction = "AURION" | "OMBRE";
 
-export interface RaceConfig {
-  raceId: string;           // ID unique (ex: "human_elion")
-  nameKey: string;          // Clé de traduction pour le nom (ex: "race.human_elion.name")
-  descriptionKey: string;   // Clé de traduction pour la description (ex: "race.human_elion.description")
-  faction: Faction;         // Faction d'appartenance
-  
-  // Les bonus/malus de stats seront ajoutés ici plus tard
-  // statsModifiers?: { [stat: string]: number }; // Ex: { STR: 10, INT: -5 }
+/**
+ * Bonus raciaux
+ * - Certains apportent des bonus primaires (STR/AGI…)
+ * - D'autres affectent des stats secondaires (AP, armor, crit…)
+ * - Aucun bonus n'est obligatoire
+ */
+export interface RaceStatsModifiers {
+  primary?: Partial<IPlayerPrimaryStats>;
+  computed?: Partial<IPlayerComputedStats>;
 }
 
 /**
- * ===== FACTION AURION =====
- * Thème : civilisations lumineuses, érudites, protectrices
- * Identité : ordre, magie pure, architecture raffinée, harmonie
+ * Structure d'une race jouable
  */
+export interface RaceConfig {
+  raceId: string;
+  nameKey: string;
+  descriptionKey: string;
+  loreKey: string;                // AJOUT : clé texte lore approfondi
+  faction: Faction;
+  statsModifiers?: RaceStatsModifiers;  // AJOUT : bonus raciaux optionnels
+}
+
+// ======================
+// FACTION AURION
+// ======================
 
 const AURION_RACES: RaceConfig[] = [
   {
     raceId: "human_elion",
     nameKey: "race.human_elion.name",
     descriptionKey: "race.human_elion.description",
-    faction: "AURION"
+    loreKey: "race.human_elion.lore",
+    faction: "AURION",
+    statsModifiers: {}
   },
   {
     raceId: "dwarf_rune",
     nameKey: "race.dwarf_rune.name",
     descriptionKey: "race.dwarf_rune.description",
-    faction: "AURION"
+    loreKey: "race.dwarf_rune.lore",
+    faction: "AURION",
+    statsModifiers: {}
   },
   {
     raceId: "murlocs",
     nameKey: "race.murlocs.name",
     descriptionKey: "race.murlocs.description",
-    faction: "AURION"
+    loreKey: "race.murlocs.lore",
+    faction: "AURION",
+    statsModifiers: {}
   },
   {
     raceId: "sylphide_forest",
     nameKey: "race.sylphide_forest.name",
     descriptionKey: "race.sylphide_forest.description",
-    faction: "AURION"
+    loreKey: "race.sylphide_forest.lore",
+    faction: "AURION",
+    statsModifiers: {}
   }
 ];
 
-/**
- * ===== FACTION OMBRE-COURONNE =====
- * Thème : peuples sombres, sauvages, occultes, environnements extrêmes
- * Identité : survie, instinct, magie instable, rites anciens, nocturnité
- */
+// ======================
+// FACTION OMBRE
+// ======================
 
 const OMBRE_RACES: RaceConfig[] = [
   {
     raceId: "varkyns_beast",
     nameKey: "race.varkyns_beast.name",
     descriptionKey: "race.varkyns_beast.description",
-    faction: "OMBRE"
+    loreKey: "race.varkyns_beast.lore",
+    faction: "OMBRE",
+    statsModifiers: {}
   },
   {
     raceId: "arkanids_insect",
     nameKey: "race.arkanids_insect.name",
     descriptionKey: "race.arkanids_insect.description",
-    faction: "OMBRE"
+    loreKey: "race.arkanids_insect.lore",
+    faction: "OMBRE",
+    statsModifiers: {}
   },
   {
     raceId: "ghrannite_stone",
     nameKey: "race.ghrannite_stone.name",
     descriptionKey: "race.ghrannite_stone.description",
-    faction: "OMBRE"
+    loreKey: "race.ghrannite_stone.lore",
+    faction: "OMBRE",
+    statsModifiers: {}
   },
   {
     raceId: "selenite_lunar",
     nameKey: "race.selenite_lunar.name",
     descriptionKey: "race.selenite_lunar.description",
-    faction: "OMBRE"
+    loreKey: "race.selenite_lunar.lore",
+    faction: "OMBRE",
+    statsModifiers: {}
   }
 ];
 
-/**
- * Toutes les races disponibles
- */
+// ======================
+// EXPORT GLOBAL
+// ======================
+
 export const ALL_RACES: RaceConfig[] = [
   ...AURION_RACES,
   ...OMBRE_RACES
 ];
 
-/**
- * Map des races par ID pour accès rapide
- */
-export const RACES_BY_ID: Map<string, RaceConfig> = new Map(
-  ALL_RACES.map(race => [race.raceId, race])
+export const RACES_BY_ID = new Map<string, RaceConfig>(
+  ALL_RACES.map(r => [r.raceId, r])
 );
 
-/**
- * Récupère les races d'une faction
- */
-export function getRacesByFaction(faction: Faction): RaceConfig[] {
-  return ALL_RACES.filter(race => race.faction === faction);
-}
+export const VALID_RACE_IDS = ALL_RACES.map(r => r.raceId);
 
-/**
- * Vérifie si un raceId est valide
- */
+/** Vérifie si un raceId est valide */
 export function isValidRace(raceId: string): boolean {
   return RACES_BY_ID.has(raceId);
 }
 
-/**
- * Récupère une race par son ID
- */
+/** Récupère une race */
 export function getRaceById(raceId: string): RaceConfig | undefined {
   return RACES_BY_ID.get(raceId);
 }
 
+/** Filtrage par faction */
+export function getRacesByFaction(faction: Faction): RaceConfig[] {
+  return ALL_RACES.filter(r => r.faction === faction);
+}
+
+// ======================
+// UTILITAIRE CLIENT
+// ======================
+
 /**
- * Liste de tous les raceIds valides
+ * Transforme les bonus raciaux en texte lisible
+ * (pour affichage côté client)
  */
-export const VALID_RACE_IDS = ALL_RACES.map(r => r.raceId);
+export function getReadableRaceBonuses(race: RaceConfig): string[] {
+  if (!race.statsModifiers) return [];
+
+  const lines: string[] = [];
+
+  // Stats primaires
+  if (race.statsModifiers.primary) {
+    for (const [stat, value] of Object.entries(race.statsModifiers.primary)) {
+      if (value === 0 || value === undefined) continue;
+      const prefix = value > 0 ? "+" : "";
+      lines.push(`${prefix}${value} ${stat}`);
+    }
+  }
+
+  // Stats secondaires
+  if (race.statsModifiers.computed) {
+    for (const [stat, value] of Object.entries(race.statsModifiers.computed)) {
+      if (value === 0 || value === undefined) continue;
+      const prefix = value > 0 ? "+" : "";
+      lines.push(`${prefix}${value} ${stat}`);
+    }
+  }
+
+  return lines;
+}
