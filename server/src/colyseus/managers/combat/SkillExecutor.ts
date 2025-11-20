@@ -1,42 +1,60 @@
 import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
+import { GameState } from "../../schema/GameState";
 import { SkillDefinition } from "../../types/SkillDefinition";
 
 export class SkillExecutor {
 
-    /**
-     * Lancement du sort : vérifie cast time, lock, GCD,
-     * puis démarre soit un cast, soit une animation instantanée.
-     */
+    // =====================================================
+    // TRY EXECUTE (appelé par OnlineCombatSystem)
+    // =====================================================
+    static tryExecute(
+        player: PlayerState,
+        monster: MonsterState,
+        gameState: GameState,
+        broadcast: (sessionId: string, type: string, data: any) => void
+    ): boolean {
+
+        const skill = player.nextSkill;
+        if (!skill) return false;
+
+        this.cast(player, monster, skill, broadcast, gameState);
+        return true;
+    }
+
+    // =====================================================
+    // CAST
+    // =====================================================
     static cast(
         player: PlayerState,
         monster: MonsterState,
         skill: SkillDefinition,
-        broadcast: (sessionId: string, type: string, data: any) => void
+        broadcast: (sessionId: string, type: string, data: any) => void,
+        gameState: GameState
     ) {
         // 1. Appliquer GCD
-        player.gcdRemaining = skill.globalCooldown ?? 1000; // fallback 1 sec
+        player.gcdRemaining = skill.globalCooldown ?? 1000;
 
         // 2. Déclencher cooldown
         const now = Date.now();
-        player.cooldowns[skill.id] = now + skill.cooldown;
+        player.cooldowns.set(skill.id, now + skill.cooldown);
 
-        // 3. Consommer ressources
+        // 3. Consommer ressource
         this.consumeResources(player, skill);
 
         // 4. Cast time ?
         if (skill.castTime > 0) {
             this.startCasting(player, skill, broadcast);
         } else {
-            // Sort instant → mais animation lock possible
+            // Instant
             this.applyAnimationLock(player, skill);
-            this.applySkillEffect(player, monster, skill, broadcast);
+            this.applySkillEffect(player, monster, skill, broadcast, gameState);
         }
     }
 
-    /**
-     * Démarre un cast (sort > 0ms)
-     */
+    // =====================================================
+    // CAST START
+    // =====================================================
     private static startCasting(
         player: PlayerState,
         skill: SkillDefinition,
@@ -44,70 +62,59 @@ export class SkillExecutor {
     ) {
         player.currentCastingSkillId = skill.id;
         player.castLockRemaining = skill.castTime;
-        player.currentAnimationLockType = skill.lockType; // soft / full / none
+        player.currentAnimationLockType = skill.lockType;
 
-        // Broadcast début du cast
         broadcast(player.sessionId, "cast_start", {
             skillId: skill.id,
             castTime: skill.castTime
         });
     }
 
-    /**
-     * Appelé par OnlineCombatSystem lorsque le cast se termine
-     */
+    // =====================================================
+    // CAST FINISH
+    // =====================================================
     static finishCast(
         player: PlayerState,
         monster: MonsterState,
+        gameState: GameState,
         broadcast: (sessionId: string, type: string, data: any) => void
     ) {
-        const skillId = player.currentCastingSkillId;
-        if (!skillId) return;
+        const skill: SkillDefinition = player.skills.get(player.currentCastingSkillId);
+        if (!skill) return;
 
-        const skill = player.skills[skillId] as SkillDefinition;
-
-        // Cast terminé → appliquer animation lock
         this.applyAnimationLock(player, skill);
+        this.applySkillEffect(player, monster, skill, broadcast, gameState);
 
-        // Appliquer l’effet du sort
-        this.applySkillEffect(player, monster, skill, broadcast);
-
-        // Clear cast
         player.castLockRemaining = 0;
         player.currentCastingSkillId = "";
     }
 
-
-    // -------------------------------------------------------
+    // =====================================================
     // ANIMATION LOCK
-    // -------------------------------------------------------
-
+    // =====================================================
     private static applyAnimationLock(player: PlayerState, skill: SkillDefinition) {
         const lock = skill.animationLock ?? 0;
 
         if (lock <= 0) {
-            // no-lock : le joueur peut tout faire immédiatement
             player.animationLockRemaining = 0;
             return;
         }
 
-        // soft-lock : parsable par le mouvement (géré ailleurs)
-        // full-lock : bloquant
         player.animationLockRemaining = lock;
         player.currentAnimationLockType = skill.lockType;
     }
 
-
-    // -------------------------------------------------------
-    // APPLICATION DE L’EFFET DU SORT
-    // -------------------------------------------------------
-
+    // =====================================================
+    // APPLY SKILL EFFECT
+    // =====================================================
     private static applySkillEffect(
         player: PlayerState,
         monster: MonsterState,
         skill: SkillDefinition,
-        broadcast: (sessionId: string, type: string, data: any) => void
+        broadcast: (sessionId: string, type: string, data: any) => void,
+        gameState: GameState
     ) {
+
         switch (skill.effectType) {
 
             case "damage":
@@ -115,7 +122,7 @@ export class SkillExecutor {
                 break;
 
             case "aoe":
-                this.applyAoeSkill(player, skill, broadcast);
+                this.applyAoeSkill(player, skill, broadcast, gameState);
                 break;
 
             case "buff":
@@ -125,28 +132,17 @@ export class SkillExecutor {
             case "heal":
                 this.applyHeal(player, skill, broadcast);
                 break;
-
-            default:
-                console.warn("⚠️ Skill type inconnu :", skill.effectType);
-                break;
         }
 
-        // Broadcast générique dans tous les cas
-        broadcast(player.sessionId, "skill_cast", {
-            skillId: skill.id
-        });
+        broadcast(player.sessionId, "skill_cast", { skillId: skill.id });
     }
 
-
-    // -------------------------------------------------------
-    // SKILLS : DAMAGE
-    // -------------------------------------------------------
-
+    // DAMAGE
     private static applyDamageSkill(
         player: PlayerState,
         monster: MonsterState,
         skill: SkillDefinition,
-        broadcast: (sessionId: string, type: string, data: any) => void
+        broadcast: any
     ) {
         const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
         monster.hp = Math.max(0, monster.hp - dmg);
@@ -159,15 +155,11 @@ export class SkillExecutor {
         });
     }
 
-
-    // -------------------------------------------------------
-    // SKILLS : HEAL
-    // -------------------------------------------------------
-
+    // HEAL
     private static applyHeal(
         player: PlayerState,
         skill: SkillDefinition,
-        broadcast: (sessionId: string, type: string, data: any) => void
+        broadcast: any
     ) {
         const amount = Math.max(1, skill.power);
         player.hp = Math.min(player.maxHp, player.hp + amount);
@@ -179,19 +171,15 @@ export class SkillExecutor {
         });
     }
 
-
-    // -------------------------------------------------------
-    // SKILLS : BUFF
-    // -------------------------------------------------------
-
+    // BUFF
     private static applyBuff(
         player: PlayerState,
         skill: SkillDefinition,
-        broadcast: (sessionId: string, type: string, data: any) => void
+        broadcast: any
     ) {
         if (!skill.buffId) return;
 
-        player.activeBuffs[skill.buffId] = Date.now() + skill.duration;
+        player.activeBuffs.set(skill.buffId, Date.now() + skill.duration);
 
         broadcast(player.sessionId, "skill_buff", {
             skillId: skill.id,
@@ -200,62 +188,45 @@ export class SkillExecutor {
         });
     }
 
-
-    // -------------------------------------------------------
-    // SKILLS : AOE
-    // -------------------------------------------------------
-
+    // AOE
     private static applyAoeSkill(
         player: PlayerState,
         skill: SkillDefinition,
-        broadcast: (sessionId: string, type: string, data: any) => void
+        broadcast: any,
+        gameState: GameState
     ) {
         const radius = skill.radius ?? 4;
+        let hits = 0;
 
-        let hitCount = 0;
-
-        for (const monster of player.roomState.monsters.values()) {
+        for (const monster of gameState.monsters.values()) {
             const d = this.dist(player, monster);
-            if (d <= radius && monster.isAlive && !monster.isDead) {
+
+            if (d <= radius && monster.isAlive) {
                 const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
                 monster.hp = Math.max(0, monster.hp - dmg);
-                hitCount++;
+                hits++;
             }
         }
 
         broadcast(player.sessionId, "skill_aoe", {
             skillId: skill.id,
-            hits: hitCount,
+            hits,
             radius
         });
     }
 
-
-    // -------------------------------------------------------
-    // RESSOURCES
-    // -------------------------------------------------------
-
+    // =====================================================
+    // RESOURCE CONSUMPTION
+    // =====================================================
     private static consumeResources(player: PlayerState, skill: SkillDefinition) {
-        if (skill.manaCost) player.mana = Math.max(0, player.mana - skill.manaCost);
-        if (skill.energyCost) player.energy = Math.max(0, player.energy - skill.energyCost);
+        if (skill.manaCost) player.resource = Math.max(0, player.resource - skill.manaCost);
+        if (skill.energyCost) player.resource = Math.max(0, player.resource - skill.energyCost);
     }
 
-
-    // -------------------------------------------------------
+    // =====================================================
     // UTILS
-    // -------------------------------------------------------
-
-    static isInRange(player: PlayerState, monster: MonsterState, skill: SkillDefinition) {
-        return this.dist(player, monster) <= skill.range;
-    }
-
-    static targetInCastRange(player: PlayerState, monster: MonsterState) {
-        const skill = player.skills[player.currentCastingSkillId];
-        if (!skill) return false;
-        return this.dist(player, monster) <= skill.range;
-    }
-
-    private static dist(a: PlayerState, b: MonsterState) {
+    // =====================================================
+    private static dist(a: PlayerState, b: MonsterState): number {
         return Math.sqrt(
             (a.posX - b.posX) ** 2 +
             (a.posY - b.posY) ** 2 +
