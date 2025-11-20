@@ -4,14 +4,14 @@ import { AFKManager } from "./AFKManager";
 import { AFKCombatSystem } from "./AFKCombatSystem";
 import { AFKBehaviorManager } from "./AFKBehaviorManager";
 import { OnlineCombatSystem } from "./OnlineCombatSystem";
-import { MonsterCombatSystem } from "./combat/MonsterCombatSystem"; // <-- Importer
+import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 
 export class CombatManager {
 
     private onlineSystem: OnlineCombatSystem;
     private afkSystem: AFKCombatSystem;
     private afkBehavior: AFKBehaviorManager;
-    private monsterSystem: MonsterCombatSystem; // <-- Ajouter la propriété
+    private monsterSystem: MonsterCombatSystem;
 
     constructor(
         private readonly gameState: GameState,
@@ -20,11 +20,13 @@ export class CombatManager {
     ) {
         this.afkBehavior = new AFKBehaviorManager();
 
+        // --- ONLINE COMBAT SYSTEM ---
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
             this.broadcast
         );
 
+        // --- AFK COMBAT SYSTEM ---
         this.afkSystem = new AFKCombatSystem(
             this.gameState,
             this.afkManager,
@@ -39,28 +41,40 @@ export class CombatManager {
         );
     }
 
+    /**
+     * Tick principal du combat.
+     * S'exécute à chaque frame depuis WorldRoom.update()
+     */
     update(deltaTime: number) {
-        // Mettre à jour les timers des joueurs
-        for (const player of this.gameState.players.values()) {
-            player.updateCombatTimers(dt);
-        }
-
-        // Mettre à jour la logique des monstres
+        // 1. Mettre à jour la logique des monstres
         this.monsterSystem.update(deltaTime);
 
-        // Mettre à jour la logique des joueurs
+        // 2. Parcourir tous les joueurs pour mettre à jour leurs états
         for (const player of this.gameState.players.values()) {
+
+            // Mettre à jour les timers de combat pour CE joueur
+            player.updateCombatTimers(deltaTime);
+
             if (player.isDead) continue;
 
+            // === AFK MODE ===
             if (player.isAFK) {
+                // NOTE: Cet appel est fait pour chaque joueur AFK. 
+                // Si AFKCombatSystem.update() est coûteux, cela pourrait être inefficace.
+                // Une optimisation serait de l'appeler une seule fois par tick et de le laisser gérer tous les joueurs AFK.
                 this.afkSystem.update(deltaTime);
                 continue;
             }
 
+            // === ONLINE MODE ===
             this.onlineSystem.update(player, deltaTime);
         }
     }
 
+    /**
+     * Appelé depuis WorldRoom quand un joueur bouge,
+     * afin d'annuler un combat en cours.
+     */
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
         player.targetMonsterId = "";
