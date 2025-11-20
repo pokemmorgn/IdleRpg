@@ -42,7 +42,12 @@ export class WorldRoom extends Room<GameState> {
 
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
-
+    
+    // 🔥 Ajout temporaire pour le serveur "test"
+    if (this.serverId === "test") {
+        this.spawnTemporaryTestMonsters();
+    }
+    
     console.log("📥 WORLD ROOM READY (messages setup)");
 
     // Colyseus messages (room.send)
@@ -188,4 +193,63 @@ export class WorldRoom extends Room<GameState> {
       console.log("🟢 MONSTER ADDED:", m.monsterId);
     }
   }
+  private spawnTemporaryTestMonsters() {
+    console.log("🔥 Seed de monstres temporaires pour serveur test...");
+
+    const MonsterState = require("../schema/MonsterState").MonsterState;
+
+    const monster1 = new MonsterState(
+        "test_dummy_1",
+        "Training Dummy 1",
+        "test_zone",
+        1,
+        50,     // max HP
+        50,     // HP
+        5,      // attack
+        0,      // spellPower
+        1,      // attackSpeed
+        "test_zone",
+        100, 0, 100, // position
+        0, 0, 0,     // rotation
+        "aggressive",
+        10,     // detectionRange
+        20,     // chaseRange
+        2,      // attackRange
+        5,      // wanderRadius
+        3,      // respawnTime
+        false,
+        "dummy_model",
+        true
+    );
+
+    const monster2 = new MonsterState(
+        "test_dummy_2",
+        "Training Dummy 2",
+        "test_zone",
+        1,
+        55,
+        55,
+        6,
+        0,
+        1,
+        "test_zone",
+        103, 0, 103,
+        0, 0, 0,
+        "aggressive",
+        12,
+        20,
+        2,
+        5,
+        3,
+        false,
+        "dummy_model",
+        true
+    );
+
+    this.state.addMonster(monster1);
+    this.state.addMonster(monster2);
+
+    console.log("🟢 Monstres temporaires ajoutés !");
+}
+
 }
