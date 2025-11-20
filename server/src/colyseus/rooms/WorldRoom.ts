@@ -138,7 +138,12 @@ export class WorldRoom extends Room<GameState> {
       auth.characterClass,
       auth.characterRace
     );
-
+    // 🔥 AJOUT : si on est sur le serveur test → zone forcée
+    if (this.serverId === "test") {
+        player.zoneId = "test_zone";
+        console.log("🗺️ Player zone set to test_zone (serveur test)");
+    }
+    
     this.state.addPlayer(player);
     console.log("🟢 Player added to state:", player.characterName);
 
