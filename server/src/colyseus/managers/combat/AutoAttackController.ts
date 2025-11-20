@@ -1,4 +1,5 @@
 import { PlayerState } from "../../schema/PlayerState";
+import { CombatUtils } from "./CombatUtils";
 
 export class AutoAttackController {
 
@@ -7,8 +8,7 @@ export class AutoAttackController {
         if (!player.inCombat) return false;
 
         // Ne pas AA pendant un cast ou une animation lock
-        if (player.castLockRemaining > 0) return false;
-        if (player.animationLockRemaining > 0) return false;
+        if (CombatUtils.isLockedForActions(player)) return false;
 
         // auto-attack basée sur attackSpeed (déjà calculée via PlayerStatsCalculator)
         if (player.autoAttackTimer < player.attackSpeed * 1000) return false;
