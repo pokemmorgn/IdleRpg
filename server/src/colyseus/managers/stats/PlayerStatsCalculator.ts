@@ -1,140 +1,177 @@
 import { IClassStats } from "../../../models/ClassStats";
 import { PlayerState } from "../../schema/PlayerState";
-
+import { getRaceById } from "../../../config/races.config";
+import { RaceConfig } from "../../../config/races.config";
 
 /**
- * PlayerStatsCalculator
- * ----------------------
- * Calcule les stats finales du joueur à partir :
- * - de sa classe (ClassStats)
- * - de son niveau
- * - de ses stats primaires (STR, AGI, INT, END, SPI)
+ * Applique les bonus raciaux sur les stats primaires
+ */
+function applyPrimaryRaceBonuses(
+  primary: { [k: string]: number },
+  race?: RaceConfig
+) {
+  if (!race || !race.statsModifiers?.primary) return primary;
+
+  const result = { ...primary };
+  for (const [stat, value] of Object.entries(race.statsModifiers.primary)) {
+    result[stat] += value ?? 0;
+  }
+
+  return result;
+}
+
+/**
+ * Applique les bonus raciaux sur les stats computed
+ */
+function applyComputedRaceBonuses(
+  computed: { [k: string]: number },
+  race?: RaceConfig
+) {
+  if (!race || !race.statsModifiers?.computed) return computed;
+
+  const result = { ...computed };
+  for (const [stat, value] of Object.entries(race.statsModifiers.computed)) {
+    result[stat] += value ?? 0;
+  }
+
+  return result;
+}
+
+/**
+ * =============================
+ *  PLAYER STATS CALCULATOR
+ * =============================
+ * Calcule les stats finales du joueur :
+ * - Classe (base + per level)
+ * - Niveau
+ * - Statistiques raciales
  * 
  * ⚠️ IMPORTANT :
- * Pas encore de buffs, pas encore d'équipement.
- * Le système est future-proof.
+ * Aucun buff, aucun équipement pour l’instant.
  */
 export class PlayerStatsCalculator {
 
-  /**
-   * Calcule les stats finales du joueur.
-   */
   static compute(player: PlayerState, classStats: IClassStats) {
 
     const level = player.level;
+    const race = getRaceById(player.race);   // <<<<< AJOUT ICI
 
     // ============================
-    // 1) STATS PRIMAIRES
+    // 1) STATS PRIMAIRES (BRUTES)
     // ============================
-    const STR = classStats.baseStats.strength + classStats.statsPerLevel.strength * (level - 1);
-    const AGI = classStats.baseStats.agility + classStats.statsPerLevel.agility * (level - 1);
-    const INT = classStats.baseStats.intelligence + classStats.statsPerLevel.intelligence * (level - 1);
-    const END = classStats.baseStats.endurance + classStats.statsPerLevel.endurance * (level - 1);
-    const SPI = classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1);
+    let prim = {
+      strength: classStats.baseStats.strength + classStats.statsPerLevel.strength * (level - 1),
+      agility: classStats.baseStats.agility + classStats.statsPerLevel.agility * (level - 1),
+      intelligence: classStats.baseStats.intelligence + classStats.statsPerLevel.intelligence * (level - 1),
+      endurance: classStats.baseStats.endurance + classStats.statsPerLevel.endurance * (level - 1),
+      spirit: classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1)
+    };
+
+    // ============================
+    // 1B) APPLICATION BONUS RACIAL
+    // ============================
+    prim = applyPrimaryRaceBonuses(prim, race);
+
+    const STR = prim.strength;
+    const AGI = prim.agility;
+    const INT = prim.intelligence;
+    const END = prim.endurance;
+    const SPI = prim.spirit;
 
     // ============================
     // 2) COMBAT DE BASE
     // ============================
-    const attackPower = STR * 2;
-    const spellPower = INT * 2;
+    let computed = {
+      attackPower: STR * 2,
+      spellPower: INT * 2,
+      maxHp: 100 + END * 5,
+      damageReduction: END * 0.5,
 
-    const maxHp = 100 + END * 5;
+      // resource
+      maxResource: 0,
+      manaRegen: 0,
+      rageRegen: 0,
+      energyRegen: 0,
 
-    const damageReduction = END * 0.5;
+      // mobilité
+      moveSpeed: classStats.baseMoveSpeed,
+
+      // vit. attaque
+      attackSpeed: Math.max(0.3, (player.attackSpeed || 2.5) - AGI * 0.02),
+
+      // critique & esquive
+      criticalChance: AGI * 0.1,
+      criticalDamage: 150,
+      evasion: AGI * 0.5,
+
+      // défense
+      armor: END * 1,
+      magicResistance: INT * 0.2,
+
+      // avancées (placeholder)
+      precision: 0,
+      penetration: 0,
+      tenacity: 0,
+      lifesteal: 0,
+      spellPenetration: 0
+    };
 
     // ============================
-    // 3) RESSOURCE
+    // 3) RESSOURCE PAR TYPE
     // ============================
-    let maxResource = 0;
-    let manaRegen = 0;
-    let rageRegen = 0;
-    let energyRegen = 0;
-
     switch (classStats.resourceType) {
       case "mana":
-        maxResource = 100 + INT * 5;
-        manaRegen = SPI * 2;
+        computed.maxResource = 100 + INT * 5;
+        computed.manaRegen = SPI * 2;
         break;
 
       case "rage":
-        maxResource = 100;
+        computed.maxResource = 100;
         break;
 
       case "energy":
-        maxResource = 100;
-        energyRegen = 10;
+        computed.maxResource = 100;
+        computed.energyRegen = 10;
         break;
     }
 
     // ============================
-    // 4) MOBILITÉ
+    // 4) APPLICATION BONUS RACIAL (COMPUTED)
     // ============================
-    const moveSpeed = classStats.baseMoveSpeed;
+    computed = applyComputedRaceBonuses(computed, race);
 
     // ============================
-    // 5) ATTACK SPEED
-    // ============================
-    const baseSpeed = player.attackSpeed || 2.5;
-
-    const finalAttackSpeed = Math.max(
-      0.3,
-      baseSpeed - AGI * 0.02
-    );
-
-    // ============================
-    // 6) CRITIQUE & ÉVASION
-    // ============================
-    const criticalChance = AGI * 0.1;
-    const criticalDamage = 150;
-    const evasion = AGI * 0.5;
-
-    // ============================
-    // 7) DÉFENSE
-    // ============================
-    const armor = END * 1;
-    const magicResistance = INT * 0.2;
-
-    // ============================
-    // 8) STATS AVANCÉES
-    // ============================
-    const precision = 0;
-    const penetration = 0;
-    const tenacity = 0;
-    const lifesteal = 0;
-    const spellPenetration = 0;
-
-    // ============================
-    // 9) PACKAGE FINAL
+    // 5) PACKAGE FINAL
     // ============================
     return {
-      hp: maxHp,
-      maxHp,
+      hp: computed.maxHp,
+      maxHp: computed.maxHp,
 
-      resource: maxResource,
-      maxResource,
-      manaRegen,
-      rageRegen,
-      energyRegen,
+      resource: computed.maxResource,
+      maxResource: computed.maxResource,
+      manaRegen: computed.manaRegen,
+      rageRegen: computed.rageRegen,
+      energyRegen: computed.energyRegen,
 
-      attackPower,
-      spellPower,
-      attackSpeed: finalAttackSpeed,
+      attackPower: computed.attackPower,
+      spellPower: computed.spellPower,
+      attackSpeed: computed.attackSpeed,
 
-      criticalChance,
-      criticalDamage,
+      criticalChance: computed.criticalChance,
+      criticalDamage: computed.criticalDamage,
 
-      damageReduction,
-      armor,
-      magicResistance,
+      damageReduction: computed.damageReduction,
+      armor: computed.armor,
+      magicResistance: computed.magicResistance,
 
-      moveSpeed,
+      moveSpeed: computed.moveSpeed,
 
-      precision,
-      evasion,
-      penetration,
-      tenacity,
-      lifesteal,
-      spellPenetration
+      precision: computed.precision,
+      evasion: computed.evasion,
+      penetration: computed.penetration,
+      tenacity: computed.tenacity,
+      lifesteal: computed.lifesteal,
+      spellPenetration: computed.spellPenetration
     };
   }
 }
