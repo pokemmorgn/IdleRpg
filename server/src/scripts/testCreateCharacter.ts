@@ -245,14 +245,40 @@ function startCombatAI(ws: WebSocket) {
     const ws = await connectWebSocket(room, sessionId);
 
     // LISTEN SERVER MESSAGES
-    ws.on("message", (raw) => {
+ws.on("message", (raw) => {
+    // → Tente de convertir en string
+    let text = raw.toString();
+
+    // → Si ça ressemble à du JSON, on le parse
+    if (text.startsWith("{") || text.startsWith("[")) {
         try {
-            const msg = JSON.parse(raw.toString());
-            console.log("📩 Server:", msg);
-        } catch {
-            console.log("📩 Raw:", raw.toString());
+            const msg = JSON.parse(text);
+
+            // Filtrage intelligent : on affiche que ce qui nous intéresse
+            if (msg.type === "damage") {
+                console.log(`⚔️  DMG: ${msg.source} → ${msg.target}: ${msg.amount}`);
+            } 
+            else if (msg.type === "combat_start") {
+                console.log(`🔥 Combat contre ${msg.monsterName} !`);
+            }
+            else if (msg.type === "combat_end") {
+                console.log(`🏁 Combat terminé : ${msg.result}`);
+            }
+            else if (msg.type === "welcome") {
+                console.log("👋 WELCOME:", msg.message);
+            }
+            else {
+                console.log("📨 JSON:", msg);
+            }
+
+        } catch (e) {
+            // JSON invalide = probablement du binaire → on ignore
         }
-    });
+    }
+
+    // Sinon = Schema binaire → on ignore
+});
+
 
     // Spawn mobs + auto-combat
     spawnMobs(ws);
