@@ -15,10 +15,13 @@ import {
   getRaceAllowedClasses
 } from "../controllers/raceController";
 
+import { getCreationData } from "../controllers/creationDataController";
+
+
 const router = Router();
 
 // ===== ROUTES CLASSES =====
-
+router.get("/creation-data", getCreationData);
 router.get("/classes", getAllClasses);
 router.get("/classes/:className", getClassByName);
 router.post("/classes", createClass);
