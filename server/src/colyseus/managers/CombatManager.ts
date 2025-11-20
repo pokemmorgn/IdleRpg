@@ -4,7 +4,7 @@ import { AFKManager } from "./AFKManager";
 import { AFKCombatSystem } from "./AFKCombatSystem";
 import { AFKBehaviorManager } from "./AFKBehaviorManager";
 import { OnlineCombatSystem } from "./OnlineCombatSystem";
-import { MonsterCombatSystem } from "./MonsterCombatSystem"; // <-- Importer
+import { MonsterCombatSystem } from "./combat/MonsterCombatSystem"; // <-- Importer
 
 export class CombatManager {
 
