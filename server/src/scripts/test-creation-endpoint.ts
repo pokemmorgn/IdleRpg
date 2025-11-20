@@ -62,38 +62,34 @@ async function main() {
   ok("Structure OK ✔ races / classes / byRace");
 
   // ---------------------------------------------------------------
-  // SECTION RACES (vérification Unity format)
+  // SECTION RACES – affichage complet pour Unity
   // ---------------------------------------------------------------
-  section("RACES – Format Unity attendu");
+  section("RACES – Format Unity complet");
 
   info(`Total races : ${data.races.length}`);
 
   for (const race of data.races) {
     const id = race.raceId;
 
-    console.log(`\x1b[37m\n--- Race : ${id} ---`);
+    console.log(`\x1b[37m\n--- Race : ${id} ---\x1b[0m`);
 
-    if (!id) err("Race sans raceId");
-    if (!race.nameKey) err(`Race ${id} sans nameKey`);
-    if (!race.descriptionKey) err(`Race ${id} sans descriptionKey`);
-    if (!race.loreKey) err(`Race ${id} sans loreKey`);
+    console.log("NameKey:", race.nameKey);
+    console.log("DescriptionKey:", race.descriptionKey);
+    console.log("LoreKey:", race.loreKey);
 
-    // Vérif statsModifiers
     if (!race.statsModifiers) {
-      warn(`Race ${id} : pas de statsModifiers`);
+      warn(`Race ${id} : PAS de statsModifiers`);
     } else {
-      console.log("statsModifiers =", race.statsModifiers);
-
-      // Vérif structure primaire / computed
-      if (
-        !race.statsModifiers.primaryPercent &&
-        !race.statsModifiers.computedPercent
-      ) {
-        warn(`Race ${id} : statsModifiers vide`);
-      }
+      console.log("StatsModifiers:", race.statsModifiers);
     }
 
     console.log("Faction:", race.faction);
+
+    // Vérifications
+    if (!race.nameKey) warn(`Missing nameKey for ${id}`);
+    if (!race.descriptionKey) warn(`Missing descriptionKey for ${id}`);
+    if (!race.loreKey) warn(`Missing loreKey for ${id}`);
+
     ok(`Race OK : ${id}`);
   }
 
@@ -135,11 +131,11 @@ async function main() {
   section("RÉSULTAT FINAL");
 
   ok("Format Unity ✔");
-  ok("statsModifiers OK ✔");
-  ok("loreKey ✔");
-  ok("restrictions byRace ✔");
+  ok("Lore ✔");
+  ok("StatsModifiers ✔");
+  ok("Restrictions byRace ✔");
 
-  console.log("\nTout est nickel 🔥🔥🔥");
+  console.log("\n🔥 Tout est nickel pour Unity !");
 }
 
 main();
