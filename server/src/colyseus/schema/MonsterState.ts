@@ -7,8 +7,9 @@ export class MonsterState extends Schema {
   @type("number") level: number = 1;
   
   // Stats de base
-  @type("number") hp: number = 100;
+  @type("number") hp: number = 100;              // Gardé pour compatibilité
   @type("number") maxHp: number = 100;
+  @type("number") _currentHp: number = 100;      // Stockage interne des HP
   @type("number") attack: number = 10;
   @type("number") defense: number = 5;
   @type("number") speed: number = 100;
@@ -38,7 +39,6 @@ export class MonsterState extends Schema {
   @type("boolean") isAlive: boolean = true;
   
   // ===== COMBAT (ajouts pour le système de combat) =====
-  @type("number") currentHp: number = 100;        // HP actuel (dupliqué de hp pour clarté)
   @type("number") attackTimer: number = 0;        // Timer d'attaque du monstre
   @type("number") respawnTimer: number = 0;       // Timer de respawn (en ms)
   @type("string") targetPlayerId: string = "";    // ID du joueur ciblé
@@ -78,7 +78,7 @@ export class MonsterState extends Schema {
     this.level = level;
     this.hp = hp;
     this.maxHp = maxHp;
-    this.currentHp = hp; // Initialiser currentHp au maxHp
+    this._currentHp = hp; // Initialiser _currentHp au maxHp
     this.attack = attack;
     this.defense = defense;
     this.speed = speed;
@@ -100,5 +100,27 @@ export class MonsterState extends Schema {
     this.isActive = isActive;
     this.isAlive = true;
     this.isDead = false;
+  }
+
+  // Getter pour accéder aux HP actuels
+  get currentHp(): number {
+    return this._currentHp;
+  }
+
+  // Setter pour modifier les HP actuels avec validation
+  set currentHp(value: number) {
+    this._currentHp = Math.max(0, Math.min(value, this.maxHp));
+    this.isAlive = this._currentHp > 0;
+    this.isDead = !this.isAlive;
+  }
+
+  // Getter pour maintenir la compatibilité avec le code existant
+  get hp(): number {
+    return this.currentHp;
+  }
+
+  // Setter pour maintenir la compatibilité avec le code existant
+  set hp(value: number) {
+    this.currentHp = value;
   }
 }
