@@ -95,7 +95,7 @@ export class AFKCombatSystem {
 
     // calcul des dégâts
     const damage = Math.max(1, player.attackPower - monster.defense);
-    monster.setHp(monster.hp - dmg);
+    monster.setHp(monster.hp - damage);
 
     // envoyer info au joueur
     this.broadcastToClient(player.sessionId, "afk_attack", {
@@ -131,7 +131,7 @@ export class AFKCombatSystem {
     );
 
     // respawn du monstre
-    monster.currentHp = monster.maxHp;
+    monster.setHp(monster.maxHp);
     monster.isAlive = true;
     monster.isActive = true;
   }
