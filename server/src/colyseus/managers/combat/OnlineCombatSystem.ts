@@ -1,7 +1,7 @@
 import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
 import { GameState } from "../../schema/GameState";
-
+import { CombatUtils } from "./CombatUtils";
 import { TargetSelector } from "./TargetSelector";
 import { SkillRotation } from "./SkillRotation";
 import { SkillExecutor } from "./SkillExecutor";
@@ -72,7 +72,7 @@ export class OnlineCombatSystem {
         const isMoving = (Date.now() - player.lastMovementTime) < 150;
 
         // Annuler les soft-locks si le joueur bouge
-        if (isMoving && player.currentAnimationLockType === "soft") {
+      if (isMoving && CombatUtils.shouldCancelOnMovement(player)) {
             player.castLockRemaining = 0;
             player.currentCastingSkillId = "";
             player.animationLockRemaining = 0;
