@@ -50,12 +50,26 @@ export function getRaceAllowedClasses(req: Request, res: Response) {
 
 /**
  * GET /stats/creation-data
- * ➜ Une seule route pour charger races + classes + restrictions
+ * ➜ Version ADVANCED :
+ *   - races
+ *   - classes
+ *   - restrictions
+ *   - byRace (classes filtrées, déjà préparées)
  */
 export function getCreationData(req: Request, res: Response) {
+  const byRace: Record<string, any[]> = {};
+
+  for (const race of ALL_RACES) {
+    const allowed = CLASS_RACE_RESTRICTIONS[race.raceId] || [];
+    byRace[race.raceId] = ALL_CLASSES.filter(cls =>
+      allowed.includes(cls.classId)
+    );
+  }
+
   return res.json({
     races: ALL_RACES,
     classes: ALL_CLASSES,
-    restrictions: CLASS_RACE_RESTRICTIONS
+    restrictions: CLASS_RACE_RESTRICTIONS,
+    byRace
   });
 }
