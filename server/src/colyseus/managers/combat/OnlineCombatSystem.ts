@@ -86,7 +86,7 @@ export class OnlineCombatSystem {
         if (player.isDead || player.isAFK) return;
 
         // Logique de ciblage et d'entrée en combat
-        let monster = this.gameState.monsters.get(player.targetMonsterId);
+        let monster: MonsterState | null = this.gameState.monsters.get(player.targetMonsterId) || null;
 
         // Si pas en combat, ou si la cible actuelle est invalide, on essaie d'en trouver une nouvelle.
         if (!player.inCombat || !monster || !monster.isAlive) {
