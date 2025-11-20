@@ -2,11 +2,10 @@ import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
 import { GameState } from "../../schema/GameState";
 
-
-import { TargetSelector } from "./components/TargetSelector";
-import { SkillRotation } from "./components/SkillRotation";
-import { SkillExecutor } from "./components/SkillExecutor";
-import { AutoAttackController } from "./components/AutoAttackController";
+import { TargetSelector } from "./TargetSelector";
+import { SkillRotation } from "./SkillRotation";
+import { SkillExecutor } from "./SkillExecutor";
+import { AutoAttackController } from "./AutoAttackController";
 
 export class OnlineCombatSystem {
 
