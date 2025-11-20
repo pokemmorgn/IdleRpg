@@ -1,27 +1,18 @@
-/**
- * Script de test : REGISTER → LOGIN → CREATION PERSONNAGE
- * utilise fetch natif Node18+ (aucune dépendance)
- */
-
 const API_URL = "http://localhost:3000";
 
-// === Compte de test ===
+// === Compte test ===
 const TEST_USERNAME = "combat_tester";
 const TEST_PASSWORD = "Test123!";
 const TEST_EMAIL = "combat_tester@example.com";
 
-// === Perso de test ===
+// Perso de test
 const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TestCharacter";
 
-// Classe / Race compatibles
-const CHARACTER_CLASS = "warrior";
-const CHARACTER_RACE = "human";
-
-// ============================================================
+// =========================
 // REGISTER
-// ============================================================
+// =========================
 async function registerAccount() {
     console.log("→ Tentative d'inscription...");
 
@@ -51,9 +42,9 @@ async function registerAccount() {
     return false;
 }
 
-// ============================================================
+// =========================
 // LOGIN
-// ============================================================
+// =========================
 async function loginAccount() {
     console.log("→ Connexion...");
 
@@ -80,16 +71,35 @@ async function loginAccount() {
     return json.token;
 }
 
-// ============================================================
-// CHECK PROFIL EXISTANT
-// ============================================================
-async function checkExistingProfile(token: string) {
-    console.log(`→ Vérification du profil sur serveur "${SERVER_ID}"...`);
+// =========================
+// GET CREATION DATA
+// =========================
+async function getCreationData(token: string) {
+    console.log("→ Récupération des races/classes...");
 
-    const res = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
+    const res = await fetch(`${API_URL}/game/creation`, {
         headers: {
             "Authorization": `Bearer ${token}`
         }
+    });
+
+    const json = await res.json();
+
+    if (!res.ok) {
+        console.error("❌ Erreur game/creation:", json);
+        return null;
+    }
+
+    console.log("✔ Données de création reçues !");
+    return json;
+}
+
+// =========================
+// Vérifier le profil existant
+// =========================
+async function checkExistingProfile(token: string) {
+    const res = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
+        headers: { "Authorization": `Bearer ${token}` }
     });
 
     const json = await res.json();
@@ -101,7 +111,7 @@ async function checkExistingProfile(token: string) {
 
     for (const p of json.profiles) {
         if (p.characterSlot === CHARACTER_SLOT) {
-            console.log("ℹ Un personnage existe déjà dans ce slot :");
+            console.log("ℹ Personnage existant:");
             console.log(p);
             return p;
         }
@@ -110,11 +120,11 @@ async function checkExistingProfile(token: string) {
     return null;
 }
 
-// ============================================================
-// CREATE PROFILE
-// ============================================================
-async function createCharacter(token: string) {
-    console.log("→ Création du personnage...");
+// =========================
+// CREATE CHARACTER
+// =========================
+async function createCharacter(token: string, race: string, classId: string) {
+    console.log(`→ Création du personnage (${race}/${classId})...`);
 
     const res = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
         method: "POST",
@@ -125,8 +135,8 @@ async function createCharacter(token: string) {
         body: JSON.stringify({
             characterSlot: CHARACTER_SLOT,
             characterName: CHARACTER_NAME,
-            characterClass: CHARACTER_CLASS,
-            characterRace: CHARACTER_RACE
+            characterClass: classId,
+            characterRace: race
         })
     });
 
@@ -137,15 +147,15 @@ async function createCharacter(token: string) {
         return null;
     }
 
-    console.log("✔ Personnage créé avec succès !");
+    console.log("✔ Personnage créé !");
     console.log(json.profile);
 
     return json.profile;
 }
 
-// ============================================================
+// =========================
 // MAIN
-// ============================================================
+// =========================
 (async () => {
     console.log("=== 🧪 TEST CREATION PERSONNAGE ===");
 
@@ -156,13 +166,25 @@ async function createCharacter(token: string) {
     if (!token) return;
 
     const existing = await checkExistingProfile(token);
-
     if (existing) {
-        console.log("✔ Aucun besoin de créer le personnage.");
-        console.log("Personnage existant :", existing);
+        console.log("✔ Aucun besoin de créer : perso déjà existant.");
         return;
     }
 
-    await createCharacter(token);
+    // Récupération des races/classes valides
+    const creation = await getCreationData(token);
+    if (!creation) return;
+
+    // Choix automatique d'une race
+    const raceId = creation.races[0].id;
+
+    // Choix d'une classe autorisée pour cette race
+    const classId =
+        creation.allowedClasses[raceId][0];
+
+    console.log(`→ Race choisie : ${raceId}`);
+    console.log(`→ Classe choisie : ${classId}`);
+
+    await createCharacter(token, raceId, classId);
 
 })();
