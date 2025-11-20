@@ -256,8 +256,10 @@ async function connectWebSocket(room: any, sessionId: string): Promise<WebSocket
             console.log("🔌 WebSocket connecté !");
             resolve(ws);
         });
-
-        ws.on("message", (raw) => handleIncomingMessage(raw));
+        
+        ws.on("message", (raw: WebSocket.RawData) =>
+            handleIncomingMessage(Buffer.from(raw))
+        );
 
         ws.on("error", reject);
     });
