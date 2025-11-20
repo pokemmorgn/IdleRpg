@@ -4,7 +4,7 @@ export interface SkillDefinition {
     icon?: string;                // optionnel pour le client
 
     // Type de skill
-    effectType: "damage" | "aoe" | "heal" | "buff";
+    effectType: "damage" | "aoe" | "heal" | "buff" | "projectile"; // <-- MODIFIÉ
 
     // Base numbers
     power: number;
