@@ -1,100 +1,80 @@
 /**
- * Script de test : Connexion au backend
- * - Register (si compte inexistant)
- * - Login
- * - Affichage du token JWT
- *
- * AUCUNE dépendance externe (axios inutile)
- * Fonctionne avec ts-node
+ * Script de test : REGISTER + LOGIN
+ * utilise fetch natif Node18+ (aucune dépendance)
  */
 
-// =============================
-// CONFIG
-// =============================
-const API_URL = "http://localhost:3000"; // adapte si besoin
+const API_URL = "http://localhost:3000";
 
-const TEST_EMAIL = "test_combat@example.com";
+// Compte de test
+const TEST_USERNAME = "combat_tester";
 const TEST_PASSWORD = "Test123!";
+const TEST_EMAIL = "combat_tester@example.com";
 
-async function register() {
-    console.log("→ Tentative de création de compte...");
+async function registerAccount() {
+    console.log("→ Tentative d'inscription...");
 
-    try {
-        const res = await fetch(`${API_URL}/auth/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                email: TEST_EMAIL,
-                password: TEST_PASSWORD
-            })
-        });
+    const res = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD
+        })
+    });
 
-        if (res.ok) {
-            console.log("✔ Compte créé !");
-            return true;
-        }
+    const json = await res.json();
 
-        const data = await res.json();
-
-        // Si compte déjà existant, c’est normal
-        if (res.status === 400 && data.message?.includes("exists")) {
-            console.log("ℹ Compte déjà existant, on continue.");
-            return true;
-        }
-
-        console.error("❌ Erreur register:", data);
-        return false;
-
-    } catch (err) {
-        console.error("❌ ERREUR réseau register:", err);
-        return false;
+    if (res.ok) {
+        console.log("✔ Compte créé !");
+        return true;
     }
+
+    // Gestion cas "username déjà pris"
+    if (json.error === "Username already taken") {
+        console.log("ℹ Compte déjà existant, on continue.");
+        return true;
+    }
+
+    console.error("❌ Erreur register:", json);
+    return false;
 }
 
-async function login(): Promise<string | null> {
+async function loginAccount() {
     console.log("→ Connexion...");
 
-    try {
-        const res = await fetch(`${API_URL}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                email: TEST_EMAIL,
-                password: TEST_PASSWORD
-            })
-        });
+    const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            password: TEST_PASSWORD
+        })
+    });
 
-        if (!res.ok) {
-            const data = await res.json();
-            console.error("❌ Erreur login:", data);
-            return null;
-        }
+    const json = await res.json();
 
-        const json = await res.json();
-        const token = json.token;
-
-        console.log("✔ Connecté !");
-        console.log("🔑 TOKEN =", token);
-
-        return token;
-
-    } catch (err) {
-        console.error("❌ ERREUR réseau login:", err);
+    if (!res.ok) {
+        console.error("❌ Erreur login:", json);
         return null;
     }
+
+    console.log("✔ Connecté !");
+    console.log("🔑 TOKEN =", json.token);
+    console.log("🧑 PLAYER =", json.playerId);
+
+    return json;
 }
 
-async function main() {
-    console.log("=== 🧪 TEST API : REGISTER + LOGIN ===");
+// Lance tout
+(async () => {
+    console.log("=== 🧪 TEST REGISTER + LOGIN ===");
 
-    const ok = await register();
+    const ok = await registerAccount();
     if (!ok) return;
 
-    const token = await login();
-    if (!token) return;
+    const login = await loginAccount();
+    if (!login) return;
 
-    console.log("🎉 Test de connexion terminé.");
-}
-
-// Lancer le script
-main();
+    console.log("🎉 Test API OK !");
+})();
