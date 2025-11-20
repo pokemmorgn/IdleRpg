@@ -40,13 +40,20 @@ export class CombatManager {
      * S'exécute à chaque frame depuis WorldRoom.update()
      */
     update(deltaTime: number) {
-
+        // Parcourir tous les joueurs pour mettre à jour leurs états
         for (const player of this.gameState.players.values()) {
+
+            // 1. Mettre à jour les timers de combat pour CE joueur
+            // (GCD, cast lock, animation lock, auto-attack timer)
+            player.updateCombatTimers(deltaTime);
 
             if (player.isDead) continue;
 
             // === AFK MODE ===
             if (player.isAFK) {
+                // NOTE: Cet appel est fait pour chaque joueur AFK. 
+                // Si AFKCombatSystem.update() est coûteux, cela pourrait être inefficace.
+                // Une optimisation serait de l'appeler une seule fois par tick et de le laisser gérer tous les joueurs AFK.
                 this.afkSystem.update(deltaTime);
                 continue;
             }
