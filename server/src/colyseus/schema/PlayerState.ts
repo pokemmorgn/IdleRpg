@@ -101,6 +101,44 @@ export class PlayerState extends Schema {
   // ===== CONSOMMABLES (temporaire - placeholder) =====
   @type("number") potionHP: number = 10;  // Nombre de potions HP
   @type("number") food: number = 20;      // Nombre de nourriture
+
+  /**
+   * Met à jour tous les timers de combat du joueur.
+   * Doit être appelé à chaque frame (deltaTime en ms).
+   * @param dt Le temps écoulé depuis la dernière frame en millisecondes.
+   */
+  updateCombatTimers(dt: number) {
+    // Ne pas mettre à jour si le joueur est mort ou AFK
+    if (this.isDead || this.isAFK) return;
+
+    // GCD
+    if (this.gcdRemaining > 0) {
+      this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
+    }
+
+    // Cast Lock
+    if (this.castLockRemaining > 0) {
+      this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
+      // Si le cast se termine, on réinitialise l'ID du sort
+      if (this.castLockRemaining === 0) {
+        this.currentCastingSkillId = "";
+      }
+    }
+
+    // Animation Lock
+    if (this.animationLockRemaining > 0) {
+      this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
+      // Si l'animation se termine, on réinitialise le type de lock
+      if (this.animationLockRemaining === 0) {
+        this.currentAnimationLockType = "none";
+      }
+    }
+
+    // Auto-Attack Timer
+    if (this.autoAttackTimer < this.attackSpeed * 1000) {
+      this.autoAttackTimer += dt;
+    }
+  }
   
   constructor(
     sessionId: string,
