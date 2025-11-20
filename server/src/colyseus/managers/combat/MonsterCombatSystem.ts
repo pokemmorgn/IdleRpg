@@ -20,6 +20,7 @@ export class MonsterCombatSystem {
     }
 
     private updateMonster(monster: MonsterState, dt: number) {
+        console.log(`⚔️ Monster tick: ${monster.monsterId}, target=${monster.targetPlayerId}, alive=${monster.isAlive}, atkTimer=${monster.attackTimer}`);
         monster.attackTimer += dt;
 
         // Pas de cible → idle
