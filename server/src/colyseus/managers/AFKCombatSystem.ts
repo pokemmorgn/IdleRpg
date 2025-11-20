@@ -95,7 +95,7 @@ export class AFKCombatSystem {
 
     // calcul des dégâts
     const damage = Math.max(1, player.attackPower - monster.defense);
-    monster.currentHp -= damage;
+    monster.setHp(monster.hp - dmg);
 
     // envoyer info au joueur
     this.broadcastToClient(player.sessionId, "afk_attack", {
