@@ -137,7 +137,7 @@ async function testCharacterCreation(token: string, raceId: string, classId: str
 
   const response = await makeRequest(
     "POST",
-    "/profile/eu-1", // serveur de test
+    "/profile/s1", // serveur de test
     {
       characterSlot: 1,
       characterName: "TestHero_" + Math.floor(Math.random() * 9999),
