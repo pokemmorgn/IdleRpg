@@ -181,6 +181,9 @@ async function reserveSeat(token: string): Promise<MatchmakingRoom | null> {
 
     const json = await res.json();
 
+    console.log("=== DEBUG MATCHMAKING RESPONSE ===");
+    console.dir(json, { depth: null });
+
     if (!res.ok || !json.room) {
         console.error("❌ Erreur matchmaking:", json);
         return null;
@@ -188,6 +191,7 @@ async function reserveSeat(token: string): Promise<MatchmakingRoom | null> {
 
     return json.room as MatchmakingRoom;
 }
+
 
 // =========================
 // CONNECT WEBSOCKET
