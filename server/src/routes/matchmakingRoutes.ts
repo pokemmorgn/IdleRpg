@@ -1,48 +1,62 @@
-import express from "express";
-import { matchMaker } from "@colyseus/core";
-import { validateToken } from "../utils/authHelper";
-import { loadPlayerCharacter } from "../utils/playerLoader";
+import { Router } from "express";
+import jwt from "jsonwebtoken";
+import { matchMaker } from "colyseus";
 
-const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || "secret";
+
+const router = Router();
 
 /**
- * JOINDRE OU CRÉER LA ROOM "world"
+ * POST /matchmaking/join-world
+ * Body: { serverId, characterSlot }
  */
 router.post("/join-world", async (req, res) => {
     try {
-        const { token, serverId, characterSlot } = req.body;
-
-        if (!token || !serverId || !characterSlot) {
-            return res.status(400).json({ error: "Missing parameters" });
+        // Vérification token
+        const header = req.headers.authorization;
+        if (!header) {
+            return res.status(401).json({ error: "Missing Authorization header" });
         }
 
-        // Auth JWT
-        const t = await validateToken(token);
-        if (!t.valid) return res.status(401).json({ error: "Invalid token" });
+        const token = header.replace("Bearer ", "");
+        let decoded: any;
 
-        // Profil
-        const charLoad = await loadPlayerCharacter(t.playerId, serverId, characterSlot);
-        if (!charLoad.success) {
-            return res.status(404).json({ error: "Character not found" });
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+        } catch {
+            return res.status(401).json({ error: "Invalid token" });
         }
 
-        // UTILISER LE MATCHMAKER OFFICIEL
+        const playerId = decoded.playerId;
+        if (!playerId) {
+            return res.status(401).json({ error: "Invalid token payload" });
+        }
+
+        const { serverId, characterSlot } = req.body;
+
+        if (!serverId || characterSlot == null) {
+            return res.status(400).json({ error: "serverId & characterSlot required" });
+        }
+
+        // Réservation de place dans une WorldRoom
         const seat = await matchMaker.joinOrCreate("world", {
             serverId,
+            token,
             characterSlot
         });
 
         return res.json({
             room: {
+                name: seat.room.name,
                 roomId: seat.room.roomId,
-                roomName: seat.room.roomName
+                processId: seat.room.processId
             },
             sessionId: seat.sessionId
         });
 
-    } catch (err) {
-        console.error("❌ matchmaking error:", err);
-        return res.status(500).json({ error: "matchmaking_error" });
+    } catch (err: any) {
+        console.error("❌ join-world error:", err);
+        return res.status(500).json({ error: "Matchmaking error", details: err.message });
     }
 });
 
