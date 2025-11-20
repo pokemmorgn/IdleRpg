@@ -10,8 +10,7 @@ import {
   ALL_RACES,
   getRacesByFaction,
   isValidRace,
-  Faction,
-  getRaceById
+  Faction
 } from "../config/races.config";
 
 /* ============================================================================
@@ -23,11 +22,9 @@ export const listClasses = async (req: Request, res: Response) => {
 
     if (role && typeof role === "string") {
       const upperRole = role.toUpperCase() as ClassRole;
-      const filtered = getClassesByRole(upperRole);
-
       return res.json({
         filteredBy: upperRole,
-        classes: filtered
+        classes: getClassesByRole(upperRole)
       });
     }
 
@@ -39,35 +36,25 @@ export const listClasses = async (req: Request, res: Response) => {
 
 /* ============================================================================
    GET /game-data/races
-   ➜ Maintenant inclut "bonusesLocalized"
 ============================================================================ */
 export const listRaces = async (req: Request, res: Response) => {
   try {
     const { faction } = req.query;
 
-    const formatted = ALL_RACES.map(race => ({
-      raceId: race.raceId,
-      nameKey: race.nameKey,
-      descriptionKey: race.descriptionKey,
-      loreKey: race.loreKey,
-      faction: race.faction,
-      bonusesLocalized: race.bonusesLocalized // 🔥 ajouté
-    }));
-
     if (faction && typeof faction === "string") {
       const f = faction.toUpperCase() as Faction;
-
       if (f !== "AURION" && f !== "OMBRE") {
         return res.status(400).json({ error: "Invalid faction" });
       }
 
       return res.json({
         filteredBy: f,
-        races: formatted.filter(r => r.faction === f)
+        races: getRacesByFaction(f)
       });
     }
 
-    res.json({ races: formatted });
+    // IMPORTANT : on envoie statsModifiers aussi ici
+    res.json({ races: ALL_RACES });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -110,15 +97,10 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Race not found", raceId });
     }
 
-    const allowed = getAllowedClassesForRace(raceId);
-    const race = getRaceById(raceId)!;
-
     res.json({
       raceId,
-      bonusesLocalized: race.bonusesLocalized,   // 🔥 ajouté
-      totalAllowed: allowed.length,
       totalClasses: ALL_CLASSES.length,
-      allowedClasses: allowed
+      allowedClasses: getAllowedClassesForRace(raceId)
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -127,19 +109,9 @@ export const getAllowedClasses = async (req: Request, res: Response) => {
 
 /* ============================================================================
    GET /game-data/creation
-   ➜ Pack complet pour Unity (classes + races + localized bonuses)
 ============================================================================ */
 export const getCreationData = async (req: Request, res: Response) => {
   try {
-    const racesFormatted = ALL_RACES.map(race => ({
-      raceId: race.raceId,
-      nameKey: race.nameKey,
-      descriptionKey: race.descriptionKey,
-      loreKey: race.loreKey,
-      faction: race.faction,
-      bonusesLocalized: race.bonusesLocalized // 🔥 ajouté ici aussi
-    }));
-
     const byRace: Record<string, any[]> = {};
 
     for (const race of ALL_RACES) {
@@ -147,9 +119,9 @@ export const getCreationData = async (req: Request, res: Response) => {
     }
 
     res.json({
-      races: racesFormatted,
+      races: ALL_RACES,   // ✔ inclut statsModifiers
       classes: ALL_CLASSES,
-      byRace
+      byRace              // ✔ classes autorisées
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
