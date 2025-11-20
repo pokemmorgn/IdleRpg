@@ -1,20 +1,34 @@
 import { IClassStats } from "../../../models/ClassStats";
 import { PlayerState } from "../../schema/PlayerState";
-import { getRaceById } from "../../../config/races.config";
-import { RaceConfig } from "../../../config/races.config";
+import {
+  getRaceById,
+  RaceConfig
+} from "../../../config/races.config";
+import {
+  IPlayerPrimaryStats,
+  IPlayerComputedStats
+} from "../../../models/ServerProfile";
+
+// =======================================================================
+// FONCTIONS BONUS RACIAUX
+// =======================================================================
 
 /**
  * Applique les bonus raciaux sur les stats primaires
  */
 function applyPrimaryRaceBonuses(
-  primary: { [k: string]: number },
+  primary: IPlayerPrimaryStats,
   race?: RaceConfig
-) {
+): IPlayerPrimaryStats {
   if (!race || !race.statsModifiers?.primary) return primary;
 
-  const result = { ...primary };
+  const result: IPlayerPrimaryStats = { ...primary };
+
   for (const [stat, value] of Object.entries(race.statsModifiers.primary)) {
-    result[stat] += value ?? 0;
+    if (value === undefined) continue;
+
+    // TS sait que 'stat' correspond à une clé valide de IPlayerPrimaryStats
+    result[stat as keyof IPlayerPrimaryStats] += value;
   }
 
   return result;
@@ -24,42 +38,48 @@ function applyPrimaryRaceBonuses(
  * Applique les bonus raciaux sur les stats computed
  */
 function applyComputedRaceBonuses(
-  computed: { [k: string]: number },
+  computed: IPlayerComputedStats,
   race?: RaceConfig
-) {
+): IPlayerComputedStats {
   if (!race || !race.statsModifiers?.computed) return computed;
 
-  const result = { ...computed };
+  const result: IPlayerComputedStats = { ...computed };
+
   for (const [stat, value] of Object.entries(race.statsModifiers.computed)) {
-    result[stat] += value ?? 0;
+    if (value === undefined) continue;
+
+    result[stat as keyof IPlayerComputedStats] += value;
   }
 
   return result;
 }
 
+// =======================================================================
+// PLAYER STATS CALCULATOR
+// =======================================================================
+
 /**
- * =============================
- *  PLAYER STATS CALCULATOR
- * =============================
- * Calcule les stats finales du joueur :
- * - Classe (base + per level)
- * - Niveau
- * - Statistiques raciales
+ * PlayerStatsCalculator
+ * ----------------------
+ * Calcule les stats finales du joueur à partir :
+ * - de sa classe (ClassStats)
+ * - de son niveau
+ * - de sa race (bonus raciaux)
  * 
  * ⚠️ IMPORTANT :
- * Aucun buff, aucun équipement pour l’instant.
+ * Pas encore de buffs, pas encore d'équipement.
  */
 export class PlayerStatsCalculator {
 
   static compute(player: PlayerState, classStats: IClassStats) {
 
     const level = player.level;
-    const race = getRaceById(player.race);   // <<<<< AJOUT ICI
+    const race = getRaceById(player.race);
 
     // ============================
-    // 1) STATS PRIMAIRES (BRUTES)
+    // 1) STATS PRIMAIRES (BASE)
     // ============================
-    let prim = {
+    let primaryStats: IPlayerPrimaryStats = {
       strength: classStats.baseStats.strength + classStats.statsPerLevel.strength * (level - 1),
       agility: classStats.baseStats.agility + classStats.statsPerLevel.agility * (level - 1),
       intelligence: classStats.baseStats.intelligence + classStats.statsPerLevel.intelligence * (level - 1),
@@ -68,48 +88,54 @@ export class PlayerStatsCalculator {
     };
 
     // ============================
-    // 1B) APPLICATION BONUS RACIAL
+    // 1B) BONUS RACIAL PRIMAIRE
     // ============================
-    prim = applyPrimaryRaceBonuses(prim, race);
+    primaryStats = applyPrimaryRaceBonuses(primaryStats, race);
 
-    const STR = prim.strength;
-    const AGI = prim.agility;
-    const INT = prim.intelligence;
-    const END = prim.endurance;
-    const SPI = prim.spirit;
+    const STR = primaryStats.strength;
+    const AGI = primaryStats.agility;
+    const INT = primaryStats.intelligence;
+    const END = primaryStats.endurance;
+    const SPI = primaryStats.spirit;
 
     // ============================
     // 2) COMBAT DE BASE
     // ============================
-    let computed = {
-      attackPower: STR * 2,
-      spellPower: INT * 2,
+    let computed: IPlayerComputedStats = {
+      // Vie
       maxHp: 100 + END * 5,
-      damageReduction: END * 0.5,
+      hp: 0, // sera remplacé à la fin
 
-      // resource
+      // Ressource
       maxResource: 0,
+      resource: 0,
       manaRegen: 0,
       rageRegen: 0,
       energyRegen: 0,
 
-      // mobilité
-      moveSpeed: classStats.baseMoveSpeed,
+      // Combat
+      attackPower: STR * 2,
+      spellPower: INT * 2,
+      attackSpeed: Math.max(
+        0.3,
+        (player.attackSpeed || 2.5) - AGI * 0.02
+      ),
 
-      // vit. attaque
-      attackSpeed: Math.max(0.3, (player.attackSpeed || 2.5) - AGI * 0.02),
-
-      // critique & esquive
+      // Critique
       criticalChance: AGI * 0.1,
       criticalDamage: 150,
-      evasion: AGI * 0.5,
 
-      // défense
-      armor: END * 1,
+      // Défense
+      damageReduction: END * 0.5,
+      armor: END,
       magicResistance: INT * 0.2,
 
-      // avancées (placeholder)
+      // Mobilité
+      moveSpeed: classStats.baseMoveSpeed,
+
+      // Stats avancées
       precision: 0,
+      evasion: AGI * 0.5,
       penetration: 0,
       tenacity: 0,
       lifesteal: 0,
@@ -127,6 +153,7 @@ export class PlayerStatsCalculator {
 
       case "rage":
         computed.maxResource = 100;
+        computed.rageRegen = 0;
         break;
 
       case "energy":
@@ -136,42 +163,16 @@ export class PlayerStatsCalculator {
     }
 
     // ============================
-    // 4) APPLICATION BONUS RACIAL (COMPUTED)
+    // 4) BONUS RACIAL (COMPUTED)
     // ============================
     computed = applyComputedRaceBonuses(computed, race);
 
     // ============================
-    // 5) PACKAGE FINAL
+    // 5) OUTPUT FINAL
     // ============================
-    return {
-      hp: computed.maxHp,
-      maxHp: computed.maxHp,
+    computed.hp = computed.maxHp;
+    computed.resource = computed.maxResource;
 
-      resource: computed.maxResource,
-      maxResource: computed.maxResource,
-      manaRegen: computed.manaRegen,
-      rageRegen: computed.rageRegen,
-      energyRegen: computed.energyRegen,
-
-      attackPower: computed.attackPower,
-      spellPower: computed.spellPower,
-      attackSpeed: computed.attackSpeed,
-
-      criticalChance: computed.criticalChance,
-      criticalDamage: computed.criticalDamage,
-
-      damageReduction: computed.damageReduction,
-      armor: computed.armor,
-      magicResistance: computed.magicResistance,
-
-      moveSpeed: computed.moveSpeed,
-
-      precision: computed.precision,
-      evasion: computed.evasion,
-      penetration: computed.penetration,
-      tenacity: computed.tenacity,
-      lifesteal: computed.lifesteal,
-      spellPenetration: computed.spellPenetration
-    };
+    return computed;
   }
 }
