@@ -1,9 +1,12 @@
 import { Request, Response } from "express";
 import {
   ALL_RACES,
-  getRaceById,
-  getAllowedClassesForRace
+  getRaceById
 } from "../config/races.config";
+
+import {
+  getAllowedClassesForRace
+} from "../config/classes.config";
 
 export function getAllRaces(req: Request, res: Response) {
   return res.json({ races: ALL_RACES });
