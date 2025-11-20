@@ -98,7 +98,57 @@ export class SkillExecutor {
         player.animationLockRemaining = lock;
         player.currentAnimationLockType = skill.lockType ?? "none";
     }
-
+    // =====================================================
+    // TRY EXECUTE QUEUED SKILL
+    // =====================================================
+    static tryExecuteQueuedSkill(
+        player: PlayerState,
+        monster: MonsterState,
+        gameState: GameState,
+        broadcast: (sessionId: string, type: string, data: any) => void
+    ): boolean {
+    
+        const skillId = player.queuedSkill;
+        if (!skillId) return false;
+    
+        const skill = player.skills.get(skillId) as SkillDefinition;
+        if (!skill) {
+            // Skill invalide, on vide la file d'attente
+            player.queuedSkill = "";
+            return false;
+        }
+    
+        // Vérifier les conditions (SAUF GCD)
+        const now = Date.now();
+        const cd = player.cooldowns.get(skill.id);
+        if (cd && cd > now) {
+            // Pas encore prêt, on attend le prochain tick
+            return false;
+        }
+    
+        if (skill.manaCost && player.resource < skill.manaCost) {
+            // Pas assez de ressource, on vide la file
+            player.queuedSkill = "";
+            broadcast(player.sessionId, "queue_fail", { reason: "resource" });
+            return false;
+        }
+        
+        const dist = this.dist(player, monster);
+        if (dist > skill.range) {
+            // Hors de portée, on vide la file
+            player.queuedSkill = "";
+            broadcast(player.sessionId, "queue_fail", { reason: "range" });
+            return false;
+        }
+    
+        // Toutes les conditions sont réunies, on exécute !
+        this.cast(player, monster, skill, broadcast, gameState);
+        
+        // On vide la file d'attente après un lancement réussi
+        player.queuedSkill = "";
+        
+        return true;
+    }
     // =====================================================
     // APPLY SKILL EFFECT
     // =====================================================
