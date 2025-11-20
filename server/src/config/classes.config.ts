@@ -15,12 +15,13 @@ export type ClassRole = "TANK" | "DPS" | "HEALER" | "SUPPORT";
 
 export interface ClassConfig {
   classId: string;          // ID unique (ex: "priest")
-  nameKey: string;          // Clé de traduction pour le nom (ex: "class.priest.name")
-  descriptionKey: string;   // Clé de traduction pour la description (ex: "class.priest.description")
-  roles: ClassRole[];       // Rôles possibles (ex: ["HEALER", "SUPPORT"])
+  nameKey: string;          // Clé nom
+  descriptionKey: string;   // Clé description
+  loreKey: string;          // <-- AJOUT : Lore approfondi
+  roles: ClassRole[];       // Rôles possibles
   
   // Les stats de base seront ajoutées ici plus tard
-  // baseStats?: { [stat: string]: number }; // Ex: { STR: 15, INT: 10, VIT: 20 }
+  // baseStats?: { [stat: string]: number };
 }
 
 /**
@@ -31,36 +32,42 @@ export const ALL_CLASSES: ClassConfig[] = [
     classId: "priest",
     nameKey: "class.priest.name",
     descriptionKey: "class.priest.description",
+    loreKey: "class.priest.lore",
     roles: ["HEALER", "SUPPORT"]
   },
   {
     classId: "mage",
     nameKey: "class.mage.name",
     descriptionKey: "class.mage.description",
+    loreKey: "class.mage.lore",
     roles: ["DPS"]
   },
   {
     classId: "paladin",
     nameKey: "class.paladin.name",
     descriptionKey: "class.paladin.description",
+    loreKey: "class.paladin.lore",
     roles: ["TANK", "HEALER"]
   },
   {
     classId: "rogue",
     nameKey: "class.rogue.name",
     descriptionKey: "class.rogue.description",
+    loreKey: "class.rogue.lore",
     roles: ["DPS"]
   },
   {
     classId: "warrior",
     nameKey: "class.warrior.name",
     descriptionKey: "class.warrior.description",
+    loreKey: "class.warrior.lore",
     roles: ["TANK", "DPS"]
   },
   {
     classId: "druid",
     nameKey: "class.druid.name",
     descriptionKey: "class.druid.description",
+    loreKey: "class.druid.lore",
     roles: ["SUPPORT", "HEALER", "DPS"]
   }
 ];
@@ -68,46 +75,24 @@ export const ALL_CLASSES: ClassConfig[] = [
 /**
  * Restrictions de classe par race
  * Format: { raceId: [classIds autorisées] }
- * Si une race n'est pas listée ici, toutes les classes sont autorisées
  */
 export const CLASS_RACE_RESTRICTIONS: { [raceId: string]: string[] } = {
-  // Arkanids (Undeads)
   "arkanids_insect": ["mage", "priest", "rogue", "warrior"],
-
-  // Elion Humans (Humains)
-  "human_elion": ["mage", "priest", "rogue", "warrior", "paladin"],
-
-  // Ghrannite Orcs (Orcs)
+  "human_elion":     ["mage", "priest", "rogue", "warrior", "paladin"],
   "ghrannite_stone": ["rogue", "warrior"],
-
-  // Murlocs (Gnomes)
-  "murlocs": ["rogue", "warrior", "paladin"],
-
-  // Noxariens (Elfes de la nuit)
+  "murlocs":         ["rogue", "warrior", "paladin"],
   "sylphide_forest": ["mage", "druid"],
-
-  // Runic Dwarfs (Nains)
-  "dwarf_rune": ["priest", "warrior", "paladin"],
-
-  // Selenith Trolls (Trolls)
-  "selenite_lunar": ["mage", "priest", "rogue", "druid"],
-
-  // Varkyns (Taurens)
-  "varkyns_beast": ["warrior", "paladin", "druid"]
+  "dwarf_rune":      ["priest", "warrior", "paladin"],
+  "selenite_lunar":  ["mage", "priest", "rogue", "druid"],
+  "varkyns_beast":   ["warrior", "paladin", "druid"]
 };
 
 /**
  * Vérifie si une combinaison classe/race est autorisée
  */
 export function isClassAllowedForRace(classId: string, raceId: string): boolean {
-  // Si la race n'a pas de restrictions définies, toutes les classes sont autorisées
   const allowedClasses = CLASS_RACE_RESTRICTIONS[raceId];
-  
-  if (!allowedClasses) {
-    return true; // Pas de restrictions pour cette race
-  }
-  
-  // Vérifier si la classe est dans la liste autorisée
+  if (!allowedClasses) return true;
   return allowedClasses.includes(classId);
 }
 
@@ -116,18 +101,12 @@ export function isClassAllowedForRace(classId: string, raceId: string): boolean 
  */
 export function getAllowedClassesForRace(raceId: string): ClassConfig[] {
   const allowedClassIds = CLASS_RACE_RESTRICTIONS[raceId];
-  
-  // Si pas de restrictions, retourner toutes les classes
-  if (!allowedClassIds) {
-    return ALL_CLASSES;
-  }
-  
-  // Filtrer les classes autorisées
+  if (!allowedClassIds) return ALL_CLASSES;
   return ALL_CLASSES.filter(cls => allowedClassIds.includes(cls.classId));
 }
 
 /**
- * Map des classes par ID pour accès rapide
+ * Map des classes par ID
  */
 export const CLASSES_BY_ID: Map<string, ClassConfig> = new Map(
   ALL_CLASSES.map(cls => [cls.classId, cls])
@@ -148,13 +127,13 @@ export function getClassById(classId: string): ClassConfig | undefined {
 }
 
 /**
- * Récupère les classes par rôle
+ * Classes par rôle
  */
 export function getClassesByRole(role: ClassRole): ClassConfig[] {
   return ALL_CLASSES.filter(cls => cls.roles.includes(role));
 }
 
 /**
- * Liste de tous les classIds valides
+ * Liste des IDs valides
  */
 export const VALID_CLASS_IDS = ALL_CLASSES.map(c => c.classId);
