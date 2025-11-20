@@ -77,7 +77,7 @@ export class PlayerState extends Schema {
   
   @type(["string"]) skillBar: string[] = []; // ordre des skills
   @type({ map: "json" }) skills = new Map<string, any>();  // skillId → SkillDefinition
-
+  @type("string") queuedSkill: string = "";
   // ===== MOUVEMENT =====
   @type("number") posX: number = 0;
   @type("number") posY: number = 0;
