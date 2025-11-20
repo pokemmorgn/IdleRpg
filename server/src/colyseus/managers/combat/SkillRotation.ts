@@ -16,6 +16,9 @@ export class SkillRotation {
         // GCD actif → aucun sort
         if (player.gcdRemaining > 0) return null;
 
+        // AJOUT : Vérifier si le joueur est sous un animation lock
+        if (player.animationLockRemaining > 0) return null;
+
         const now = Date.now();
 
         for (const skillId of player.skillBar) {
