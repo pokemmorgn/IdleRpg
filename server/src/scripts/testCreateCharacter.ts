@@ -1,25 +1,64 @@
 import WebSocket from "ws";
-import axios from "axios";
 
+// ======================
+// CONFIG
+// ======================
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:2567";
+
 const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
+const USERNAME = "combat_tester";
+const PASSWORD = "Test123!";
+const EMAIL = "combat_tester@example.com";
 
-async function main() {
-    console.log("=== 🧪 TEST COMBAT ONLINE (NO MOVE / NO SPAWN) ===");
-
-    // 1️⃣ Login account
-    console.log("→ Login...");
-    const login = await axios.post(`${API_URL}/auth/login`, {
-        email: "test@test.com",
-        password: "test"
+// ======================
+// UTILS
+// ======================
+async function post(url: string, data: any) {
+    const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
     });
 
-    const token = login.data.token;
-    console.log("✔ Token OK:", token.slice(0, 20) + "...");
+    const json = await res.json();
+    return { ok: res.ok, json };
+}
 
-    // 2️⃣ Connect WS (WorldRoom)
+// ======================
+// MAIN
+// ======================
+async function main() {
+    console.log("=== 🧪 TEST COMBAT ONLINE — IMMOBILE — NO SPAWN ===");
+
+    // 1️⃣ Register (si compte déjà existant → ignore)
+    console.log("→ Register...");
+    const reg = await post(`${API_URL}/auth/register`, {
+        username: USERNAME,
+        email: EMAIL,
+        password: PASSWORD
+    });
+
+    if (reg.ok) console.log("✔ Compte créé");
+    else console.log("ℹ Compte existant (ok)");
+
+    // 2️⃣ Login
+    console.log("→ Login...");
+    const login = await post(`${API_URL}/auth/login`, {
+        username: USERNAME,
+        password: PASSWORD
+    });
+
+    if (!login.ok) {
+        console.error("❌ Login failed:", login.json);
+        return;
+    }
+
+    const token = login.json.token;
+    console.log("✔ Token OK");
+
+    // 3️⃣ Connexion WebSocket
     console.log("→ Connexion WebSocket...");
 
     const ws = new WebSocket(
@@ -28,10 +67,9 @@ async function main() {
 
     ws.on("open", () => {
         console.log("🔌 WS CONNECTÉ !");
-        console.log("👉 Le joueur est immobile. Le serveur doit gérer le combat auto.");
+        console.log("👉 Le joueur NE BOUGE PAS. Le serveur doit déclencher le combat auto.");
     });
 
-    // 3️⃣ Affichage TOUTES les données reçues
     ws.on("message", (raw) => {
         try {
             const msg = JSON.parse(raw.toString());
@@ -50,7 +88,7 @@ async function main() {
         console.error("🔥 WS ERROR:", err);
     });
 
-    // 4️⃣ Laisse tourner 2 minutes
+    // 4️⃣ Laisse tourner 2 min
     setTimeout(() => {
         console.log("⏹ FIN DU TEST");
         ws.close();
