@@ -1,6 +1,7 @@
-import { PlayerState } from "../schema/PlayerState";
-import { MonsterState } from "../schema/MonsterState";
-import { GameState } from "../schema/GameState";
+import { PlayerState } from "../../schema/PlayerState";
+import { MonsterState } from "../../schema/MonsterState";
+import { GameState } from "../../schema/GameState";
+
 
 import { TargetSelector } from "./components/TargetSelector";
 import { SkillRotation } from "./components/SkillRotation";
