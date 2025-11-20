@@ -296,41 +296,46 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // ------------------------------
-    // Spawn test monster
-    // ------------------------------
-    if (type === "spawn_test_monster") {
-      const MonsterState = require("../schema/MonsterState").MonsterState;
+// ------------------------------
+// Spawn test monster (debug)
+// ------------------------------
+if (type === "spawn_test_monster") {
 
-      const monster = new MonsterState(
-        message.monsterId || "test_" + Date.now(),
-        message.name || "Training Dummy",
-        "test",
-        1,
-        30,
-        30,
-        5,
-        0,
-        1,
-        "test_zone",
-        message.x || 105,
-        message.y || 0,
-        message.z || 105,
-        0,0,0,
-        "aggressive",
-        12,
-        20,
-        2,
-        5,
-        3,
-        false,
-        "dummy_model",
-        true
-      );
+  console.log("⚠️ [TEST] spawn_test_monster reçu :", message);
 
-      this.state.addMonster(monster);
-      return;
-    }
+  const MonsterState = require("../schema/MonsterState").MonsterState;
+
+  const monster = new MonsterState(
+    message.monsterId || "test_" + Date.now(),
+    message.name || "Training Dummy",
+    "test",          // type
+    1,               // level
+    30,              // hp
+    30,              // maxHp
+    5,               // attack
+    0,               // defense
+    1,               // speed
+    "test_zone",     // zoneId
+    message.x ?? 105,
+    message.y ?? 0,
+    message.z ?? 105,
+    0, 0, 0,         // rotation
+    "aggressive",    // behavior
+    12,              // aggroRange
+    9999,            // leashRange (illimité)
+    3,               // attackRange
+    5,               // xpReward
+    3,               // respawnTime
+    false,           // respawnOnDeath
+    "dummy_model",
+    true             // isActive
+  );
+
+  this.state.addMonster(monster);
+
+  console.log(`✔ Monstre ajouté : ${monster.monsterId} @ (${monster.posX},${monster.posY},${monster.posZ})`);
+  return;
+}
 
     // ------------------------------
     // ADMIN
