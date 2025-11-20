@@ -10,42 +10,33 @@ import { AutoAttackController } from "./AutoAttackController";
 export class OnlineCombatSystem {
 
     private readonly DETECTION_RANGE = 40;
-    // La spécification dit "poursuite sans limite", donc CHASE_RANGE n'est plus utilisé pour le leash.
-    private readonly ATTACK_RANGE = 3; // fallback melee range
+    private readonly ATTACK_RANGE = 3;
 
     constructor(
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {}
 
-    /**
-     * Trouve et assigne la meilleure cible pour le joueur.
-     * Priorité : 1. Dernier attaquant, 2. Cible manuelle si valide, 3. Monstre le plus proche.
-     * @param player Le joueur qui a besoin d'une cible.
-     * @returns Le monstre ciblé, ou null si aucune cible n'est trouvée.
-     */
+    private emit(player: PlayerState, type: string, data: any) {
+        this.broadcast(player.sessionId, type, data);
+    }
+
     private acquireTarget(player: PlayerState): MonsterState | null {
         let target: MonsterState | null = null;
 
-        // 1. Priorité la plus haute : contre-attaquer le dernier agresseur
         if (player.lastAttackerId) {
             const attacker = this.gameState.monsters.get(player.lastAttackerId);
             if (attacker && attacker.isAlive) {
                 target = attacker;
-                // On efface l'agresseur une fois qu'on a répondu
-                player.lastAttackerId = "";
             }
+            player.lastAttackerId = "";
         }
 
-        // 2. Si pas de contre-attaque, vérifier la cible manuelle existante
         if (!target && player.targetMonsterId) {
-            const manualTarget = this.gameState.monsters.get(player.targetMonsterId);
-            if (manualTarget && manualTarget.isAlive) {
-                target = manualTarget;
-            }
+            const manual = this.gameState.monsters.get(player.targetMonsterId);
+            if (manual && manual.isAlive) target = manual;
         }
-        
-        // 3. Sinon, cibler automatiquement le monstre le plus proche
+
         if (!target) {
             target = TargetSelector.getNearestInRange(
                 player,
@@ -58,7 +49,6 @@ export class OnlineCombatSystem {
             player.targetMonsterId = target.monsterId;
             player.inCombat = true;
         } else {
-            // Si aucune cible trouvée, on sort du combat
             player.inCombat = false;
             player.targetMonsterId = "";
         }
@@ -68,70 +58,87 @@ export class OnlineCombatSystem {
 
     update(player: PlayerState, dt: number) {
 
-        // anti-mouvement (soft replace isMoving)
         const isMoving = (Date.now() - player.lastMovementTime) < 150;
 
-        // Annuler les soft-locks si le joueur bouge
-      if (isMoving && CombatUtils.shouldCancelOnMovement(player)) {
+        if (isMoving && CombatUtils.shouldCancelOnMovement(player)) {
             player.castLockRemaining = 0;
             player.currentCastingSkillId = "";
             player.animationLockRemaining = 0;
             player.currentAnimationLockType = "none";
-            
-            this.broadcast(player.sessionId, "cast_cancelled", {
-                reason: "movement"
-            });
+
+            this.emit(player, "cast_cancelled", { reason: "movement" });
         }
 
         if (player.isDead || player.isAFK) return;
 
-        // Logique de ciblage et d'entrée en combat
-        let monster: MonsterState | null = this.gameState.monsters.get(player.targetMonsterId) || null;
+        let monster = this.gameState.monsters.get(player.targetMonsterId) || null;
 
-        // Si pas en combat, ou si la cible actuelle est invalide, on essaie d'en trouver une nouvelle.
         if (!player.inCombat || !monster || !monster.isAlive) {
             if (isMoving) {
-                // Si on bouge et qu'on a pas de cible, on ne fait rien.
                 player.inCombat = false;
                 player.targetMonsterId = "";
                 return;
             }
-            // Tenter d'acquérir une nouvelle cible
-            monster = this.acquireTarget(player);
-            if (!monster) {
-                return; // Pas de cible trouvée, on ne fait rien
-            }
-        }
-        
-        // À ce stade, on a une cible valide (`monster`)
-        
-        // Le leash est retiré selon la spec "poursuite sans limite"
-        // La distance ne sert que pour l'attaque
 
-        // Si le joueur est en mouvement, ne pas lancer de nouvelles compétences
-        if (isMoving) {
-            return;
+            monster = this.acquireTarget(player);
+            if (!monster) return;
         }
-        // === PRIORITÉ À LA FILE D'ATTENTE ===
+
+        if (isMoving) return;
+
+        // === SKILL FILE QUEUE ===
         if (player.queuedSkill) {
             if (SkillExecutor.tryExecuteQueuedSkill(player, monster, this.gameState, this.broadcast)) {
-                return; // La compétence en file d'attente a été exécutée, on a fini pour ce tick.
+                return;
             }
-            // Si tryExecuteQueuedSkill retourne false, on continue avec la rotation normale.
         }
-        // Rotation des skills
-        const nextSkill = SkillRotation.getNextSkill(player, monster);
 
+        // === SKILL ROTATION ===
+        const nextSkill = SkillRotation.getNextSkill(player, monster);
         if (nextSkill) {
-            SkillExecutor.tryExecute(player, monster, this.gameState, this.broadcast);
+            const didCast = SkillExecutor.tryExecute(player, monster, this.gameState, this.broadcast);
+
+            if (didCast) {
+                // Log skill hit (higher priority than autoattack)
+                this.emit(player, "playerHit", {
+                    type: "skill",
+                    skillId: nextSkill.skillId,
+                    playerId: player.profileId,
+                    monsterId: monster.monsterId,
+                    remainingHp: monster.hp
+                });
+            }
+
             return;
         }
 
-        // Auto-attaque si aucun skill
+        // === AUTO ATTACK ===
         if (this.getDistance(player, monster) <= this.ATTACK_RANGE) {
             if (AutoAttackController.shouldTrigger(player)) {
-                // MODIFIÉ : Passer la fonction broadcast
-                AutoAttackController.trigger(player, monster, this.broadcast);
+
+                const damage = AutoAttackController.trigger(player, monster, this.broadcast);
+
+                // AJOUT : émission d’un event pour ton HUD
+                this.emit(player, "playerHit", {
+                    type: "autoattack",
+                    damage,
+                    playerId: player.profileId,
+                    monsterId: monster.monsterId,
+                    remainingHp: monster.hp
+                });
+
+                // Mort du monstre ?
+                if (monster.hp <= 0 && monster.isAlive) {
+                    monster.isAlive = false;
+
+                    this.emit(player, "monsterKilled", {
+                        monsterId: monster.monsterId,
+                        by: player.profileId
+                    });
+
+                    player.inCombat = false;
+                    player.targetMonsterId = "";
+                }
             }
         }
     }
