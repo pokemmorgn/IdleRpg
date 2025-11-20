@@ -7,19 +7,16 @@ export class AutoAttackController {
      * Vérifie si une auto-attaque doit partir maintenant.
      */
     static shouldTrigger(player: PlayerState): boolean {
-
-        // Auto-attaque inactive si le joueur ne fait pas d’auto-combat
+    
         if (!player.inCombat) return false;
-
-        // Interdite pendant cast time
+    
         if (player.castLockRemaining > 0) return false;
-
-        // Interdite pendant animation lock (full + soft)
+    
         if (player.animationLockRemaining > 0) return false;
-
-        // Timer pas encore prêt
-        if (player.autoAttackTimer < player.weaponSpeed * 1000) return false;
-
+    
+        // attackSpeed = weapon speed final (calculé par PlayerStatsCalculator)
+        if (player.autoAttackTimer < player.attackSpeed * 1000) return false;
+    
         return true;
     }
 
@@ -51,10 +48,7 @@ export class AutoAttackController {
      * Mise à jour du timer à chaque tick serveur.
      */
     static updateTimer(player: PlayerState, dt: number) {
-        // On stacke le temps même pendant les locks
         player.autoAttackTimer += dt;
-
-        // Mais on ne déclenche que quand les locks sont terminés (shouldTrigger)
     }
 
     /**
