@@ -1,7 +1,7 @@
 /**
  * SCRIPT DE TEST : REGISTER → LOGIN → JOIN → WEBSOCKET → COMBAT AUTO + HUD
  * Compatible Node 18+ (fetch natif)
- * Corrigé pour fonctionner avec le CombatManager unifié.
+ * Corrigé pour fonctionner avec le CombatManager unifié et le format de messages WebSocket.
  */
 
 import WebSocket, { RawData } from "ws";
@@ -201,42 +201,67 @@ async function connectWebSocket(room: any, sessionId: string) {
 }
 
 // =============================
-// 🔥 PARSER COLYSEUS CORRIGÉ
+// 🔥 PARSER COLYSEUS CORRIGÉ (v2)
 // =============================
 function handleIncomingMessage(raw: RawData) {
-    let data;
+    let text = "";
 
-    try {
-        // Colyseus peut envoyer des données déjà parsées ou des chaînes JSON.
-        if (typeof raw === 'string') {
-            data = JSON.parse(raw);
-        } else if (Buffer.isBuffer(raw)) {
-            data = JSON.parse(raw.toString('utf8'));
-        } else {
-            // C'est déjà un objet (cas avec 'ws' et某些 Colyseus setups)
-            data = raw;
-        }
-    } catch (e) {
-        console.error("❌ Erreur de parsing du message WebSocket:", e);
+    if (typeof raw === "string") {
+        text = raw;
+    } else if (raw instanceof Buffer) {
+        text = raw.toString();
+    } else {
+        console.log("ℹ️ Message WebSocket de type non géré :", typeof raw);
         return;
     }
 
-    // Le format standard de Colyseus est [type, payload]
-    if (Array.isArray(data) && data.length >= 2) {
-        const eventName = data[0];
-        const payload = data[1];
+    // Gestion du format "eventName\0{json}" (votre format original)
+    const sep = text.indexOf("\0");
+    if (sep !== -1) {
+        const eventName = text.substring(0, sep);
+        const jsonStr = text.substring(sep + 1);
+
+        let payload;
+        try {
+            payload = JSON.parse(jsonStr);
+        } catch (e) {
+            console.error("❌ Erreur de parsing JSON après le séparateur \\0:", e);
+            console.error("   JSON string:", jsonStr);
+            return;
+        }
+
         handleCustomEvent(eventName, payload);
-    } 
-    // Format alternatif : { type: "...", data: {...} }
-    else if (data && typeof data === 'object' && data.type) {
-        handleCustomEvent(data.type, data.data);
+        return;
     }
-    // Pour notre cas spécifique, le message peut être un objet direct avec une propriété 'event'
-    else if (data && typeof data === 'object' && data.event) {
-        handleCustomEvent("combat_event", data);
-    }
-    else {
-        console.log("ℹ️ Message WebSocket non géré :", data);
+
+    // Si pas de séparateur \0, on tente de parser comme du JSON direct
+    try {
+        const data = JSON.parse(text);
+        
+        // Format tableau [type, payload] ?
+        if (Array.isArray(data) && data.length >= 2) {
+            const eventName = data[0];
+            const payload = data[1];
+            handleCustomEvent(eventName, payload);
+            return;
+        }
+        
+        // Format objet { type: "...", data: {...} } ?
+        if (data && typeof data === 'object' && data.type) {
+            handleCustomEvent(data.type, data.data);
+            return;
+        }
+        
+        // Format objet direct avec une propriété 'event' ?
+        if (data && typeof data === 'object' && data.event) {
+            handleCustomEvent("combat_event", data);
+            return;
+        }
+        
+        console.log("ℹ️ Message JSON non reconnu :", data);
+    } catch (e) {
+        console.error("❌ Erreur de parsing JSON direct:", e);
+        console.error("   Texte brut:", text);
     }
 }
 
@@ -293,20 +318,9 @@ function handleCustomEvent(event: string, data: any) {
         }
     }
     
-    // --- GESTION DES AUTRES ÉVÉNEMENTS (anciens, pour compatibilité) ---
-    // Ces blocs peuvent être supprimés si tout est migré vers "combat_event"
-    if (event === "playerDamaged") {
-        // Ancien format, gardé pour compatibilité
-        HUD_PLAYER_HP = data.hpLeft;
-        HUD_TARGET = data.monsterId;
-        console.log(`🟥 (Ancien format) Dégâts reçus : ${data.damage} → HP ${data.hpLeft}`);
-        renderHUD();
-        return;
-    }
-
+    // --- GESTION DES AUTRES ÉVÉNEMENTS ---
     if (event === "welcome") {
         console.log("✅ Message de bienvenue reçu du serveur.");
-        // On peut initialiser le HUD ici si on reçoit les infos du joueur
         renderHUD();
     }
 }
@@ -332,7 +346,6 @@ async function spawnTestMobs(ws: WebSocket) {
     }));
 }
 
-// 🔥 CORRIGÉ : On envoie maintenant un message au serveur
 async function startCombat(ws: WebSocket) {
     console.log("→ Demande d'activation du combat auto envoyée…");
     ws.send(JSON.stringify({
