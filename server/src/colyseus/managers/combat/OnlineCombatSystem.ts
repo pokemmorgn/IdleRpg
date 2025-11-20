@@ -112,7 +112,13 @@ export class OnlineCombatSystem {
         if (isMoving) {
             return;
         }
-
+        // === PRIORITÉ À LA FILE D'ATTENTE ===
+        if (player.queuedSkill) {
+            if (SkillExecutor.tryExecuteQueuedSkill(player, monster, this.gameState, this.broadcast)) {
+                return; // La compétence en file d'attente a été exécutée, on a fini pour ce tick.
+            }
+            // Si tryExecuteQueuedSkill retourne false, on continue avec la rotation normale.
+        }
         // Rotation des skills
         const nextSkill = SkillRotation.getNextSkill(player, monster);
 
