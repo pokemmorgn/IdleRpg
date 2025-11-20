@@ -90,7 +90,7 @@ export class WorldRoom extends Room<GameState> {
     if (!valid.valid) return false;
 
     const load = await loadPlayerCharacter(
-      valid.playerId,
+      valid.playerId!,
       options.serverId,
       options.characterSlot
     );
