@@ -100,7 +100,8 @@ async function setup() {
 
     // Attendre un peu pour que le state initial soit synchronisé
     await new Promise(resolve => setTimeout(resolve, 500));
-    playerState = (room.state as any).players.get(client.sessionId);
+    // CORRECTION : Utiliser room.sessionId au lieu de client.sessionId
+    playerState = (room.state as any).players.get(room.sessionId);
     if (!playerState) throw new Error("Impossible de récupérer l'état du joueur.");
     log.success(`Joueur ${playerState.characterName} récupéré.`);
 
