@@ -1,37 +1,21 @@
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
-import { AFKManager } from "./AFKManager";
-import { AFKCombatSystem } from "./AFKCombatSystem";
-import { AFKBehaviorManager } from "./AFKBehaviorManager";
 import { OnlineCombatSystem } from "./combat/OnlineCombatSystem";
 import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 
 export class CombatManager {
 
     private onlineSystem: OnlineCombatSystem;
-    private afkSystem: AFKCombatSystem;
-    private afkBehavior: AFKBehaviorManager;
     private monsterSystem: MonsterCombatSystem;
 
     constructor(
         private readonly gameState: GameState,
-        private readonly afkManager: AFKManager,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {
-        this.afkBehavior = new AFKBehaviorManager();
-
         // --- ONLINE SYSTEM ---
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
             (sessionId, type, data) => this.emitCombatEvent(sessionId, type, data)
-        );
-
-        // --- AFK SYSTEM ---
-        this.afkSystem = new AFKCombatSystem(
-            this.gameState,
-            this.afkManager,
-            (sessionId, type, data) => this.emitCombatEvent(sessionId, type, data),
-            this.afkBehavior
         );
 
         // --- MONSTER SYSTEM ---
@@ -41,22 +25,15 @@ export class CombatManager {
         );
     }
 
-    /**
-     * Unifie tous les events de combat → FORMAT B
-     */
+    // =====================================================================
+    //  FORMAT B : Unification de tous les events de combat (client-friendly)
+    // =====================================================================
     private emitCombatEvent(
         sessionId: string,
         eventType: string,
         data: any
     ) {
-        // Les systèmes t'envoient un type interne comme:
-        // - "playerHit"
-        // - "monsterHit"
-        // - "monsterKilled"
-        // - "playerKilled"
-        //
-        // On les transforme en FORMAT B.
-
+        // ----- PLAYER → MONSTER -----
         if (eventType === "playerHit") {
             this.broadcast(sessionId, "combat_event", {
                 event: "hit",
@@ -67,11 +44,12 @@ export class CombatManager {
                 damage: data.damage,
                 remainingHp: data.remainingHp,
                 crit: data.crit ?? false,
-                time: Date.now()
+                time: Date.now(),
             });
             return;
         }
 
+        // ----- MONSTER → PLAYER -----
         if (eventType === "monsterHit") {
             this.broadcast(sessionId, "combat_event", {
                 event: "hit",
@@ -82,65 +60,60 @@ export class CombatManager {
                 damage: data.damage,
                 remainingHp: data.remainingHp,
                 crit: false,
-                time: Date.now()
+                time: Date.now(),
             });
             return;
         }
 
+        // ----- MONSTER DEAD -----
         if (eventType === "monsterKilled") {
             this.broadcast(sessionId, "combat_event", {
                 event: "death",
                 entity: "monster",
                 entityId: data.monsterId,
-                time: Date.now()
+                time: Date.now(),
             });
             return;
         }
 
+        // ----- PLAYER DEAD -----
         if (eventType === "playerKilled") {
             this.broadcast(sessionId, "combat_event", {
                 event: "death",
                 entity: "player",
                 entityId: data.playerId,
-                time: Date.now()
+                time: Date.now(),
             });
             return;
         }
 
-        // Fallback → relayer brut (utile debug)
+        // Fallback debug
         this.broadcast(sessionId, eventType, data);
     }
 
-    /**
-     * MAIN TICK
-     */
+    // =====================================================================
+    //  MAIN UPDATE LOOP
+    // =====================================================================
     update(deltaTime: number) {
-
-        // 1. Update monsters behaviour + attacks
+        // 1. Monstres : IA + attaques
         this.monsterSystem.update(deltaTime);
 
-        // 2. Update each player's combat loop
+        // 2. Joueurs : logique combat online
         for (const player of this.gameState.players.values()) {
 
-            // Timers / cooldowns / regen
+            // Timers combat / GCD / cast
             player.updateCombatTimers(deltaTime);
 
             if (player.isDead) continue;
 
-            // === AFK Mode ===
-            if (player.isAFK) {
-                this.afkSystem.update(deltaTime);
-                continue;
-            }
-
-            // === Online Combat ===
+            // Mode ONLINE ONLY
             this.onlineSystem.update(player, deltaTime);
         }
     }
 
-    /**
-     * STOP COMBAT WHEN PLAYER MOVES
-     */
+    // =====================================================================
+    //  STOP COMBAT SI LE JOUEUR BOUGE
+    // =====================================================================
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
         player.targetMonsterId = "";
