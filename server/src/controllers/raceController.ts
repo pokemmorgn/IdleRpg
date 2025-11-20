@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
-import { ALL_RACES, getRaceById, getAllowedClassesForRace } from "../config/races.config";
+import {
+  ALL_RACES,
+  getRaceById,
+  getAllowedClassesForRace
+} from "../config/races.config";
 
 export function getAllRaces(req: Request, res: Response) {
   return res.json({ races: ALL_RACES });
@@ -23,5 +27,9 @@ export function getRaceAllowedClasses(req: Request, res: Response) {
   }
 
   const classes = getAllowedClassesForRace(race.raceId);
-  return res.json({ race: race.raceId, classes });
+
+  return res.json({
+    race: race.raceId,
+    classes
+  });
 }
