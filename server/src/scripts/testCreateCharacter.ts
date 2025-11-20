@@ -1,6 +1,7 @@
 /**
  * SCRIPT DE TEST : REGISTER → LOGIN → JOIN → WEBSOCKET → COMBAT AUTO + HUD
  * Compatible Node 18+ (fetch natif)
+ * Corrigé pour fonctionner avec le CombatManager unifié.
  */
 
 import WebSocket, { RawData } from "ws";
@@ -27,8 +28,8 @@ function sleep(ms: number) {
 }
 
 // HUD ================================
-let HUD_PLAYER_HP = 0;
-let HUD_PLAYER_MAXHP = 0;
+let HUD_PLAYER_HP = 100; // Valeur par défaut
+let HUD_PLAYER_MAXHP = 100; // Valeur par défaut
 
 const HUD_MOBS: Record<string, { hp: number; maxHp: number }> = {};
 let HUD_TARGET = "-";
@@ -55,7 +56,7 @@ function renderHUD() {
 }
 
 // =============================
-// API WRAPPERS
+// API WRAPPERS (inchangés)
 // =============================
 async function registerAccount(): Promise<boolean> {
     console.log("→ Tentative d'inscription...");
@@ -158,7 +159,7 @@ async function createCharacter(token: string, race: string, classId: string) {
 }
 
 // =============================
-// MATCHMAKING
+// MATCHMAKING (inchangé)
 // =============================
 async function reserveSeat(token: string, profile: any) {
     console.log("→ Matchmaking Colyseus…");
@@ -182,7 +183,7 @@ async function reserveSeat(token: string, profile: any) {
 }
 
 // =============================
-// WEBSOCKET
+// WEBSOCKET (inchangé)
 // =============================
 async function connectWebSocket(room: any, sessionId: string) {
     console.log("→ Connexion WebSocket…");
@@ -200,64 +201,113 @@ async function connectWebSocket(room: any, sessionId: string) {
 }
 
 // =============================
-// 🔥 PARSER COLYSEUS PATCHÉ
+// 🔥 PARSER COLYSEUS CORRIGÉ
 // =============================
 function handleIncomingMessage(raw: RawData) {
-    let text = "";
+    let data;
 
-    if (typeof raw === "string") text = raw;
-    else if (raw instanceof Buffer) text = raw.toString();
-    else return;
-
-    // Format Colyseus : "eventName\0{json}"
-    const sep = text.indexOf("\0");
-    if (sep === -1) return;
-
-    const eventName = text.substring(0, sep);
-    const jsonStr = text.substring(sep + 1);
-
-    let payload;
     try {
-        payload = JSON.parse(jsonStr);
-    } catch {
+        // Colyseus peut envoyer des données déjà parsées ou des chaînes JSON.
+        if (typeof raw === 'string') {
+            data = JSON.parse(raw);
+        } else if (Buffer.isBuffer(raw)) {
+            data = JSON.parse(raw.toString('utf8'));
+        } else {
+            // C'est déjà un objet (cas avec 'ws' et某些 Colyseus setups)
+            data = raw;
+        }
+    } catch (e) {
+        console.error("❌ Erreur de parsing du message WebSocket:", e);
         return;
     }
 
-    handleCustomEvent(eventName, payload);
+    // Le format standard de Colyseus est [type, payload]
+    if (Array.isArray(data) && data.length >= 2) {
+        const eventName = data[0];
+        const payload = data[1];
+        handleCustomEvent(eventName, payload);
+    } 
+    // Format alternatif : { type: "...", data: {...} }
+    else if (data && typeof data === 'object' && data.type) {
+        handleCustomEvent(data.type, data.data);
+    }
+    // Pour notre cas spécifique, le message peut être un objet direct avec une propriété 'event'
+    else if (data && typeof data === 'object' && data.event) {
+        handleCustomEvent("combat_event", data);
+    }
+    else {
+        console.log("ℹ️ Message WebSocket non géré :", data);
+    }
 }
 
 // =============================
-// HANDLER DES EVENTS CUSTOM
+// HANDLER DES EVENTS CUSTOM CORRIGÉ
 // =============================
 function handleCustomEvent(event: string, data: any) {
 
-    if (event === "playerDamaged") {
-        HUD_PLAYER_HP = data.hpLeft;
-        HUD_TARGET = data.monsterId;
+    // --- GESTION DES ÉVÉNEMENTS UNIFIÉS DE COMBAT ---
+    if (event === "combat_event") {
+        // Cas : Monstre attaque le Joueur
+        if (data.event === "hit" && data.source === "monster" && data.target === "player") {
+            HUD_PLAYER_HP = data.remainingHp;
+            HUD_TARGET = data.sourceId;
 
-        console.log(`🟥 Le monstre ${data.monsterId} t’inflige ${data.damage} → HP ${data.hpLeft}`);
-        renderHUD();
-        return;
-    }
-
-    if (event === "auto_attack") {
-        if (!HUD_MOBS[data.targetId]) {
-            HUD_MOBS[data.targetId] = { hp: data.hpLeft, maxHp: data.hpLeft };
-        } else {
-            HUD_MOBS[data.targetId].hp = data.hpLeft;
+            console.log(`🟥 Le monstre ${data.sourceId} t'inflige ${data.damage} → HP ${data.remainingHp}`);
+            renderHUD();
+            return;
         }
 
-        HUD_TARGET = data.targetId;
-        console.log(`🟦 Tu frappes ${data.targetId} → ${data.damage} dégâts`);
+        // Cas : Joueur attaque le Monstre
+        if (data.event === "hit" && data.source === "player" && data.target === "monster") {
+            const mobId = data.targetId;
+            if (!HUD_MOBS[mobId]) {
+                // Si le monstre n'est pas dans notre HUD, on l'ajoute avec une estimation de ses PV max
+                HUD_MOBS[mobId] = { hp: data.remainingHp, maxHp: data.remainingHp + data.damage };
+            } else {
+                HUD_MOBS[mobId].hp = data.remainingHp;
+            }
+
+            HUD_TARGET = mobId;
+            console.log(`🟦 Tu frappes ${mobId} → ${data.damage} dégâts`);
+            renderHUD();
+            return;
+        }
+
+        // Cas : Monstre meurt
+        if (data.event === "death" && data.entity === "monster") {
+            delete HUD_MOBS[data.entityId];
+            if (HUD_TARGET === data.entityId) {
+                HUD_TARGET = "-"; // On réinitialise la cible si c'était celle-ci
+            }
+            console.log(`💀 Monstre ${data.entityId} tué !`);
+            renderHUD();
+            return;
+        }
+
+        // Cas : Joueur meurt
+        if (data.event === "death" && data.entity === "player") {
+            HUD_PLAYER_HP = 0;
+            console.log(`☠️ Vous êtes mort !`);
+            renderHUD();
+            return;
+        }
+    }
+    
+    // --- GESTION DES AUTRES ÉVÉNEMENTS (anciens, pour compatibilité) ---
+    // Ces blocs peuvent être supprimés si tout est migré vers "combat_event"
+    if (event === "playerDamaged") {
+        // Ancien format, gardé pour compatibilité
+        HUD_PLAYER_HP = data.hpLeft;
+        HUD_TARGET = data.monsterId;
+        console.log(`🟥 (Ancien format) Dégâts reçus : ${data.damage} → HP ${data.hpLeft}`);
         renderHUD();
         return;
     }
 
-    if (event === "monsterKilled") {
-        delete HUD_MOBS[data.monsterId];
-        console.log(`💀 Monstre ${data.monsterId} tué !`);
+    if (event === "welcome") {
+        console.log("✅ Message de bienvenue reçu du serveur.");
+        // On peut initialiser le HUD ici si on reçoit les infos du joueur
         renderHUD();
-        return;
     }
 }
 
@@ -282,8 +332,12 @@ async function spawnTestMobs(ws: WebSocket) {
     }));
 }
 
+// 🔥 CORRIGÉ : On envoie maintenant un message au serveur
 async function startCombat(ws: WebSocket) {
-    console.log("→ Combat auto activé…");
+    console.log("→ Demande d'activation du combat auto envoyée…");
+    ws.send(JSON.stringify({
+        type: "start_auto_combat"
+    }));
 }
 
 // =============================
@@ -302,11 +356,20 @@ async function startCombat(ws: WebSocket) {
 
     if (!profile) {
         const creation = await getCreationData(token);
+        if (!creation) {
+            console.error("Impossible de récupérer les données de création.");
+            return;
+        }
         const raceId = creation.races[0].raceId;
         const classId = creation.byRace[raceId][0].classId;
         profile = await createCharacter(token, raceId, classId);
     }
 
+    if (!profile) {
+        console.error("Impossible de créer ou charger le profil.");
+        return;
+    }
+    
     console.log("✔ Personnage :", profile.characterName);
 
     const mm = await reserveSeat(token, profile);
@@ -314,9 +377,14 @@ async function startCombat(ws: WebSocket) {
 
     ws.on("message", (raw) => handleIncomingMessage(raw));
 
-    await sleep(300);
+    // Attendre un peu que la connexion soit stable et que le "welcome" soit arrivé
+    await sleep(500);
 
     await spawnTestMobs(ws);
+    
+    // Attendre que les monstres soient "spawnés" côté serveur avant de lancer le combat
+    await sleep(500);
+    
     await startCombat(ws);
 
 })();
