@@ -20,7 +20,7 @@ export class AutoAttackController {
         // dégâts physiques basiques (placeholder)
         const dmg = Math.max(1, player.attackPower);
 
-        monster.hp = Math.max(0, monster.hp - dmg);
+        monster.setHp(monster.hp - dmg);
 
         // reset AA timer
         player.autoAttackTimer = 0;
