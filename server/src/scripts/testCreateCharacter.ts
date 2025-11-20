@@ -1,14 +1,9 @@
 /**
  * SCRIPT DE TEST : REGISTER → LOGIN → JOIN → WEBSOCKET → COMBAT AUTO + HUD
- * Compatible Node 18+ (fetch natif)
- * Zéro erreur TypeScript
  */
 
 import WebSocket, { RawData } from "ws";
 
-// =====================
-// CONSTANTES
-// =====================
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
 
@@ -20,9 +15,6 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TestCharacter";
 
-// =====================
-// UTILS
-// =====================
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -62,9 +54,9 @@ function renderHUD() {
     console.log("=========================================\n");
 }
 
-// =====================
-// API WRAPPERS
-// =====================
+// =============================
+// API
+// =============================
 
 async function registerAccount(): Promise<boolean> {
     console.log("→ Tentative d'inscription...");
@@ -187,7 +179,7 @@ async function reserveSeat(token: string, profile: any) {
         throw new Error("⚠ Matchmaking failed: " + JSON.stringify(json));
     }
 
-    return json; // { room, sessionId }
+    return json;
 }
 
 // =============================
@@ -209,11 +201,9 @@ async function connectWebSocket(room: any, sessionId: string) {
 }
 
 // =============================
-// TRAITEMENT DES MESSAGES
+// MESSAGE HANDLING
 // =============================
 function handleIncomingMessage(buffer: Buffer) {
-    // Colyseus = binary patch → on ignore
-    // Nos events custom = JSON → on les traite
     if (buffer[0] !== 0x7B) return;
 
     let msg: any;
@@ -226,90 +216,83 @@ function handleIncomingMessage(buffer: Buffer) {
     handleJSONMessage(msg);
 }
 
+// PATCH : handlers POUR LES VRAIS TYPES ENVOYÉS PAR LE SERVEUR
 function handleJSONMessage(msg: any) {
-    // ========== HANDLER COMBAT ==========
-    if (msg.type === "monster_attack") {
-        // Format serveur:
-        // { type: "monster_attack", attackerId, damage, hpLeft }
 
-        HUD_PLAYER_HP = msg.hpLeft;
-        HUD_TARGET = msg.attackerId;
+    // 🟥 Player Damaged (ancien monster_attack)
+    if (msg.type === "playerDamaged") {
+        const data = msg.data;
 
-        console.log(`🟥 Le monstre ${msg.attackerId} t’inflige ${msg.damage} → HP ${msg.hpLeft}`);
+        HUD_PLAYER_HP = data.hpLeft;
+        HUD_TARGET = data.monsterId;
 
+        console.log(`🟥 ${data.monsterName} t’inflige ${data.damage} → HP ${data.hpLeft}`);
         renderHUD();
         return;
     }
 
-    if (msg.type === "player_hit") {
-        // Format serveur:
-        // { type: "player_hit", monsterId, damage, hpLeft }
+    // 🟦 Player auto-attack (ancien player_hit)
+    if (msg.type === "auto_attack") {
+        const d = msg.data;
 
-        if (!HUD_MOBS[msg.monsterId]) {
-            HUD_MOBS[msg.monsterId] = { hp: msg.hpLeft, maxHp: msg.hpLeft };
+        if (!HUD_MOBS[d.targetId]) {
+            HUD_MOBS[d.targetId] = { hp: d.hpLeft, maxHp: d.hpLeft };
         } else {
-            HUD_MOBS[msg.monsterId].hp = msg.hpLeft;
+            HUD_MOBS[d.targetId].hp = d.hpLeft;
         }
 
-        HUD_TARGET = msg.monsterId;
+        HUD_TARGET = d.targetId;
 
-        console.log(`🟦 Tu frappes ${msg.monsterId} → ${msg.damage} dégâts (HP ${msg.hpLeft})`);
-
+        console.log(`🟦 Tu frappes ${d.targetId} → ${d.damage} dégâts (HP ${d.hpLeft})`);
         renderHUD();
         return;
     }
 
-    if (msg.type === "monster_dead") {
-        console.log(`💀 Monstre ${msg.monsterId} tué !`);
-        delete HUD_MOBS[msg.monsterId];
-        renderHUD();
+    // 💀 Combat Event → mob mort
+    if (msg.type === "combat_event") {
+        const ev = msg.data;
+
+        if (ev.event === "death" && ev.target === "monster") {
+            delete HUD_MOBS[ev.targetId];
+            console.log(`💀 Monstre ${ev.targetId} tué !`);
+            renderHUD();
+        }
         return;
     }
 
-    if (msg.type === "player_dead") {
-        console.log(`💀 Tu es mort !`);
-        HUD_PLAYER_HP = 0;
-        renderHUD();
-        return;
-    }
-
-    // Logs génériques
+    // logs génériques
     if (msg.type === "combat_log") {
         console.log(`📘 Log: ${msg.message}`);
     }
 }
 
-
 // =============================
-// SPAWN + COMBAT AUTO
+// SPAWN DES MOBS
 // =============================
 async function spawnTestMobs(ws: WebSocket) {
     console.log("→ Spawn de 2 mobs…");
 
-await ws.send(JSON.stringify({
-    type: "spawn_test_monster",
-    monsterId: "mob_01",
-    name: "Dummy A",
-    x: 0, y: 0, z: 1
-}));
+    await ws.send(JSON.stringify({
+        type: "spawn_test_monster",
+        monsterId: "mob_01",
+        name: "Dummy A",
+        x: 0, y: 0, z: 1
+    }));
 
-await ws.send(JSON.stringify({
-    type: "spawn_test_monster",
-    monsterId: "mob_02",
-    name: "Dummy B",
-    x: 0, y: 0, z: 2
-}));
-
+    await ws.send(JSON.stringify({
+        type: "spawn_test_monster",
+        monsterId: "mob_02",
+        name: "Dummy B",
+        x: 0, y: 0, z: 2
+    }));
 }
 
 async function startCombat(ws: WebSocket) {
     console.log("→ Combat auto activé…");
-
-    // Rien à envoyer : le WorldRoom lance tout seul l'auto-combat si proche.
 }
 
 // =============================
-// MAIN SCRIPT
+// MAIN
 // =============================
 (async () => {
     console.log("=== 🧪 TEST CREATION PERSONNAGE ===");
@@ -340,5 +323,4 @@ async function startCombat(ws: WebSocket) {
 
     await spawnTestMobs(ws);
     await startCombat(ws);
-
 })();
