@@ -70,42 +70,43 @@ export class SkillExecutor {
         });
     }
 
-// =====================================================
-// CAST FINISH
-// =====================================================
-static finishCast(
-    player: PlayerState,
-    monster: MonsterState,
-    gameState: GameState,
-    broadcast: (sessionId: string, type: string, data: any) => void
-) {
-    const skill = player.skills.get(player.currentCastingSkillId) as SkillDefinition;
-    if (!skill) return;
+    // =====================================================
+    // CAST FINISH
+    // =====================================================
+    static finishCast(
+        player: PlayerState,
+        monster: MonsterState,
+        gameState: GameState,
+        broadcast: (sessionId: string, type: string, data: any) => void
+    ) {
+        const skill = player.skills.get(player.currentCastingSkillId) as SkillDefinition;
+        if (!skill) return;
 
-    // --- AJOUT : Vérification de portée pour les projectiles ---
-    if (skill.effectType === "projectile") {
-        const dist = this.dist(player, monster);
-        if (dist > skill.range) {
-            // La cible est sortie de portée, le sort échoue
-            player.castLockRemaining = 0;
-            player.currentCastingSkillId = "";
-            player.animationLockRemaining = 0;
-            player.currentAnimationLockType = "none";
+        // --- AJOUT : Vérification de portée pour les projectiles ---
+        if (skill.effectType === "projectile") {
+            const dist = this.dist(player, monster);
+            if (dist > skill.range) {
+                // La cible est sortie de portée, le sort échoue
+                player.castLockRemaining = 0;
+                player.currentCastingSkillId = "";
+                player.animationLockRemaining = 0;
+                player.currentAnimationLockType = "none";
 
-            broadcast(player.sessionId, "cast_interrupted", {
-                reason: "target_out_of_range",
-                skillId: skill.id
-            });
-            return; // On arrête tout ici
+                broadcast(player.sessionId, "cast_interrupted", {
+                    reason: "target_out_of_range",
+                    skillId: skill.id
+                });
+                return; // On arrête tout ici
+            }
         }
+
+        this.applyAnimationLock(player, skill);
+        this.applySkillEffect(player, monster, skill, broadcast, gameState);
+
+        player.castLockRemaining = 0;
+        player.currentCastingSkillId = "";
     }
 
-    this.applyAnimationLock(player, skill);
-    this.applySkillEffect(player, monster, skill, broadcast, gameState);
-
-    player.castLockRemaining = 0;
-    player.currentCastingSkillId = "";
-}
     // =====================================================
     // ANIMATION LOCK
     // =====================================================
@@ -115,57 +116,7 @@ static finishCast(
         player.animationLockRemaining = lock;
         player.currentAnimationLockType = skill.lockType ?? "none";
     }
-    // =====================================================
-    // TRY EXECUTE QUEUED SKILL
-    // =====================================================
-    static tryExecuteQueuedSkill(
-        player: PlayerState,
-        monster: MonsterState,
-        gameState: GameState,
-        broadcast: (sessionId: string, type: string, data: any) => void
-    ): boolean {
-    
-        const skillId = player.queuedSkill;
-        if (!skillId) return false;
-    
-        const skill = player.skills.get(skillId) as SkillDefinition;
-        if (!skill) {
-            // Skill invalide, on vide la file d'attente
-            player.queuedSkill = "";
-            return false;
-        }
-    
-        // Vérifier les conditions (SAUF GCD)
-        const now = Date.now();
-        const cd = player.cooldowns.get(skill.id);
-        if (cd && cd > now) {
-            // Pas encore prêt, on attend le prochain tick
-            return false;
-        }
-    
-        if (skill.manaCost && player.resource < skill.manaCost) {
-            // Pas assez de ressource, on vide la file
-            player.queuedSkill = "";
-            broadcast(player.sessionId, "queue_fail", { reason: "resource" });
-            return false;
-        }
-        
-        const dist = this.dist(player, monster);
-        if (dist > skill.range) {
-            // Hors de portée, on vide la file
-            player.queuedSkill = "";
-            broadcast(player.sessionId, "queue_fail", { reason: "range" });
-            return false;
-        }
-    
-        // Toutes les conditions sont réunies, on exécute !
-        this.cast(player, monster, skill, broadcast, gameState);
-        
-        // On vide la file d'attente après un lancement réussi
-        player.queuedSkill = "";
-        
-        return true;
-    }
+
     // =====================================================
     // APPLY SKILL EFFECT
     // =====================================================
@@ -180,6 +131,11 @@ static finishCast(
         switch (skill.effectType) {
 
             case "damage":
+                this.applyDamageSkill(player, monster, skill, broadcast);
+                break;
+
+            case "projectile": // <-- AJOUT
+                // Un projectile inflige des dégâts comme un sort de dégâts direct
                 this.applyDamageSkill(player, monster, skill, broadcast);
                 break;
 
@@ -208,6 +164,10 @@ static finishCast(
     ) {
         const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
         monster.setHp(monster.hp - dmg);
+
+        // --- AJOUT ---
+        // Le monstre sait maintenant qui l'attaque
+        monster.targetPlayerId = player.sessionId;
 
         broadcast(player.sessionId, "skill_damage", {
             skillId: skill.id,
@@ -268,6 +228,11 @@ static finishCast(
             if (d <= radius && monster.isAlive) {
                 const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
                 monster.setHp(monster.hp - dmg);
+                
+                // --- AJOUT ---
+                // Le monstre sait maintenant qui l'attaque
+                monster.targetPlayerId = player.sessionId;
+
                 hits++;
             }
         }
@@ -295,5 +260,57 @@ static finishCast(
             (a.posY - b.posY) ** 2 +
             (a.posZ - b.posZ) ** 2
         );
+    }
+
+    // =====================================================
+    // TRY EXECUTE QUEUED SKILL
+    // =====================================================
+    static tryExecuteQueuedSkill(
+        player: PlayerState,
+        monster: MonsterState,
+        gameState: GameState,
+        broadcast: (sessionId: string, type: string, data: any) => void
+    ): boolean {
+
+        const skillId = player.queuedSkill;
+        if (!skillId) return false;
+
+        const skill = player.skills.get(skillId) as SkillDefinition;
+        if (!skill) {
+            // Skill invalide, on vide la file d'attente
+            player.queuedSkill = "";
+            return false;
+        }
+
+        // Vérifier les conditions (SAUF GCD)
+        const now = Date.now();
+        const cd = player.cooldowns.get(skill.id);
+        if (cd && cd > now) {
+            // Pas encore prêt, on attend le prochain tick
+            return false;
+        }
+
+        if (skill.manaCost && player.resource < skill.manaCost) {
+            // Pas assez de ressource, on vide la file
+            player.queuedSkill = "";
+            broadcast(player.sessionId, "queue_fail", { reason: "resource" });
+            return false;
+        }
+        
+        const dist = this.dist(player, monster);
+        if (dist > skill.range) {
+            // Hors de portée, on vide la file
+            player.queuedSkill = "";
+            broadcast(player.sessionId, "queue_fail", { reason: "range" });
+            return false;
+        }
+
+        // Toutes les conditions sont réunies, on exécute !
+        this.cast(player, monster, skill, broadcast, gameState);
+        
+        // On vide la file d'attente après un lancement réussi
+        player.queuedSkill = "";
+        
+        return true;
     }
 }
