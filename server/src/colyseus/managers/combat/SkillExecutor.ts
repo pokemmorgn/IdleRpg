@@ -140,7 +140,7 @@ export class SkillExecutor {
         broadcast: any
     ) {
         const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
-        monster.hp = Math.max(0, monster.hp - dmg);
+        monster.setHp(monster.hp - dmg);
 
         broadcast(player.sessionId, "skill_damage", {
             skillId: skill.id,
@@ -200,7 +200,7 @@ export class SkillExecutor {
 
             if (d <= radius && monster.isAlive) {
                 const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
-                monster.hp = Math.max(0, monster.hp - dmg);
+                monster.setHp(monster.hp - dmg);
                 hits++;
             }
         }
