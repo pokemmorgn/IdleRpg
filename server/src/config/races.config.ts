@@ -4,17 +4,17 @@
  * 
  * NOTE DEV - Traits physiques et culture par race (pour référence) :
  * 
- * AURION :
+ * AURION
  * - Humains d'Élion : Architecture dorée, traits nobles, peau claire à bronze. Société centrée sur l'honneur, la connaissance et la stabilité.
  * - Nains de Pierre-Rune : Corpulence robuste, motifs runiques naturels, barbes ornementales. Forteresses souterraines, culture du métal et des runes.
- * - Ailés Lunaris : Silhouette élancée, petites ailes dorsales, peau claire avec reflets bleutés. Connexion à la magie stellaire et astrale.
- * - Sylphides Forestiers : Peau légèrement écorcée, oreilles longues, silhouette fine. Magie végétale, gardiens des bois anciens.
- * 
+ * - Murlocs
+ * - Noxariens
+
  * OMBRE :
  * - Varkyns : Cornes asymétriques fractales, fourrure sombre, symboles rituels, silhouette élancée. Culture chamanique ancienne.
  * - Arkanids : Peau matte (bleu nuit, violet, noir), membres fins, yeux réfléchissants, ornements chitineux. Chasseurs furtifs nocturnes.
- * - Ghrannites : Peau de pierre (granite, basalte, obsidienne), yeux de cristal, corps imposants. Culture souterraine liée à la chaleur.
- * - Sélénithes : Peau noire ou gris bleu profond, cheveux blancs/argentés, pupilles verticales lumineuses. Magie lunaire sombre.
+ * - Ghrannites orcs : Peau de pierre (granite, basalte, obsidienne), yeux de cristal, corps imposants. Culture souterraine liée à la chaleur.
+ * - Sélénithes trolls : Peau noire ou gris bleu profond, cheveux blancs/argentés, pupilles verticales lumineuses. Magie lunaire sombre.
  */
 
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../models/ServerProfile";
