@@ -61,7 +61,7 @@ export class OnlineCombatSystem {
         }
 
         // Rotation des skills
-        const nextSkill = SkillRotation.getNextSkill(player);
+        const nextSkill = SkillRotation.getNextSkill(player, monster);
 
         if (nextSkill) {
             SkillExecutor.tryExecute(player, monster, this.gameState, this.broadcast);
