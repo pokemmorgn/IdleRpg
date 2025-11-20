@@ -1,5 +1,5 @@
 import { Router } from "express";
-console.log("🟢 LOADED: statsRoutes");
+throw new Error("💀 STATS ROUTES SHOULD CRASH HERE 💀");
 // ===== CONTROLLERS CLASSES =====
 import {
   getAllClasses,
