@@ -124,7 +124,8 @@ export class OnlineCombatSystem {
         // Auto-attaque si aucun skill
         if (this.getDistance(player, monster) <= this.ATTACK_RANGE) {
             if (AutoAttackController.shouldTrigger(player)) {
-                AutoAttackController.trigger(player, monster);
+                // MODIFIÉ : Passer la fonction broadcast
+                AutoAttackController.trigger(player, monster, this.broadcast);
             }
         }
     }
