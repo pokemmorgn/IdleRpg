@@ -5,61 +5,76 @@ import { CombatUtils } from "./CombatUtils";
 
 export class MonsterCombatSystem {
 
-    // Temps entre deux attaques de monstre (en ms)
-    private readonly MONSTER_ATTACK_COOLDOWN = 2000; 
+    private readonly MONSTER_ATTACK_COOLDOWN = 2000; // ms
 
     constructor(
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {}
 
-    /**
-     * Met à jour la logique de combat de tous les monstres.
-     * @param dt DeltaTime en ms.
-     */
     update(dt: number) {
         this.gameState.monsters.forEach(monster => {
             if (!monster.isAlive) return;
-
             this.updateMonster(monster, dt);
         });
     }
 
     private updateMonster(monster: MonsterState, dt: number) {
-        // 1. Mettre à jour le timer d'attaque du monstre
         monster.attackTimer += dt;
 
-        // 2. Si le monstre n'a pas de cible, on ne fait rien
+        // Pas de cible → idle
         if (!monster.targetPlayerId) return;
 
         const target = this.gameState.players.get(monster.targetPlayerId);
         if (!target || target.isDead) {
-            // La cible n'est plus valide, on l'oublie
             monster.targetPlayerId = "";
             return;
         }
 
-        // 3. Vérifier si le monstre peut attaquer
+        // Distance check
         const dist = this.getDistance(monster, target);
-        if (dist <= monster.attackRange && monster.attackTimer >= this.MONSTER_ATTACK_COOLDOWN) {
-            
-            // Le monstre attaque !
-            const dmg = Math.max(1, monster.attack - target.armor); // Dégâts simples
-            target.hp = Math.max(0, target.hp - dmg); // Utiliser setHp serait mieux, mais pour l'instant c'est ok
-            
-            // --- DÉCLENCHEUR DE LA CONTRE-ATTAQUE ---
-            // On informe le joueur qu'il a été attaqué
-            target.lastAttackerId = monster.monsterId;
+        if (dist > monster.attackRange) return;
 
-            // Notifier le joueur des dégâts
-            this.broadcast(target.sessionId, "monster_attack", {
-                attackerId: monster.monsterId,
-                damage: dmg,
-                hpLeft: target.hp
+        // Pas encore prêt à attaquer
+        if (monster.attackTimer < this.MONSTER_ATTACK_COOLDOWN) return;
+
+        // =======================
+        //     ATTAQUE DU MONSTRE
+        // =======================
+        const dmg = Math.max(1, monster.attack - target.armor);
+        target.hp = Math.max(0, target.hp - dmg);
+
+        // Marquer l'agresseur pour que le joueur contre-attaque
+        target.lastAttackerId = monster.monsterId;
+
+        // =======================
+        //        LOG HUD
+        // =======================
+        this.broadcast(target.sessionId, "playerDamaged", {
+            type: "monster_attack",
+            monsterId: monster.monsterId,
+            monsterName: monster.name,
+            damage: dmg,
+            hpLeft: target.hp
+        });
+
+        // Reset du timer d’attaque
+        monster.attackTimer = 0;
+
+        // =======================
+        //     MORT DU JOUEUR
+        // =======================
+        if (target.hp <= 0 && !target.isDead) {
+            target.isDead = true;
+
+            this.broadcast(target.sessionId, "playerKilled", {
+                byMonster: monster.monsterId,
+                monsterName: monster.name
             });
 
-            // Reset le timer du monstre
-            monster.attackTimer = 0;
+            // Le monstre oublie la cible
+            monster.targetPlayerId = "";
+            return;
         }
     }
 
