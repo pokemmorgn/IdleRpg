@@ -3,7 +3,7 @@ import { PlayerState } from "../schema/PlayerState";
 import { AFKManager } from "./AFKManager";
 import { AFKCombatSystem } from "./AFKCombatSystem";
 import { AFKBehaviorManager } from "./AFKBehaviorManager";
-import { OnlineCombatSystem } from "./OnlineCombatSystem";
+import { OnlineCombatSystem } from "./combat/OnlineCombatSystem";
 import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 
 export class CombatManager {
