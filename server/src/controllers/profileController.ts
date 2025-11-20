@@ -200,20 +200,26 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
       },
 
       computedStats: {
-        hp: 0,
-        maxHp: 0,
+        hp: 1,
+        maxHp: 1,                 // min: 1
         resource: 0,
         maxResource: 0,
+      
         manaRegen: 0,
         rageRegen: 0,
         energyRegen: 0,
+      
         attackPower: 0,
         spellPower: 0,
-        attackSpeed: 0,
+      
+        attackSpeed: 1.0,         // min: 0.8
+      
         criticalChance: 0,
         criticalDamage: 150,
+      
         damageReduction: 0,
-        moveSpeed: 0,
+        moveSpeed: 1,             // >= 0
+      
         armor: 0,
         magicResistance: 0,
         precision: 0,
@@ -223,6 +229,7 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         lifesteal: 0,
         spellPenetration: 0
       },
+
 
       lastOnline: new Date()
     });
