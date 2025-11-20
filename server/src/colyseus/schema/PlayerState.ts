@@ -63,7 +63,21 @@ export class PlayerState extends Schema {
   @type("boolean") inCombat: boolean = false;
   @type("string") targetMonsterId: string = "";
   @type("number") attackTimer: number = 0;
+  @type("number") gcdRemaining: number = 0;
   
+  @type("number") autoAttackTimer: number = 0;
+  
+  @type("number") castLockRemaining: number = 0;            // lock du cast (durée)
+  @type("number") animationLockRemaining: number = 0;       // lock d'animation
+  @type("string") currentCastingSkillId: string = "";       // skill en cours
+  @type("string") currentAnimationLockType: string = "none"; // "none" | "soft" | "full"
+  
+  @type({ map: "number" }) cooldowns = new Map<string, number>(); // skillId → timestamp fin
+  @type({ map: "number" }) activeBuffs = new Map<string, number>(); // buffId → timestamp fin
+  
+  @type(["string"]) skillBar: string[] = []; // ordre des skills
+  @type({ map: "json" }) skills = new Map<string, any>();  // skillId → SkillDefinition
+
   // ===== MOUVEMENT =====
   @type("number") posX: number = 0;
   @type("number") posY: number = 0;
