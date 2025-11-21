@@ -8,6 +8,8 @@ import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 import { CombatEventCallbacks } from "./combat/CombatEventCallbacks";
 import { CombatNetworkEmitter } from "./combat/CombatNetworkEmitter";
 
+import { QuestObjectiveManager } from "./QuestObjectiveManager";
+
 export class CombatManager implements CombatEventCallbacks {
 
     private onlineSystem: OnlineCombatSystem;
@@ -16,7 +18,8 @@ export class CombatManager implements CombatEventCallbacks {
 
     constructor(
         private readonly gameState: GameState,
-        private readonly broadcast: (sessionId: string, type: string, data: any) => void
+        private readonly broadcast: (sessionId: string, type: string, data: any) => void,
+        private readonly questObjectiveManager?: QuestObjectiveManager
     ) {
         this.net = new CombatNetworkEmitter(gameState, broadcast);
 
@@ -149,15 +152,26 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     onCrit(monster: MonsterState, player: PlayerState, extraDamage: number) {
-        // CRIT = hit mais avec dégâts boostés
         this.net.emitMonsterHit(monster, player, extraDamage);
     }
 
     // ======================================================
-    // 💀 DEATH
+    // 💀 DEATH EVENTS
     // ======================================================
     onMonsterDeath(monster: MonsterState, killer: PlayerState) {
         this.net.emitMonsterDeath(monster, killer);
+
+        // ================================
+        // 🔥 QUEST HOOK: Monster Kill Objective
+        // ================================
+        if (this.questObjectiveManager && killer) {
+            this.questObjectiveManager.onMonsterKilled(killer, {
+                enemyType: monster.type,
+                enemyRarity: (monster as any).rarity ?? undefined,
+                isBoss: (monster as any).isBoss ?? false,
+                zoneId: killer.zoneId
+            });
+        }
     }
 
     onPlayerDeath(player: PlayerState, monster: MonsterState) {
@@ -197,13 +211,13 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     onThreatLost(monster: MonsterState) {
-        // Aucun event client pour l'instant → laissé vide
+        // optional
     }
 
     // ======================================================
     // 🔄 RESPAWN CALLBACK
     // ======================================================
     onPlayerRespawn(player: PlayerState) {
-        // Optional internal logic
+        // Internal only
     }
 }
