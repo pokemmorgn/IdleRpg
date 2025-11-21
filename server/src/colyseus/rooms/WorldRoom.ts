@@ -38,13 +38,20 @@ export class WorldRoom extends Room<GameState> {
     console.log("🧬 GameState initialisé");
 
     // --- CREATION QUEST SYSTEM ---
-    this.questManager = new QuestManager(this.serverId, this.state);
+    // MODIFIÉ: On passe le callback de sauvegarde aux managers
+    this.questManager = new QuestManager(
+      this.serverId,
+      this.state,
+      this.savePlayerData.bind(this) // On lie la méthode à l'instance de la room
+    );
+
     this.questObjectiveManager = new QuestObjectiveManager(
       this.state,
       (sessionId: string, type: string, payload: any) => {
         const client = this.clients.find(c => c.sessionId === sessionId);
         if (client) client.send(type, payload);
-      }
+      },
+      this.savePlayerData.bind(this) // On lie la méthode à l'instance de la room
     );
 
     // --- NPC + MONSTER ---
@@ -129,6 +136,7 @@ export class WorldRoom extends Room<GameState> {
 
     const p = load.profile;
 
+    // MODIFIÉ : On retourne aussi les données persistantes (stats et quêtes)
     return {
       playerId: p.playerId,
       profileId: p.profileId,
@@ -136,7 +144,9 @@ export class WorldRoom extends Room<GameState> {
       level: p.level,
       characterClass: p.class,
       characterRace: p.race,
-      characterSlot: p.characterSlot
+      characterSlot: p.characterSlot,
+      stats: p.stats, // AJOUT
+      questData: p.questData // AJOUT
     };
   }
 
@@ -157,6 +167,15 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
+    // NOUVEAU : Charger les données persistées dans le PlayerState
+    if (auth.stats) {
+      player.loadStatsFromProfile(auth.stats);
+    }
+
+    if (auth.questData) {
+      player.loadQuestsFromProfile(auth.questData);
+    }
+
     // Serveur de test → zone forcée
     if (this.serverId === "test") {
       player.zoneId = "test_zone";
@@ -169,7 +188,14 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   // LEAVE
   // ===========================================================
-  onLeave(client: Client) {
+  async onLeave(client: Client, consented: boolean) {
+    const player = this.state.players.get(client.sessionId);
+    
+    if (player) {
+      // MODIFIÉ: Utiliser la méthode centralisée de sauvegarde
+      await this.savePlayerData(player);
+    }
+
     this.state.removePlayer(client.sessionId);
   }
 
@@ -201,10 +227,40 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
+    // --- Dialogue Choice ---
+    if (type === "dialogue_choice") {
+      if (!player) return;
+      this.npcManager.handleDialogueChoice(client, player, msg);
+      return;
+    }
+
     // --- TEST SPAWN ---
     if (type === "spawn_test_monster") {
       this.spawnTestMonster(msg);
       return;
+    }
+  }
+
+  // ===========================================================
+  // PERSISTENCE
+  // ===========================================================
+  /**
+   * Sauvegarde les données d'un joueur (stats et quêtes) en base de données.
+   * @param player Le PlayerState du joueur à sauvegarder.
+   */
+  private async savePlayerData(player: PlayerState): Promise<void> {
+    try {
+      console.log(`💾 Sauvegarde automatique pour ${player.characterName}...`);
+      await ServerProfile.findByIdAndUpdate(player.profileId, {
+        $set: {
+          lastOnline: new Date(),
+          stats: player.saveStatsToProfile(),
+          questData: player.saveQuestsToProfile()
+        }
+      });
+      console.log(`✅ Sauvegarde automatique réussie pour ${player.characterName}`);
+    } catch (error) {
+      console.error(`❌ Erreur lors de la sauvegarde automatique pour ${player.characterName}:`, error);
     }
   }
 
