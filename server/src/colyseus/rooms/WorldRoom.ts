@@ -214,14 +214,14 @@ export class WorldRoom extends Room<GameState> {
       console.log("🟢 MONSTER ADDED:", m.monsterId);
     }
   }
-  private spawnTemporaryTestMonsters() {
-    console.log("🔥 Seed de monstres temporaires pour serveur test...");
+private spawnTemporaryTestMonsters() {
+    console.log("🔥 Spawn d'un seul monstre temporaire pour serveur test...");
 
     const MonsterState = require("../schema/MonsterState").MonsterState;
 
-    const monster1 = new MonsterState(
+    const m = new MonsterState(
         "test_dummy_1",
-        "Training Dummy 1",
+        "Training Dummy",
         "test_zone",
         1,
         50,     // max HP
@@ -230,8 +230,8 @@ export class WorldRoom extends Room<GameState> {
         0,      // spellPower
         1,      // attackSpeed
         "test_zone",
-        0, 0, 0, // position
-        0, 0, 0,     // rotation
+        3, 0, 0,  // position (à 3 mètres à droite du joueur)
+        0, 0, 0,  // rotation
         "aggressive",
         10,     // detectionRange
         20,     // chaseRange
@@ -243,34 +243,10 @@ export class WorldRoom extends Room<GameState> {
         true
     );
 
-    const monster2 = new MonsterState(
-        "test_dummy_2",
-        "Training Dummy 2",
-        "test_zone",
-        1,
-        55,
-        55,
-        6,
-        0,
-        1,
-        "test_zone",
-        1, 0, 1,
-        0, 0, 0,
-        "aggressive",
-        12,
-        20,
-        2,
-        5,
-        3,
-        false,
-        "dummy_model",
-        true
-    );
+    this.state.addMonster(m);
 
-    this.state.addMonster(monster1);
-    this.state.addMonster(monster2);
-
-    console.log("🟢 Monstres temporaires ajoutés !");
+    console.log("🟢 Monstre temporaire ajouté !");
 }
+
 
 }
