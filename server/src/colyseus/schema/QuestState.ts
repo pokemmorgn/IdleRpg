@@ -18,21 +18,20 @@ export class QuestState extends Schema {
   @type([ "string" ])
   activeRepeatables = new ArraySchema<string>();
 
-  // --- MODIFIÉ : NOUVELLE STRUCTURE DE PROGRESSION ---
-
+  // --- AJOUT: Propriétés pour la progression "aplatie" ---
   // questId -> step
   @type({ map: "number" })
   questStep = new MapSchema<number>();
 
-  // questId -> startedAt
+  // questId -> timestamp
   @type({ map: "number" })
   questStartedAt = new MapSchema<number>();
 
-  // questId -> objectiveId -> count
-  @type({ map: "json" }) // On garde "json" pour la map interne
+  // questId -> { objectiveId: count }
+  @type({ map: "json" })
   questObjectives = new MapSchema<any>();
 
-  // --- FIN DE LA MODIFICATION ---
+  // --- FIN DES AJOUTS ---
 
   // Cooldowns
   @type({ map: "number" })
