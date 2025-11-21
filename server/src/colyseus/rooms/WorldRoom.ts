@@ -68,8 +68,7 @@ export class WorldRoom extends Room<GameState> {
 
     this.monsterManager = new MonsterManager(
       this.serverId,
-      this.state,
-      this.questObjectiveManager
+      this.state
     );
 
 
