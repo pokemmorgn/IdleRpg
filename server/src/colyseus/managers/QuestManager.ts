@@ -60,19 +60,38 @@ export class QuestManager {
   /* ===========================================================
      3) Quêtes disponibles pour un NPC
      =========================================================== */
-  getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
+getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     const qs = this.getQuestState(player);
     const available: IQuest[] = [];
 
-    for (const quest of this.questCache.values()) {
-      if (quest.giverNpcId !== npcId) continue;
-      if (!this.isQuestAvailableForPlayer(quest, player, qs)) continue;
+    console.log("🧪 DEBUG getAvailableQuestsForNPC()");
+    console.log("NPC:", npcId);
+    console.log("Player zone:", player.zoneId);
+    console.log("Quest cache:", Array.from(this.questCache.keys()));
+    console.log("Completed:", qs.completed);
+    console.log("activeMain:", qs.activeMain);
+    console.log("activeSecondary:", qs.activeSecondary);
+    console.log("Repeatables:", qs.activeRepeatables);
 
-      available.push(quest);
+    for (const quest of this.questCache.values()) {
+        console.log("➡️ Checking quest:", quest.questId);
+
+        if (quest.giverNpcId !== npcId) {
+            console.log("❌ NPC mismatch");
+            continue;
+        }
+        if (!this.isQuestAvailableForPlayer(quest, player, qs)) {
+            console.log("❌ isQuestAvailableForPlayer → FALSE");
+            continue;
+        }
+
+        console.log("✅ QUEST AVAILABLE:", quest.questId);
+        available.push(quest);
     }
 
     return available;
-  }
+}
+
 
   /**
    * Récupère les quêtes qu’un joueur peut rendre à un NPC
