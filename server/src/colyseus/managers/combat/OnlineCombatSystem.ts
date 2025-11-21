@@ -6,6 +6,7 @@ import { TargetSelector } from "./TargetSelector";
 import { SkillRotation } from "./SkillRotation";
 import { SkillExecutor } from "./SkillExecutor";
 import { AutoAttackController } from "./AutoAttackController";
+import { CombatEventCallbacks } from "../combat/CombatEventCallbacks";
 
 export class OnlineCombatSystem {
 
@@ -14,30 +15,29 @@ export class OnlineCombatSystem {
 
     constructor(
         private readonly gameState: GameState,
-        private readonly broadcast: (sessionId: string, type: string, data: any) => void
+        private readonly cb: CombatEventCallbacks
     ) {}
 
-    private emit(player: PlayerState, type: string, data: any) {
-        this.broadcast(player.sessionId, type, data);
-    }
-
+    // ---------------------------------------
+    // CIBLAGE
+    // ---------------------------------------
     private acquireTarget(player: PlayerState): MonsterState | null {
         let target: MonsterState | null = null;
 
-        // 1. Contre-attaque
+        // 1) Riposte si on vient d’être attaqué
         if (player.lastAttackerId) {
             const attacker = this.gameState.monsters.get(player.lastAttackerId);
             if (attacker && attacker.isAlive) target = attacker;
             player.lastAttackerId = "";
         }
 
-        // 2. Cible manuelle
+        // 2) Cible manuelle
         if (!target && player.targetMonsterId) {
             const manual = this.gameState.monsters.get(player.targetMonsterId);
             if (manual && manual.isAlive) target = manual;
         }
 
-        // 3. Auto-target
+        // 3) Auto-target
         if (!target) {
             target = TargetSelector.getNearestInRange(
                 player,
@@ -47,8 +47,8 @@ export class OnlineCombatSystem {
         }
 
         if (target) {
-            player.targetMonsterId = target.monsterId;
             player.inCombat = true;
+            player.targetMonsterId = target.monsterId;
         } else {
             player.inCombat = false;
             player.targetMonsterId = "";
@@ -57,25 +57,28 @@ export class OnlineCombatSystem {
         return target;
     }
 
+    // ---------------------------------------
+    // UPDATE PRINCIPAL
+    // ---------------------------------------
     update(player: PlayerState, dt: number) {
-console.log(`[OnlineCombatSystem] update player=${player.characterName}, inCombat=${player.inCombat}, target=${player.targetMonsterId}`);
+
         const isMoving = (Date.now() - player.lastMovementTime) < 150;
 
-        // Annulation de cast si mouvement
+        // Cast annulé par le mouvement
         if (isMoving && CombatUtils.shouldCancelOnMovement(player)) {
             player.castLockRemaining = 0;
             player.currentCastingSkillId = "";
             player.animationLockRemaining = 0;
             player.currentAnimationLockType = "none";
 
-            this.emit(player, "cast_cancelled", { reason: "movement" });
+            this.cb.onCastCancel(player, "movement");
         }
 
         if (player.isDead || player.isAFK) return;
 
         let monster = this.gameState.monsters.get(player.targetMonsterId) || null;
 
-        // Gestion du ciblage
+        // Recalcul ciblage
         if (!player.inCombat || !monster || !monster.isAlive) {
             if (isMoving) {
                 player.inCombat = false;
@@ -89,59 +92,62 @@ console.log(`[OnlineCombatSystem] update player=${player.characterName}, inComba
 
         if (isMoving) return;
 
-        // === QUEUED SKILL ===
+        // ====================
+        // 1) QUEUED SKILL
+        // ====================
         if (player.queuedSkill) {
-            if (SkillExecutor.tryExecuteQueuedSkill(player, monster, this.gameState, this.broadcast)) {
-                return;
-            }
+            const result = SkillExecutor.tryExecuteQueuedSkill(
+                player, monster, this.gameState, this.cb
+            );
+            if (result) return;
         }
 
-        // === ROTATION ===
+        // ====================
+        // 2) ROTATION BASIQUE
+        // ====================
         const nextSkill = SkillRotation.getNextSkill(player, monster);
-        if (nextSkill) {
 
+        if (nextSkill) {
             const didCast = SkillExecutor.tryExecute(
                 player,
                 monster,
                 this.gameState,
-                this.broadcast
+                this.cb
             );
 
             if (didCast) {
-                // ⭐ FIX : utiliser nextSkill.id
-                this.emit(player, "playerHit", {
-                    type: "skill",
-                    skillId: nextSkill.id,  // <-- CORRIGÉ ICI
-                    playerId: player.profileId,
-                    monsterId: monster.monsterId,
-                    remainingHp: monster.hp
-                });
+                this.cb.onPlayerHit(
+                    player,
+                    monster,
+                    0,              // dégâts déjà appliqués dans SkillExecutor
+                    false,
+                    nextSkill.id
+                );
             }
 
             return;
         }
 
-        // === AUTO ATTACK ===
+        // ====================
+        // 3) AUTO-ATTAQUE
+        // ====================
         if (this.getDistance(player, monster) <= this.ATTACK_RANGE) {
             if (AutoAttackController.shouldTrigger(player)) {
 
-                const damage = AutoAttackController.trigger(player, monster, this.broadcast);
+                const damage = AutoAttackController.trigger(player, monster);
 
-                this.emit(player, "playerHit", {
-                    type: "autoattack",
+                this.cb.onPlayerHit(
+                    player,
+                    monster,
                     damage,
-                    playerId: player.profileId,
-                    monsterId: monster.monsterId,
-                    remainingHp: monster.hp
-                });
+                    false,
+                    undefined
+                );
 
                 if (monster.hp <= 0 && monster.isAlive) {
                     monster.isAlive = false;
 
-                    this.emit(player, "monsterKilled", {
-                        monsterId: monster.monsterId,
-                        by: player.profileId
-                    });
+                    this.cb.onMonsterDeath(monster, player);
 
                     player.inCombat = false;
                     player.targetMonsterId = "";
