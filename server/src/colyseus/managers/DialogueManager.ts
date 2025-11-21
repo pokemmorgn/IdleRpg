@@ -1,10 +1,12 @@
 import { Client } from "colyseus";
-import { PlayerState } from "../schema/PlayerState";
+import { GameState } from "../schema/GameState"; // AJOUT: Import pour le typage
+import { PlayerState } from "../schema/PlayerState"; // AJOUT: Import pour le typage
 import Dialogue, { IDialogue, IDialogueCondition, IDialogueAction, IDialogueChoice } from "../../models/Dialogue";
 import DialogueInteraction from "../../models/DialogueInteraction";
 import ServerProfile from "../../models/ServerProfile";
 import { GameplayTagManager } from "../../managers/GameplayTagManager";
 import { QuestObjectiveManager } from "./QuestObjectiveManager";
+import { QuestManager } from "./QuestManager"; // AJOUT: Import pour le typage
 
 /**
  * DialogueManager - Gère toute la logique des dialogues
@@ -12,10 +14,20 @@ import { QuestObjectiveManager } from "./QuestObjectiveManager";
 export class DialogueManager {
   private serverId: string;
   private questObjectiveManager?: QuestObjectiveManager;
+  private questManager?: QuestManager; // AJOUT: Dépendance pour démarrer une quête
+  private gameState?: GameState; // AJOUT: Dépendance pour récupérer le PlayerState
 
-  constructor(serverId: string, questObjectiveManager?: QuestObjectiveManager) {
+  // MODIFIÉ: Le constructeur accepte maintenant les dépendances nécessaires
+  constructor(
+    serverId: string,
+    questObjectiveManager?: QuestObjectiveManager,
+    questManager?: QuestManager,
+    gameState?: GameState
+  ) {
     this.serverId = serverId;
     this.questObjectiveManager = questObjectiveManager;
+    this.questManager = questManager;
+    this.gameState = gameState;
   }
 
   /**
@@ -151,6 +163,19 @@ export class DialogueManager {
   }
 
   /**
+   * AJOUT: Méthode utilitaire pour retrouver le PlayerState depuis le profileId
+   */
+  private getPlayerStateByProfileId(profileId: string): PlayerState | undefined {
+    if (!this.gameState) return undefined;
+    for (const player of this.gameState.players.values()) {
+      if (player.profileId === profileId) {
+        return player;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Anti-spam court terme et total
    */
   private async updateInteractionCounters(
@@ -264,9 +289,14 @@ export class DialogueManager {
         console.warn("⚠ has_item non implémenté");
         return true;
 
+      // CORRIGÉ: Implémentation de la condition quest_completed
       case "quest_completed":
-        console.warn("⚠ quest_completed non implémenté");
-        return true;
+        if (!condition.questId) return false;
+        const playerStateForCondition = this.getPlayerStateByProfileId(profileId);
+        if (playerStateForCondition) {
+          return playerStateForCondition.quests.completed.includes(condition.questId);
+        }
+        return false; // Si on ne trouve pas le joueur, la condition n'est pas remplie
 
       default:
         console.warn("⚠ Condition inconnue:", condition.type);
@@ -294,7 +324,7 @@ export class DialogueManager {
   }
 
   /**
-   * Exécute toutes les actions d’un noeud
+   * Exécute toutes les actions d'un noeud
    */
   private async executeActions(
     actions: IDialogueAction[],
@@ -345,8 +375,19 @@ export class DialogueManager {
         console.warn("⚠ learn_skill non implémenté");
         break;
 
+      // CORRIGÉ: Implémentation de l'action start_quest
       case "start_quest":
-        console.warn("⚠ start_quest non implémenté");
+        if (action.questId && this.questManager && this.gameState) {
+          const playerStateForAction = this.getPlayerStateByProfileId(profileId);
+          if (playerStateForAction) {
+            this.questManager.acceptQuest(client, playerStateForAction, action.questId);
+            console.log(`[DialogueManager] Quête ${action.questId} démarrée via le dialogue pour ${playerStateForAction.characterName}`);
+          } else {
+            console.error(`[DialogueManager] Impossible de trouver le PlayerState pour le profileId ${profileId} lors du démarrage de quête.`);
+          }
+        } else {
+          console.error(`[DialogueManager] Manque questId, questManager ou gameState pour démarrer la quête.`);
+        }
         break;
 
       default:
