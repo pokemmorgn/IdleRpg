@@ -26,12 +26,52 @@ export interface CombatEventCallbacks {
     ): void;
 
     // =====================================================================
-    // 👹 MONSTER → PLAYER
+    // 👹 MONSTER → PLAYER (DAMAGE)
     // =====================================================================
     onMonsterHit(
         monster: MonsterState,
         player: PlayerState,
         damage: number
+    ): void;
+
+    // =====================================================================
+    // ❤️ HP UPDATE (important pour voir les dégâts reçus)
+    // =====================================================================
+    onHpUpdate?(player: PlayerState): void;
+
+    // =====================================================================
+    // 🎯 ACCURACY / DEFENSE (MONSTER → PLAYER)
+    // =====================================================================
+    onMiss?(
+        monster: MonsterState,
+        player: PlayerState,
+        skillId?: string
+    ): void;
+
+    onDodge?(
+        monster: MonsterState,
+        player: PlayerState,
+        skillId?: string
+    ): void;
+
+    onCrit?(
+        monster: MonsterState,
+        player: PlayerState,
+        extraDamage: number,
+        skillId?: string
+    ): void;
+
+    onParry?(
+        attacker: PlayerState | MonsterState,
+        defender: PlayerState | MonsterState,
+        skillId?: string
+    ): void;
+
+    onBlock?(
+        attacker: PlayerState | MonsterState,
+        defender: PlayerState | MonsterState,
+        reducedDamage: number,
+        skillId?: string
     ): void;
 
     // =====================================================================
@@ -75,7 +115,11 @@ export interface CombatEventCallbacks {
     // =====================================================================
     // 🩹 HEAL & BUFF
     // =====================================================================
-    onPlayerHeal?(player: PlayerState, amount: number, skillId: string): void;
+    onPlayerHeal?(
+        player: PlayerState,
+        amount: number,
+        skillId: string
+    ): void;
 
     onApplyBuff?(
         player: PlayerState,
@@ -95,20 +139,6 @@ export interface CombatEventCallbacks {
     ): void;
 
     // =====================================================================
-    // 🛡 SHIELDS
-    // =====================================================================
-    onShieldApplied?(
-        player: PlayerState,
-        shieldId: string,
-        amount: number
-    ): void;
-
-    onShieldBroken?(
-        player: PlayerState,
-        shieldId: string
-    ): void;
-
-    // =====================================================================
     // 🔥 DOT / HOT
     // =====================================================================
     onDotTick?(
@@ -123,41 +153,6 @@ export interface CombatEventCallbacks {
         target: PlayerState,
         hotId: string,
         amount: number
-    ): void;
-
-    // =====================================================================
-    // 🎯 ACCURACY / DEFENSE
-    // =====================================================================
-    onMiss?(
-        attacker: PlayerState | MonsterState,
-        defender: PlayerState | MonsterState,
-        skillId?: string
-    ): void;
-
-    onDodge?(
-        attacker: PlayerState | MonsterState,
-        defender: PlayerState | MonsterState,
-        skillId?: string
-    ): void;
-
-    onParry?(
-        attacker: PlayerState | MonsterState,
-        defender: PlayerState | MonsterState,
-        skillId?: string
-    ): void;
-
-    onBlock?(
-        attacker: PlayerState | MonsterState,
-        defender: PlayerState | MonsterState,
-        reducedDamage: number,
-        skillId?: string
-    ): void;
-
-    onCrit?(
-        attacker: PlayerState | MonsterState,
-        defender: PlayerState | MonsterState,
-        extraDamage: number,
-        skillId?: string
     ): void;
 
     // =====================================================================
@@ -215,7 +210,7 @@ export interface CombatEventCallbacks {
     ): void;
 
     // =====================================================================
-    // 🔄 RESPawn
+    // 🔄 RESPAWN
     // =====================================================================
     onPlayerRespawn?(player: PlayerState): void;
 
