@@ -3,7 +3,7 @@ import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { NPCState } from "../schema/NPCState";
-
+import { IQuest } from "../../models/Quest";
 import NPC from "../../models/NPC";
 
 import { DialogueManager } from "./DialogueManager";
