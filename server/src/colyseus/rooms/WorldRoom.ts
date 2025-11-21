@@ -12,7 +12,8 @@ import { CombatManager } from "../managers/CombatManager";
 
 import { QuestManager } from "../managers/QuestManager";
 import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
-import { TestManager } from "../test/TestManager"; // AJOUT: Import du TestManager
+import { DialogueManager } from "../managers/DialogueManager"; // AJOUT: Import du DialogueManager
+import { TestManager } from "../test/TestManager";
 
 import ServerProfile from "../../models/ServerProfile";
 
@@ -28,7 +29,9 @@ export class WorldRoom extends Room<GameState> {
 
   private questManager!: QuestManager;
   private questObjectiveManager!: QuestObjectiveManager;
-  private testManager?: TestManager; // AJOUT: Propriété pour le TestManager
+  private dialogueManager!: DialogueManager; // AJOUT: Déclaration de la propriété
+
+  private testManager?: TestManager;
 
   // ===========================================================
   // onCreate
@@ -56,12 +59,21 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
 
+    // --- DIALOGUE MANAGER (CRÉÉ ICI) ---
+    this.dialogueManager = new DialogueManager(
+      this.serverId,
+      this.questObjectiveManager,
+      this.questManager,
+      this.state
+    );
+
     // --- NPC + MONSTER ---
     this.npcManager = new NPCManager(
       this.serverId,
       this.state,
       this.questManager,
-      this.questObjectiveManager
+      this.questObjectiveManager,
+      this.dialogueManager // MODIFIÉ: On passe l'instance du DialogueManager
     );
 
     this.monsterManager = new MonsterManager(this.serverId, this.state);
@@ -170,7 +182,6 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
-    // NOUVEAU : Charger les données persistées dans le PlayerState
     if (auth.stats) {
       player.loadStatsFromProfile(auth.stats);
     }
@@ -179,7 +190,6 @@ export class WorldRoom extends Room<GameState> {
       player.loadQuestsFromProfile(auth.questData);
     }
 
-    // Serveur de test → zone forcée
     if (this.serverId === "test") {
       player.zoneId = "test_zone";
     }
@@ -263,10 +273,6 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   // PERSISTENCE
   // ===========================================================
-  /**
-   * Sauvegarde les données d'un joueur (stats et quêtes) en base de données.
-   * @param player Le PlayerState du joueur à sauvegarder.
-   */
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
       console.log(`💾 Sauvegarde automatique pour ${player.characterName}...`);
@@ -312,7 +318,3 @@ export class WorldRoom extends Room<GameState> {
       "dummy",
       true
     );
-
-    this.state.addMonster(m);
-  }
-}
