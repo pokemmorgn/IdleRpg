@@ -12,7 +12,7 @@ import { CombatManager } from "../managers/CombatManager";
 
 import { QuestManager } from "../managers/QuestManager";
 import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
-import { DialogueManager } from "../managers/DialogueManager"; // AJOUT: Import du DialogueManager
+import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
 
 import ServerProfile from "../../models/ServerProfile";
@@ -29,7 +29,7 @@ export class WorldRoom extends Room<GameState> {
 
   private questManager!: QuestManager;
   private questObjectiveManager!: QuestObjectiveManager;
-  private dialogueManager!: DialogueManager; // AJOUT: Déclaration de la propriété
+  private dialogueManager!: DialogueManager;
 
   private testManager?: TestManager;
 
@@ -43,12 +43,15 @@ export class WorldRoom extends Room<GameState> {
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
 
-    // --- CREATION QUEST SYSTEM ---
+    // --- QUEST SYSTEM ---
     this.questManager = new QuestManager(
       this.serverId,
       this.state,
       this.savePlayerData.bind(this)
     );
+
+    // 🟩 IMPORTANT → on charge toutes les quêtes du serveur
+    await this.questManager.loadAllQuestsFromDB();
 
     this.questObjectiveManager = new QuestObjectiveManager(
       this.state,
@@ -59,7 +62,6 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
 
-    // --- DIALOGUE MANAGER (CRÉÉ ICI) ---
     this.dialogueManager = new DialogueManager(
       this.serverId,
       this.questObjectiveManager,
@@ -73,7 +75,7 @@ export class WorldRoom extends Room<GameState> {
       this.state,
       this.questManager,
       this.questObjectiveManager,
-      this.dialogueManager // MODIFIÉ: On passe l'instance du DialogueManager
+      this.dialogueManager
     );
 
     this.monsterManager = new MonsterManager(this.serverId, this.state);
@@ -92,28 +94,27 @@ export class WorldRoom extends Room<GameState> {
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // --- LOAD TEST ENTITIES (SI SERVEUR DE TEST) ---
+    // --- TEST ENVIRONMENT ---
     if (this.serverId === "test") {
       this.testManager = new TestManager(this.state, this.questManager, this.dialogueManager);
-      this.testManager.loadAll();
+      this.testManager.loadAll(); // NE CRÉE PLUS DE QUÊTES (elles sont dans la DB)
     }
 
     console.log("📥 WORLD ROOM READY (messages setup)");
 
     // ===========================================================
-    // GLOBAL MESSAGE HANDLER
+    // MESSAGE HANDLING
     // ===========================================================
     this.onMessage("*", (client, type, msg) => {
       this.handleMessage(client, String(type), msg);
     });
 
-    // Raw WebSocket debugging
     this.onMessage("raw", (client, raw) => {
       console.log("📩 RAW (exact WebSocket):", raw);
     });
 
     // ===========================================================
-    // TICK LOOP
+    // SIMULATION LOOP (combat)
     // ===========================================================
     this.setSimulationInterval((dt) => {
       this.combatManager.update(dt);
@@ -182,17 +183,10 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
-    if (auth.stats) {
-      player.loadStatsFromProfile(auth.stats);
-    }
+    if (auth.stats) player.loadStatsFromProfile(auth.stats);
+    if (auth.questData) player.loadQuestsFromProfile(auth.questData);
 
-    if (auth.questData) {
-      player.loadQuestsFromProfile(auth.questData);
-    }
-
-    if (this.serverId === "test") {
-      player.zoneId = "test_zone";
-    }
+    if (this.serverId === "test") player.zoneId = "test_zone";
 
     this.state.addPlayer(player);
     client.send("welcome", { ok: true });
@@ -203,7 +197,7 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   async onLeave(client: Client, consented: boolean) {
     const player = this.state.players.get(client.sessionId);
-    
+
     if (player) {
       await this.savePlayerData(player);
     }
@@ -218,41 +212,39 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
-    // --- RESPAWN ---
+    // RESPAWN
     if (type === "respawn") {
       if (!player.isDead) return;
       this.combatManager.respawnPlayer(player);
       return;
     }
 
-    // --- NPC Interaction ---
+    // NPC interaction
     if (type === "npc_interact") {
       this.npcManager.handleInteraction(client, player, msg);
       return;
     }
 
-    // --- Accept Quest ---
+    // Accept quest
     if (type === "npc_accept_quest") {
       this.npcManager.handleAcceptQuest(client, player, msg);
       return;
     }
 
-    // --- Turn In Quest ---
+    // Turn in quest
     if (type === "npc_turn_in_quest") {
       this.npcManager.handleTurnInQuest(client, player, msg);
       return;
     }
 
-    // --- Dialogue Choice ---
+    // Dialogue choice
     if (type === "dialogue_choice") {
       this.npcManager.handleDialogueChoice(client, player, msg);
       return;
     }
 
-    // === TEST TRIGGER (GARDÉ CAR FONCTIONNEL) ===
+    // TEST → Trigger objective
     if (type === "test_trigger_quest_objective") {
-      if (!player) return;
-      console.log(`[TEST] Triggering quest objective for ${player.characterName} with payload:`, msg);
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
         enemyRarity: msg.enemyRarity,
@@ -261,9 +253,8 @@ export class WorldRoom extends Room<GameState> {
       });
       return;
     }
-    // =============================================
 
-    // --- TEST SPAWN ---
+    // TEST → spawn monster
     if (type === "spawn_test_monster") {
       this.spawnTestMonster(msg);
       return;
@@ -271,7 +262,7 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // PERSISTENCE
+  // SAVE PLAYER DATA
   // ===========================================================
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
@@ -285,12 +276,12 @@ export class WorldRoom extends Room<GameState> {
       });
       console.log(`✅ Sauvegarde automatique réussie pour ${player.characterName}`);
     } catch (error) {
-      console.error(`❌ Erreur lors de la sauvegarde automatique pour ${player.characterName}:`, error);
+      console.error(`❌ Erreur lors de la sauvegarde:`, error);
     }
   }
 
   // ===========================================================
-  // TEMPORARY TEST MONSTER (GARDÉ POUR LES TESTS MANUELS)
+  // TEST MONSTER
   // ===========================================================
   private spawnTestMonster(msg: any) {
     const MonsterState = require("../schema/MonsterState").MonsterState;
