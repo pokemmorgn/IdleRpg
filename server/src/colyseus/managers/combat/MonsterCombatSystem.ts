@@ -1,15 +1,15 @@
 import { GameState } from "../../schema/GameState";
 import { PlayerState } from "../../schema/PlayerState";
 import { MonsterState } from "../../schema/MonsterState";
-import { CombatUtils } from "./CombatUtils";
+import { CombatEventCallbacks } from "./CombatEventCallbacks";
 
 export class MonsterCombatSystem {
 
-    private readonly MONSTER_ATTACK_COOLDOWN = 2000; // ms
+    private readonly MONSTER_ATTACK_COOLDOWN = 2000;
 
     constructor(
         private readonly gameState: GameState,
-        private readonly broadcast: (sessionId: string, type: string, data: any) => void
+        private readonly cb: CombatEventCallbacks
     ) {}
 
     update(dt: number) {
@@ -20,19 +20,20 @@ export class MonsterCombatSystem {
     }
 
     private updateMonster(monster: MonsterState, dt: number) {
-        console.log(`⚔️ Monster tick: ${monster.monsterId}, target=${monster.targetPlayerId}, alive=${monster.isAlive}, atkTimer=${monster.attackTimer}`);
         monster.attackTimer += dt;
 
-        // Pas de cible → idle
+        // === ACQUISITION DE CIBLE ===
         if (!monster.targetPlayerId) {
-            const nearest = this.findNearestPlayer(monster, 25); // range d’aggro 25
+            const nearest = this.findNearestPlayer(monster, 25);
             if (nearest) {
                 monster.targetPlayerId = nearest.sessionId;
-                console.log(`👁‍🗨 Monster ${monster.monsterId} aggro ${nearest.characterName}`);
             }
         }
 
-        const target = this.gameState.players.get(monster.targetPlayerId);
+        const target = monster.targetPlayerId
+            ? this.gameState.players.get(monster.targetPlayerId)
+            : null;
+
         if (!target || target.isDead) {
             monster.targetPlayerId = "";
             return;
@@ -42,69 +43,55 @@ export class MonsterCombatSystem {
         const dist = this.getDistance(monster, target);
         if (dist > monster.attackRange) return;
 
-        // Pas encore prêt à attaquer
+        // Pas prêt
         if (monster.attackTimer < this.MONSTER_ATTACK_COOLDOWN) return;
 
-        // =======================
-        //     ATTAQUE DU MONSTRE
-        // =======================
+        // ============================
+        //   MONSTER → PLAYER HIT
+        // ============================
         const dmg = Math.max(1, monster.attack - target.armor);
         target.hp = Math.max(0, target.hp - dmg);
 
-        // Marquer l'agresseur pour que le joueur contre-attaque
+        // Marquer l’agresseur (pour contre-attaque)
         target.lastAttackerId = monster.monsterId;
 
-        // =======================
-        //        LOG HUD
-        // =======================
-        this.broadcast(target.sessionId, "playerDamaged", {
-            type: "monster_attack",
-            monsterId: monster.monsterId,
-            monsterName: monster.name,
-            damage: dmg,
-            hpLeft: target.hp
-        });
+        // **NOUVEL EVENT**
+        this.cb.onMonsterHit(monster, target, dmg);
 
-        // Reset du timer d’attaque
         monster.attackTimer = 0;
 
-        // =======================
-        //     MORT DU JOUEUR
-        // =======================
+        // ============================
+        //        PLAYER DEATH
+        // ============================
         if (target.hp <= 0 && !target.isDead) {
             target.isDead = true;
+            target.hp = 0;
+            this.cb.onPlayerDeath(target, monster);
 
-            this.broadcast(target.sessionId, "playerKilled", {
-                byMonster: monster.monsterId,
-                monsterName: monster.name
-            });
-
-            // Le monstre oublie la cible
             monster.targetPlayerId = "";
-            return;
         }
     }
-        private findNearestPlayer(monster: MonsterState, range: number): PlayerState | null {
-            let nearest: PlayerState | null = null;
-            let bestDist = range;
-        
-            this.gameState.players.forEach(player => {
-                if (player.isDead) return;
-        
-                const d = this.getDistance(monster, player);
-                if (d < bestDist) {
-                    bestDist = d;
-                    nearest = player;
-                }
-            });
-        
-            return nearest;
-        }
+
+    private findNearestPlayer(monster: MonsterState, range: number): PlayerState | null {
+        let best: PlayerState | null = null;
+        let bestDist = range;
+
+        this.gameState.players.forEach(player => {
+            if (player.isDead) return;
+            const d = this.getDistance(monster, player);
+            if (d < bestDist) {
+                bestDist = d;
+                best = player;
+            }
+        });
+
+        return best;
+    }
 
     private getDistance(a: MonsterState, b: PlayerState): number {
         const dx = a.posX - b.posX;
         const dy = a.posY - b.posY;
         const dz = a.posZ - b.posZ;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return Math.sqrt(dx*dx + dy*dy + dz*dz);
     }
 }
