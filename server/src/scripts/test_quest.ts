@@ -186,7 +186,7 @@ async function testQuestSystem(room: Colyseus.Room) {
 
     // --- ÉTAPE 1: Interaction initiale ---
     console.log("\n--- ÉTAPE 1: Interaction avec le PNJ ---");
-    room.send("npc_interact", { npcId: TEST_NPC_ID });
+    room.send("npc_interact", { npcId: TEST_NPC_ID, requestQuests: true });
     await sleep(1000);
 
     if (availableQuests.length === 0) {
