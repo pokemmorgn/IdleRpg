@@ -149,7 +149,9 @@ async function testQuestSystem(room: Colyseus.Room) {
     room.onMessage("dialogue_node", (msg) => {
         console.log("💬 DIALOGUE NODE →", msg);
     });
-
+    room.onMessage("welcome", (message) => {
+        console.log("📨 WELCOME →", message);
+    });
     room.onMessage("npc_quests", (msg) => {
         console.log("📜 LISTE DES QUÊTES (NPC) →", msg);
         availableQuests = msg.availableQuests || [];
