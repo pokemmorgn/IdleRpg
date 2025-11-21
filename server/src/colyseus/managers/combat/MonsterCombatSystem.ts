@@ -25,16 +25,12 @@ export class MonsterCombatSystem {
         monster.attackTimer += dt;
 
         // ======================================================
-        // 🎯 1) ACQUISITION / VALIDATION DE LA CIBLE
+        // 🎯 1) ACQUISITION DE CIBLE
         // ======================================================
-
-        // Aucun target ? → chercher un joueur
         if (!monster.targetPlayerId) {
             const nearest = this.findNearestPlayer(monster, this.AGGRO_RANGE);
             if (nearest) {
                 monster.targetPlayerId = nearest.sessionId;
-
-                // Event AGGRO
                 this.cb.onAggro?.(monster, nearest);
             }
         }
@@ -55,17 +51,14 @@ export class MonsterCombatSystem {
         if (dist > monster.attackRange) return;
 
         // ======================================================
-        // ⏳ 3) CD ATTAQUE
+        // ⏳ 3) COOLDOWN
         // ======================================================
         if (monster.attackTimer < this.MONSTER_ATTACK_COOLDOWN) return;
-
         monster.attackTimer = 0;
 
         // ======================================================
-        // 🧮 4) CALCUL HIT / MISS / DODGE / CRIT / BLOCK
+        // 🧮 4) MISS / DODGE / CRIT
         // ======================================================
-
-        // → Mécaniques légères, juste hooks
         const roll = Math.random();
 
         if (roll < 0.05) {
@@ -81,7 +74,7 @@ export class MonsterCombatSystem {
         let dmg = Math.max(1, monster.attack - target.armor);
         let isCrit = false;
 
-        if (roll > 0.92) { // 8% crit
+        if (roll > 0.92) {
             dmg *= 1.5;
             isCrit = true;
             this.cb.onCrit?.(monster, target, dmg);
@@ -93,13 +86,14 @@ export class MonsterCombatSystem {
         target.hp = Math.max(0, target.hp - dmg);
         target.lastAttackerId = monster.monsterId;
 
-        // MONSTER → PLAYER EVENT
+        // HIT EVENT
         this.cb.onMonsterHit(monster, target, dmg);
 
+        // Threat
         this.cb.onThreatUpdate?.(monster, target, dmg);
 
-        // HP UPDATE
-        this.cb.onPlayerHeal?.(target, 0, ""); // facultatif, on peut créer une méthode : onHpChanged
+        // HP UPDATE (important !)
+        this.cb.onHpUpdate?.(target);
 
         // ======================================================
         // 💀 6) PLAYER DEATH
@@ -110,7 +104,6 @@ export class MonsterCombatSystem {
 
             this.cb.onPlayerDeath(target, monster);
 
-            // perte d'aggro
             this.cb.onThreatLost?.(monster);
 
             monster.targetPlayerId = "";
@@ -118,7 +111,7 @@ export class MonsterCombatSystem {
     }
 
     // ======================================================
-    // 🔍 TROUVER JOUEUR LE PLUS PROCHE
+    // 🔍 NEAREST PLAYER
     // ======================================================
     private findNearestPlayer(monster: MonsterState, range: number): PlayerState | null {
         let best: PlayerState | null = null;
