@@ -317,10 +317,8 @@ export class QuestManager {
   /**
    * Méthode utilitaire pour vérifier si tous les objectifs sont faits
    */
-  private isQuestFullyCompleted(quest: any, objectivesData: any): boolean {
-    if (!objectivesData) return false;
-    // CORRIGÉ: On utilise questId au lieu de quest.id
-    const step = player.quests.questStep.get(questId) || 0;
-    return step >= quest.objectives.length;
-  }
+private isQuestFullyCompleted(quest: any, step: number): boolean {
+  if (typeof step !== "number") return false;
+  return step >= quest.objectives.length;
+}
 }
