@@ -51,9 +51,6 @@ export class OnlineCombatSystem {
         const newTargetId = target ? target.monsterId : null;
 
         if (player.targetMonsterId !== newTargetId) {
-
-            const oldTarget = this.gameState.monsters.get(player.targetMonsterId) || null;
-
             this.cb.onTargetChanged?.(player, target ?? null);
             player.targetMonsterId = newTargetId ?? "";
         }
@@ -141,7 +138,10 @@ export class OnlineCombatSystem {
 
                 // Mort du monstre ?
                 if (monster.hp <= 0 && monster.isAlive) {
-                    monster.isAlive = false;
+
+                    // IMPORTANT : active la logique interne de MonsterState
+                    monster.setHp(0);
+
                     this.cb.onMonsterDeath(monster, player);
 
                     player.inCombat = false;
@@ -158,6 +158,6 @@ export class OnlineCombatSystem {
         const dx = a.posX - b.posX;
         const dy = a.posY - b.posY;
         const dz = a.posZ - b.posZ;
-        return Math.sqrt(dx*dx + dy*dy + dz*dz);
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 }
