@@ -108,24 +108,14 @@ export class OnlineCombatSystem {
         const nextSkill = SkillRotation.getNextSkill(player, monster);
 
         if (nextSkill) {
-            const didCast = SkillExecutor.tryExecute(
+            SkillExecutor.tryExecute(
                 player,
                 monster,
                 this.gameState,
                 this.cb
             );
 
-            if (didCast) {
-                this.cb.onPlayerHit(
-                    player,
-                    monster,
-                    0,              // dégâts déjà appliqués dans SkillExecutor
-                    false,
-                    nextSkill.id
-                );
-            }
-
-            return;
+            return; // 💡 SkillExecutor déclenche déjà les logs → pas besoin de onPlayerHit
         }
 
         // ====================
@@ -136,14 +126,7 @@ export class OnlineCombatSystem {
 
                 const damage = AutoAttackController.trigger(player, monster, this.cb);
 
-                this.cb.onPlayerHit(
-                    player,
-                    monster,
-                    damage,
-                    false,
-                    undefined
-                );
-
+                // Mort du monstre ?
                 if (monster.hp <= 0 && monster.isAlive) {
                     monster.isAlive = false;
 
