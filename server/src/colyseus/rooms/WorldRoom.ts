@@ -164,6 +164,22 @@ export class WorldRoom extends Room<GameState> {
   private handleMessage(client: Client, type: string, msg: any) {
     console.log("🎯 handleMessage:", { type, msg });
 
+    // ----------------------------------------
+    // 🟢 RESPAWN PLAYER
+    // ----------------------------------------
+    if (type === "respawn") {
+        const player = this.state.players.get(client.sessionId);
+        if (!player || !player.isDead) return;
+
+        console.log("🔄 RESPAWN REQUEST FROM CLIENT:", player.characterName);
+
+        this.combatManager.respawnPlayer(player);
+        return;
+    }
+
+    // ----------------------------------------
+    // 🟢 TEST SPAWN MONSTER
+    // ----------------------------------------
     if (type === "spawn_test_monster") {
       console.log("🔥 SPAWN MONSTER TRIGGERED:", msg);
 
