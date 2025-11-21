@@ -1,11 +1,17 @@
 import { Room, Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
+
 import { validateToken } from "../utils/authHelper";
 import { loadPlayerCharacter, isCharacterAlreadyConnected } from "../utils/playerLoader";
+
 import { NPCManager } from "../managers/NPCManager";
 import { MonsterManager } from "../managers/MonsterManager";
 import { CombatManager } from "../managers/CombatManager";
+
+import { QuestManager } from "../managers/QuestManager";
+import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
+
 import ServerProfile from "../../models/ServerProfile";
 
 export class WorldRoom extends Room<GameState> {
@@ -18,6 +24,9 @@ export class WorldRoom extends Room<GameState> {
   private monsterManager!: MonsterManager;
   private combatManager!: CombatManager;
 
+  private questManager!: QuestManager;
+  private questObjectiveManager!: QuestObjectiveManager;
+
   // ===========================================================
   // onCreate
   // ===========================================================
@@ -28,51 +37,86 @@ export class WorldRoom extends Room<GameState> {
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
 
-    this.npcManager = new NPCManager(this.serverId, this.state);
-    this.monsterManager = new MonsterManager(this.serverId, this.state);
 
+    // ===========================================================
+    // 🔥 SYSTEMES DE QUÊTES (à créer AVANT NPC et Monster)
+    // ===========================================================
+    this.questObjectiveManager = new QuestObjectiveManager(
+      this.state,
+      (sessionId, type, payload) => {
+        const client = this.clients.find(c => c.sessionId === sessionId);
+        if (client) client.send(type, payload);
+      }
+    );
+
+    this.questManager = new QuestManager(
+      this.serverId,
+      this.state,
+      this.questObjectiveManager
+    );
+
+
+    // ===========================================================
+    // 🔥 NPC + MONSTERS (branchés sur quest systems)
+    // ===========================================================
+    this.npcManager = new NPCManager(
+      this.serverId,
+      this.state,
+      this.questManager,
+      this.questObjectiveManager
+    );
+
+    this.monsterManager = new MonsterManager(
+      this.serverId,
+      this.state,
+      this.questObjectiveManager
+    );
+
+
+    // ===========================================================
+    // 🔥 COMBAT SYSTEM
+    // ===========================================================
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
-        console.log("📡 BROADCAST:", { sessionId, type, data });
         const client = this.clients.find(c => c.sessionId === sessionId);
         if (client) client.send(type, data);
       }
     );
 
+
+    // ===========================================================
+    // 🔥 CHARGEMENT NPC + MONSTRES
+    // ===========================================================
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
-    
-    // 🔥 Ajout temporaire pour le serveur "test"
+
     if (this.serverId === "test") {
         this.spawnTemporaryTestMonsters();
     }
-    
+
     console.log("📥 WORLD ROOM READY (messages setup)");
 
-    // Colyseus messages (room.send)
+
+    // ===========================================================
+    // Colyseus Messages
+    // ===========================================================
     this.onMessage("*", (client, type, msg) => {
-      console.log("📨 RAW onMessage(*):");
-      console.log("   type =", type);
-      console.log("   msg  =", msg);
-      console.log("   typeof type =", typeof type);
-      console.log("   typeof msg =", typeof msg);
       this.handleMessage(client, String(type), msg);
     });
 
+    this.onMessage("raw", (client, raw) => {
+      console.log("📩 RAW:", raw);
+    });
 
-    // WebSocket brut (JSON)
-   this.onMessage("raw", (client, raw) => {
-  console.log("📩 RAW (exact WebSocket):", raw);
-});
-
-    // Tick
+    // ===========================================================
+    // SIMULATION LOOP
+    // ===========================================================
     this.setSimulationInterval((dt) => {
-     // console.log(`🕒 TICK dt=${dt}ms | players=${this.state.players.size} | monsters=${this.state.monsters.size}`);
       this.combatManager.update(dt);
     }, 33);
 
-    // WorldTime
+    // world time tick
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
@@ -88,8 +132,6 @@ export class WorldRoom extends Room<GameState> {
     if (options.serverId !== this.serverId) return false;
 
     const valid = await validateToken(options.token);
-    console.log("🔐 Token validation:", valid);
-
     if (!valid.valid) return false;
 
     const load = await loadPlayerCharacter(
@@ -98,18 +140,12 @@ export class WorldRoom extends Room<GameState> {
       options.characterSlot
     );
 
-    console.log("📥 loadPlayerCharacter:", load);
-
     if (!load.success || !load.profile) return false;
 
-    if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
-      console.log("❌ Player already connected");
+    if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId))
       return false;
-    }
 
     const p = load.profile;
-
-    console.log("🔓 Auth OK for:", p.characterName);
 
     return {
       playerId: p.playerId,
@@ -126,8 +162,6 @@ export class WorldRoom extends Room<GameState> {
   // JOIN
   // ===========================================================
   async onJoin(client: Client, options: any, auth: any) {
-    console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
-
     const player = new PlayerState(
       client.sessionId,
       auth.playerId,
@@ -138,15 +172,12 @@ export class WorldRoom extends Room<GameState> {
       auth.characterClass,
       auth.characterRace
     );
-    // 🔥 AJOUT : si on est sur le serveur test → zone forcée
+
     if (this.serverId === "test") {
         player.zoneId = "test_zone";
-        console.log("🗺️ Player zone set to test_zone (serveur test)");
     }
     
     this.state.addPlayer(player);
-    console.log("🟢 Player added to state:", player.characterName);
-
     client.send("welcome", { ok: true });
   }
 
@@ -154,37 +185,24 @@ export class WorldRoom extends Room<GameState> {
   // LEAVE
   // ===========================================================
   onLeave(client: Client) {
-    console.log("👋 Player left:", client.sessionId);
     this.state.removePlayer(client.sessionId);
   }
 
   // ===========================================================
-  // HANDLE MESSAGES
+  // MESSAGES
   // ===========================================================
   private handleMessage(client: Client, type: string, msg: any) {
-    console.log("🎯 handleMessage:", { type, msg });
 
-    // ----------------------------------------
-    // 🟢 RESPAWN PLAYER
-    // ----------------------------------------
     if (type === "respawn") {
-        const player = this.state.players.get(client.sessionId);
-        if (!player || !player.isDead) return;
-
-        console.log("🔄 RESPAWN REQUEST FROM CLIENT:", player.characterName);
-
+      const player = this.state.players.get(client.sessionId);
+      if (player && player.isDead) {
         this.combatManager.respawnPlayer(player);
-        return;
+      }
+      return;
     }
 
-    // ----------------------------------------
-    // 🟢 TEST SPAWN MONSTER
-    // ----------------------------------------
     if (type === "spawn_test_monster") {
-      console.log("🔥 SPAWN MONSTER TRIGGERED:", msg);
-
       const MonsterState = require("../schema/MonsterState").MonsterState;
-
       const m = new MonsterState(
         msg.monsterId,
         msg.name || "Dummy",
@@ -208,46 +226,39 @@ export class WorldRoom extends Room<GameState> {
         "dummy",
         true
       );
-
       this.state.addMonster(m);
-
-      console.log("🟢 MONSTER ADDED:", m.monsterId);
+      return;
     }
   }
-private spawnTemporaryTestMonsters() {
-    console.log("🔥 Spawn d'un seul monstre temporaire pour serveur test...");
 
+
+  // TEMP MONSTER
+  private spawnTemporaryTestMonsters() {
     const MonsterState = require("../schema/MonsterState").MonsterState;
-
-      const m = new MonsterState(
-          "test_dummy_1",
-          "Training Dummy",
-          "dummy",
-          1,          // level
-          50,         // hp
-          50,         // maxHp
-          5,          // attack
-          0,          // defense
-          2,          // speed
-          "test_zone",// zoneId
-          3, 0, 0,    // posX posY posZ
-          0, 0, 0,    // rotX rotY rotZ
-          "aggressive",
-          10,         // aggroRange
-          25,         // leashRange
-          2,          // attackRange
-          5,          // xpReward
-          3,          // respawnTime (SECONDES)
-          true,       // respawnOnDeath (IMPORTANT)
-          "dummy_model",
-          true        // isActive
-      );
-
-
+    const m = new MonsterState(
+      "test_dummy_1",
+      "Training Dummy",
+      "dummy",
+      1,
+      50,
+      50,
+      5,
+      0,
+      2,
+      "test_zone",
+      3,0,0,
+      0,0,0,
+      "aggressive",
+      10,
+      25,
+      2,
+      5,
+      3,
+      true,
+      "dummy_model",
+      true
+    );
     this.state.addMonster(m);
-
-    console.log("🟢 Monstre temporaire ajouté !");
-}
-
+  }
 
 }
