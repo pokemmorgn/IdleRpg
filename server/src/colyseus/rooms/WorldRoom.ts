@@ -232,6 +232,19 @@ export class WorldRoom extends Room<GameState> {
       this.npcManager.handleTurnInQuest(client, player, msg);
       return;
     }
+    // === AJOUT POUR LE TEST ===
+    // Permet de déclencher un objectif de quête sans combat
+    if (type === "test_trigger_quest_objective") {
+      console.log(`[TEST] Triggering quest objective for ${player.characterName} with payload:`, msg);
+      // On simule un "kill" de monstre
+      this.questObjectiveManager.onMonsterKilled(player, {
+        enemyType: msg.enemyType || "test_wolf",
+        enemyRarity: msg.enemyRarity,
+        isBoss: msg.isBoss || false,
+        zoneId: player.zoneId
+      });
+      return;
+    }
     // --- Dialogue Choice ---
     if (type === "dialogue_choice") {
       if (!player) return;
