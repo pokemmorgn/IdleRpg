@@ -7,8 +7,9 @@ import { NPCState } from "../schema/NPCState";
 import NPC from "../../models/NPC";
 
 import { DialogueManager } from "./DialogueManager";
-import { QuestManager, IQuest } from "./QuestManager";
+import { QuestManager } from "./QuestManager";
 import { QuestObjectiveManager } from "./QuestObjectiveManager";
+import { IQuest } from "../../models/Quest";
 
 /**
  * NPCManager - Gère tous les NPC d'un serveur
