@@ -1,17 +1,35 @@
 import { Schema, type, ArraySchema, MapSchema } from "@colyseus/schema";
 import { QuestProgress } from "./QuestProgress";
 
+/**
+ * État des quêtes d’un joueur
+ * (séparé de PlayerState pour réduire le nombre de champs)
+ */
 export class QuestState extends Schema {
 
+  // === Quêtes actives ===
   @type("string") activeMainQuest: string = "";
   @type("string") activeSecondaryQuest: string = "";
 
-  @type([ "string" ]) activeRepeatableQuests = new ArraySchema<string>();
-  @type([ "string" ]) completedQuests = new ArraySchema<string>();
+  // === Quêtes répétables ===
+  @type([ "string" ])
+  activeRepeatableQuests = new ArraySchema<string>();
 
-  @type({ map: QuestProgress }) progress = new MapSchema<QuestProgress>();
+  // === Quêtes terminées ===
+  @type([ "string" ])
+  completedQuests = new ArraySchema<string>();
 
-  @type({ map: "number" }) lastDailyQuestCompletion = new MapSchema<number>();
-  @type({ map: "number" }) lastWeeklyQuestCompletion = new MapSchema<number>();
-  @type({ map: "number" }) lastRepeatableQuestCompletion = new MapSchema<number>();
+  // === Progression par quête ===
+  @type({ map: QuestProgress })
+  questProgress = new MapSchema<QuestProgress>();
+
+  // === Cooldowns : timestamps ===
+  @type({ map: "number" })
+  lastDailyQuestCompletion = new MapSchema<number>();
+
+  @type({ map: "number" })
+  lastWeeklyQuestCompletion = new MapSchema<number>();
+
+  @type({ map: "number" })
+  lastRepeatableQuestCompletion = new MapSchema<number>();
 }
