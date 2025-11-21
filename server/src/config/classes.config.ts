@@ -77,14 +77,14 @@ export const ALL_CLASSES: ClassConfig[] = [
  * Format: { raceId: [classIds autorisées] }
  */
 export const CLASS_RACE_RESTRICTIONS: { [raceId: string]: string[] } = {
-  "arkanids_insect": ["mage", "priest", "rogue", "warrior"],
-  "human_elion":     ["mage", "priest", "rogue", "warrior", "paladin"],
-  "ghrannite_stone": ["rogue", "warrior"],
+  "arkanyds": ["mage", "priest", "rogue", "warrior"],
+  "humans":     ["mage", "priest", "rogue", "warrior", "paladin"],
+  "orcs": ["rogue", "warrior"],
   "murlocs":         ["rogue", "warrior", "paladin"],
-  "sylphide_forest": ["mage", "druid"],
-  "dwarf_rune":      ["priest", "warrior", "paladin"],
-  "selenite_lunar":  ["mage", "priest", "rogue", "druid"],
-  "varkyns_beast":   ["warrior", "paladin", "druid"]
+  "noxariens": ["mage", "druid"],
+  "dwarfs":      ["priest", "warrior", "paladin"],
+  "trolls":  ["mage", "priest", "rogue", "druid"],
+  "varkyns":   ["warrior", "paladin", "druid"]
 };
 
 /**
