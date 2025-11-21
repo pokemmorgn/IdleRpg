@@ -243,23 +243,48 @@ async function startCombat(room: Colyseus.Room) {
 
     console.log("🔌 WebSocket connecté !");
 
-    // MESSAGES
-    room.onMessage("combat_log", (log) => {
-        // Traduction HUD simplifiée
-        if (log.action === "hit" && log.targetType === "monster") {
-            const id = log.targetId;
-            HUD_MOBS[id] = HUD_MOBS[id] || { hp: log.value + 1, maxHp: log.value + 1 };
-            HUD_MOBS[id].hp = log.valueLeft ?? log.value ?? HUD_MOBS[id].hp;
+    // ========== FIX ICI ==========
+    room.onMessage("combat_event", (msg) => {
+        console.log("📩 combat_event:", msg);
 
-            HUD_TARGET = id;
-        }
+        switch (msg.event) {
+            case "hit":
+            case "crit":
+                if (msg.target === "monster") {
+                    const id = msg.targetId;
+                    HUD_MOBS[id] = HUD_MOBS[id] || { hp: msg.maxHp, maxHp: msg.maxHp };
+                    HUD_MOBS[id].hp = msg.remainingHp;
+                    HUD_TARGET = id;
+                }
+                if (msg.target === "player") {
+                    HUD_PLAYER_HP = msg.remainingHp;
+                }
+                break;
 
-        if (log.action === "monster_hit") {
-            HUD_PLAYER_HP = log.value;
+            case "heal":
+                HUD_PLAYER_HP = msg.hp;
+                break;
+
+            case "death":
+                if (msg.entity === "monster") delete HUD_MOBS[msg.entityId];
+                if (msg.entity === "player") HUD_PLAYER_HP = 0;
+                break;
+
+            case "hp_update":
+                if (HUD_MOBS[msg.entityId]) {
+                    HUD_MOBS[msg.entityId].hp = msg.hp;
+                    HUD_MOBS[msg.entityId].maxHp = msg.maxHp;
+                }
+                break;
+
+            case "target_change":
+                HUD_TARGET = msg.targetId || "-";
+                break;
         }
 
         renderHUD();
     });
+    // ==============================
 
     // On attend un peu
     await sleep(300);
