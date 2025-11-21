@@ -34,43 +34,44 @@ export class SkillExecutor {
         cb: CombatEventCallbacks,
         gameState: GameState
     ) {
-        // GCD
+        // Global cooldown
         player.gcdRemaining = skill.globalCooldown ?? 1000;
 
-        // Cooldown
-        player.cooldowns.set(
-            skill.id,
-            Date.now() + (skill.cooldown ?? 0)
-        );
+        // Skill cooldown
+        const cdEnd = Date.now() + (skill.cooldown ?? 0);
+        player.cooldowns.set(skill.id, cdEnd);
 
-        // Ressources
+        cb.onCooldown?.(player, skill.id, cdEnd);
+
+        // Mana / Energy
         this.consumeResources(player, skill);
 
-        // --- CAST-TIME ---
+        // -------------------------------
+        // 📌 SKILL AVEC CAST TIME
+        // -------------------------------
         if (skill.castTime && skill.castTime > 0) {
-            this.startCasting(player, skill);
 
-            // → callback cast_start
+            // Passer en mode cast
+            player.currentCastingSkillId = skill.id;
+            player.castLockRemaining = skill.castTime;
+            player.currentAnimationLockType = skill.lockType ?? "full";
+
+            // EVENT → cast start
             cb.onCastStart?.(player, skill.id);
 
             return;
         }
 
-        // --- INSTANT ---
+        // -------------------------------
+        // 📌 SKILL INSTANTANÉ
+        // -------------------------------
         this.applyAnimationLock(player, skill);
+
+        // EVENT → skill_execute
+        cb.onSkillExecute?.(player, skill.id);
+
+        // Appliquer les effets
         this.applySkillEffect(player, monster, skill, cb, gameState);
-
-        // → callback skill_execute
-        cb.onCastStart?.(player, skill.id);
-    }
-
-    // =====================================================
-    // CAST START
-    // =====================================================
-    private static startCasting(player: PlayerState, skill: SkillDefinition) {
-        player.currentCastingSkillId = skill.id;
-        player.castLockRemaining = skill.castTime ?? 0;
-        player.currentAnimationLockType = skill.lockType ?? "none";
     }
 
     // =====================================================
@@ -85,26 +86,28 @@ export class SkillExecutor {
         const skill = player.skills.get(player.currentCastingSkillId) as SkillDefinition;
         if (!skill) return;
 
-        // Anim-lock
         this.applyAnimationLock(player, skill);
 
-        // Application
+        // EVENT → cast_end
+        cb.onCastEnd?.(player, skill.id);
+
+        // EVENT → skill_execute
+        cb.onSkillExecute?.(player, skill.id);
+
+        // appliquer les dégâts & effets
         this.applySkillEffect(player, monster, skill, cb, gameState);
 
-        // → callback cast_end (optionnel)
-        // (ton emitter l'enverra automatiquement si on ajoute onCastEnd)
-
-        // Reset
-        player.castLockRemaining = 0;
+        // reset cast
         player.currentCastingSkillId = "";
+        player.castLockRemaining = 0;
     }
 
     // =====================================================
-    // ANIMATION LOCK
+    // UTILS : Animation lock
     // =====================================================
     private static applyAnimationLock(player: PlayerState, skill: SkillDefinition) {
         player.animationLockRemaining = skill.animationLock ?? 0;
-        player.currentAnimationLockType = skill.lockType ?? "none";
+        player.currentAnimationLockType = skill.lockType ?? "soft";
     }
 
     // =====================================================
@@ -118,7 +121,6 @@ export class SkillExecutor {
         gameState: GameState
     ) {
         switch (skill.effectType) {
-
             case "damage":
             case "projectile":
                 this.applyDamageSkill(player, monster, skill, cb);
@@ -139,7 +141,7 @@ export class SkillExecutor {
     }
 
     // =====================================================
-    // DAMAGE
+    // DAMAGE SKILL
     // =====================================================
     private static applyDamageSkill(
         player: PlayerState,
@@ -152,41 +154,7 @@ export class SkillExecutor {
         monster.setHp(monster.hp - dmg);
         monster.targetPlayerId = player.sessionId;
 
-        // → callback skillHit
         cb.onPlayerSkillHit(player, monster, dmg, false, skill.id);
-    }
-
-    // =====================================================
-    // HEAL
-    // =====================================================
-    private static applyHeal(
-        player: PlayerState,
-        skill: SkillDefinition,
-        cb: CombatEventCallbacks
-    ) {
-        const amount = Math.max(1, skill.power);
-        player.hp = Math.min(player.maxHp, player.hp + amount);
-
-        // → callback heal
-        cb.onPlayerHeal?.(player, amount, skill.id);
-    }
-
-    // =====================================================
-    // BUFF
-    // =====================================================
-    private static applyBuff(
-        player: PlayerState,
-        skill: SkillDefinition,
-        cb: CombatEventCallbacks
-    ) {
-        if (!skill.buffId) return;
-
-        const duration = skill.duration ?? 0;
-
-        player.activeBuffs.set(skill.buffId, Date.now() + duration);
-
-        // → callback buff
-        cb.onApplyBuff?.(player, skill.buffId, duration);
     }
 
     // =====================================================
@@ -203,17 +171,56 @@ export class SkillExecutor {
         for (const monster of gameState.monsters.values()) {
 
             if (!monster.isAlive) continue;
-
-            const d = this.dist(player, monster);
-            if (d > radius) continue;
+            if (this.dist(player, monster) > radius) continue;
 
             const dmg = Math.max(1, skill.power + player.attackPower - monster.defense);
 
             monster.setHp(monster.hp - dmg);
             monster.targetPlayerId = player.sessionId;
 
-            // → callback skillHit (pour chaque monstre)
             cb.onPlayerSkillHit(player, monster, dmg, false, skill.id);
+        }
+    }
+
+    // =====================================================
+    // HEAL
+    // =====================================================
+    private static applyHeal(
+        player: PlayerState,
+        skill: SkillDefinition,
+        cb: CombatEventCallbacks
+    ) {
+        const amount = Math.max(1, skill.power);
+        const oldHp = player.hp;
+        player.hp = Math.min(player.maxHp, player.hp + amount);
+
+        if (player.hp > oldHp)
+            cb.onPlayerHeal?.(player, amount, skill.id);
+    }
+
+    // =====================================================
+    // BUFF
+    // =====================================================
+    private static applyBuff(
+        player: PlayerState,
+        skill: SkillDefinition,
+        cb: CombatEventCallbacks
+    ) {
+        if (!skill.buffId) return;
+
+        const duration = skill.duration ?? 0;
+        const now = Date.now();
+
+        const old = player.activeBuffs.get(skill.buffId);
+
+        if (old && old > now) {
+            // Refresh
+            player.activeBuffs.set(skill.buffId, now + duration);
+            cb.onBuffRefresh?.(player, skill.buffId, duration);
+        } else {
+            // New buff
+            player.activeBuffs.set(skill.buffId, now + duration);
+            cb.onApplyBuff?.(player, skill.buffId, duration);
         }
     }
 
@@ -240,7 +247,7 @@ export class SkillExecutor {
     }
 
     // =====================================================
-    // TRY EXECUTE QUEUED SKILL
+    // QUEUED SKILL EXECUTION
     // =====================================================
     static tryExecuteQueuedSkill(
         player: PlayerState,
@@ -260,6 +267,7 @@ export class SkillExecutor {
 
         const now = Date.now();
         const cd = player.cooldowns.get(skill.id);
+
         if (cd && cd > now) return false;
 
         if (skill.manaCost && player.resource < skill.manaCost) {
@@ -274,8 +282,8 @@ export class SkillExecutor {
         }
 
         this.cast(player, monster, skill, cb, gameState);
-
         player.queuedSkill = "";
+
         return true;
     }
 }
