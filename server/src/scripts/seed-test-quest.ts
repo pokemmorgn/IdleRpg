@@ -1,15 +1,25 @@
 import mongoose from "mongoose";
-import Quest from "../models/Quest";
 import dotenv from "dotenv";
+import path from "path";
+import Quest from "../models/Quest";
 
-dotenv.config();
+// 🔥 Charge le .env à la racine du projet
+dotenv.config({
+  path: path.resolve(__dirname, "../../../.env")
+});
 
 async function seed() {
-  await mongoose.connect(process.env.MONGO_URI!);
+  console.log("🔌 MONGO_URI:", process.env.MONGO_URI);
 
+  if (!process.env.MONGO_URI) {
+    console.error("❌ ERREUR: MONGO_URI introuvable dans .env !");
+    process.exit(1);
+  }
+
+  await mongoose.connect(process.env.MONGO_URI);
   console.log("📌 Connexion Mongo OK");
 
-  const q = {
+  const quest = {
     questId: "quest_test_01",
     name: "Quête du Loup Test",
     description: "Va tuer un loup de test.",
@@ -39,10 +49,10 @@ async function seed() {
   };
 
   await Quest.deleteOne({ questId: "quest_test_01" });
-  await Quest.create(q);
+  await Quest.create(quest);
 
-  console.log("✅ Quête test créée en DB !");
+  console.log("✅ Quête test créée dans MongoDB !");
   process.exit(0);
 }
 
-seed().catch(err => console.error(err));
+seed().catch(err => console.error("❌ SEED ERROR:", err));
