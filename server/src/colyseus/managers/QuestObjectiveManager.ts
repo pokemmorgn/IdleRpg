@@ -2,7 +2,6 @@
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { IQuestObjective } from "../../models/Quest";
-import { QuestProgress } from "../schema/QuestProgress";
 import Quest from "../../models/Quest";
 
 /**
@@ -26,9 +25,8 @@ export type QuestNotify = (sessionId: string, type: string, payload: any) => voi
 export class QuestObjectiveManager {
   private gameState: GameState;
   private notify: QuestNotify;
-  private onSavePlayer?: (player: PlayerState) => Promise<void>; // AJOUT: Callback de sauvegarde
+  private onSavePlayer?: (player: PlayerState) => Promise<void>;
 
-  // MODIFIÉ: Le constructeur accepte maintenant le callback de sauvegarde
   constructor(
     gameState: GameState,
     notifyCallback: QuestNotify,
@@ -36,7 +34,7 @@ export class QuestObjectiveManager {
   ) {
     this.gameState = gameState;
     this.notify = notifyCallback;
-    this.onSavePlayer = onSavePlayer; // Stocker le callback
+    this.onSavePlayer = onSavePlayer;
   }
 
   /* =====================================================================
@@ -103,6 +101,7 @@ export class QuestObjectiveManager {
       const quest = await Quest.findOne({ questId });
       if (!quest) continue;
 
+      // On cherche l'objectif ACTUEL en fonction du step de la quête
       const currentObj = quest.objectives[progress.step];
       if (!currentObj) continue;
 
@@ -114,13 +113,13 @@ export class QuestObjectiveManager {
       if (!valid) continue;
 
       // Mise à jour de progression (selon type)
-      const done = this.incrementObjectiveProgress(progress, currentObj, payload);
+      const done = this.incrementObjectiveProgress(player, questId, currentObj, payload);
 
       // Notification client : mise à jour progression
       this.notify(player.sessionId, "quest_update", {
         questId,
         step: progress.step,
-        progress: progress.progress.get(currentObj.objectiveId) || 0
+        progress: player.quests.questObjectives.get(questId)?.get(currentObj.objectiveId) || 0
       });
 
       // Si terminé, on passe à l'objectif suivant
@@ -183,21 +182,27 @@ export class QuestObjectiveManager {
      ===================================================================== */
 
   private incrementObjectiveProgress(
-    progress: QuestProgress,
+    player: PlayerState,
+    questId: string,
     objective: IQuestObjective,
     payload: any
   ): boolean {
     const oid = objective.objectiveId;
 
-    if (!progress.progress.has(oid)) progress.progress.set(oid, 0);
+    // On récupère la map des objectifs pour cette quête
+    let objectivesData = player.quests.questObjectives.get(questId);
+    if (!objectivesData) {
+      objectivesData = {};
+      player.quests.questObjectives.set(questId, objectivesData);
+    }
 
-    const current = progress.progress.get(oid)!;
+    if (!objectivesData[oid]) objectivesData[oid] = 0;
 
-    // Si type = kill / loot / collect… => +1
+    const current = objectivesData[oid];
     const target = objective.count ?? 1;
     const newValue = Math.min(target, current + 1);
 
-    progress.progress.set(oid, newValue);
+    objectivesData[oid] = newValue;
 
     return newValue >= target;
   }
@@ -210,9 +215,9 @@ export class QuestObjectiveManager {
     player: PlayerState,
     questId: string,
     quest: any,
-    progress: QuestProgress
+    progress: any // La variable 'progress' n'est plus utilisée pour stocker le step
   ) {
-    const step = progress.step;
+    const step = player.quests.questStep.get(questId) || 0;
 
     this.notify(player.sessionId, "quest_step_complete", {
       questId,
@@ -220,12 +225,13 @@ export class QuestObjectiveManager {
     });
 
     // Passer au next step
-    progress.step++;
+    const newStep = step + 1;
+    player.quests.questStep.set(questId, newStep);
 
     const finalStep = quest.objectives.length;
 
     // Si fin complète de la quête
-    if (progress.step >= finalStep) {
+    if (newStep >= finalStep) {
       this.finishQuest(player, quest);
     }
   }
@@ -239,7 +245,7 @@ export class QuestObjectiveManager {
 
     this.notify(player.sessionId, "quest_ready_to_turn_in", {
       questId,
-      questName: quest.name, // Utile pour le client
+      questName: quest.name,
       rewards: quest.rewards
     });
 
@@ -261,11 +267,9 @@ export class QuestObjectiveManager {
   private getAllActiveQuests(player: PlayerState): string[] {
     const list: string[] = [];
 
-    // CORRECTION : On utilise player.quests.activeMain
+    // On utilise les nouvelles propriétés de QuestState
     if (player.quests.activeMain) list.push(player.quests.activeMain);
-    // CORRECTION : On utilise player.quests.activeSecondary
     if (player.quests.activeSecondary) list.push(player.quests.activeSecondary);
-    // CORRECTION : On utilise player.quests.activeRepeatables
     if (player.quests.activeRepeatables.length > 0) {
       list.push(...player.quests.activeRepeatables);
     }
@@ -274,16 +278,12 @@ export class QuestObjectiveManager {
   }
 
   /** Initialise la progression si absente */
-  private ensureQuestProgress(player: PlayerState, questId: string): QuestProgress {
-    // CORRECTION : On utilise player.quests.progress
-    if (!player.quests.progress.has(questId)) {
-      const p = new QuestProgress();
-      p.step = 0;
-      p.startedAt = Date.now();
-      player.quests.progress.set(questId, p);
-      return p;
-    }
-    // CORRECTION : On utilise player.quests.progress
-    return player.quests.progress.get(questId)!;
+  private ensureQuestProgress(player: PlayerState, questId: string): any {
+    // On ne fait rien ici, la progression est initialisée dans acceptQuest
+    // On retourne un objet cohérent pour les autres fonctions
+    return {
+      step: player.quests.questStep.get(questId) || 0,
+      objectives: player.quests.questObjectives.get(questId) || {}
+    };
   }
 }
