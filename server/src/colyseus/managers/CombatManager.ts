@@ -1,8 +1,11 @@
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
+
 import { OnlineCombatSystem } from "./combat/OnlineCombatSystem";
 import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 import { CombatLogManager } from "./CombatLogManager";
+
+import { CombatEventCallbacks } from "./combat/CombatEventCallbacks";
 
 export class CombatManager {
 
@@ -14,67 +17,84 @@ export class CombatManager {
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {
-        // ===============================
-        // 📘 CombatLogManager
-        // ===============================
-        this.logs = new CombatLogManager(
-            this.gameState,
-            this.broadcast
-        );
 
-        // ===============================
-        // 🧠 Online Combat system
-        // ===============================
-        this.onlineSystem = new OnlineCombatSystem(
-            this.gameState,
-            (player, monster, damage, crit, skillId) => {
-                if (crit) {
-                    this.logs.crit(player, monster, damage, skillId);
-                } else {
-                    this.logs.hit(player, monster, damage, skillId);
-                }
-            }
-        );
+        // ============================================================
+        // 📘 CombatLogManager — centralise aussi le broadcast final
+        // ============================================================
+        this.logs = new CombatLogManager(this.gameState, this.broadcast);
 
-        // ===============================
-        // 🧟 Monster Combat system
-        // ===============================
-        this.monsterSystem = new MonsterCombatSystem(
-            this.gameState,
-            (monster, player, damage) => {
-                this.logs.monsterHit(monster, player, damage);
+        // ============================================================
+        // 🧩 Callback UNIFIÉES (la nouvelle interface)
+        // ============================================================
+        const callbacks: CombatEventCallbacks = {
+
+            // ---------------------
+            // PLAYER → MONSTER
+            // ---------------------
+            onPlayerHit: (player, monster, dmg, crit, skillId) => {
+                this.logs.hit(player, monster, dmg, skillId, crit);
             },
-            (monster, killerPlayer) => {
+
+            // ---------------------
+            // MONSTER → PLAYER
+            // ---------------------
+            onMonsterHit: (monster, player, dmg) => {
+                this.logs.monsterHit(monster, player, dmg);
+            },
+
+            // ---------------------
+            // DEATHS
+            // ---------------------
+            onMonsterDeath: (monster, killerPlayer) => {
                 this.logs.monsterDeath(monster, killerPlayer);
             },
-            (player, killerMonster) => {
+
+            onPlayerDeath: (player, killerMonster) => {
                 this.logs.playerDeath(player, killerMonster);
+            },
+
+            // ---------------------
+            // CAST EVENTS
+            // ---------------------
+            onCastStart: (player, skillId) => {
+                this.logs.castStart(player, skillId);
+            },
+
+            onCastCancel: (player, reason) => {
+                this.logs.castCancel(player, reason);
             }
-        );
+        };
+
+        // ============================================================
+        // SYSTÈMES DE COMBAT
+        // ============================================================
+        this.onlineSystem = new OnlineCombatSystem(this.gameState, callbacks);
+        this.monsterSystem = new MonsterCombatSystem(this.gameState, callbacks);
     }
 
-    // ======================================================
-    // 🔄 MAIN UPDATE LOOP
-    // ======================================================
-    update(deltaTime: number) {
-        // 1. Monstres → IA + attaques
-        this.monsterSystem.update(deltaTime);
 
-        // 2. Joueurs → mode online (auto-attack + GCD + cast)
+    // ============================================================
+    // MAIN LOOP
+    // ============================================================
+    update(dt: number) {
+
+        // 1. IA des monstres
+        this.monsterSystem.update(dt);
+
+        // 2. Joueurs online
         for (const player of this.gameState.players.values()) {
 
-            // GCD / cast / buffs
-            player.updateCombatTimers(deltaTime);
+            player.updateCombatTimers(dt);
 
             if (player.isDead) continue;
 
-            this.onlineSystem.update(player, deltaTime);
+            this.onlineSystem.update(player, dt);
         }
     }
 
-    // ======================================================
-    // 🛑 INTERRUPTION DE COMBAT MANUELLE
-    // ======================================================
+    // ============================================================
+    // Stop combat forcé
+    // ============================================================
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
         player.targetMonsterId = "";
