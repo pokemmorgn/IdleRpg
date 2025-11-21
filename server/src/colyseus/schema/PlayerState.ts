@@ -1,4 +1,5 @@
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
+import { QuestState } from "./QuestState";
 
 /**
  * État d'un joueur connecté + stats de combat synchronisées.
@@ -92,6 +93,10 @@ export class PlayerState extends Schema {
 
   @type("number") lastAFKCombatCheck: number = 0;
 
+  // ===== QUÊTES =====
+  @type(QuestState)
+  quests: QuestState = new QuestState();
+
   // ===== CONSOMMABLES =====
   @type("number") potionHP: number = 10;
   @type("number") food: number = 20;
@@ -159,8 +164,6 @@ export class PlayerState extends Schema {
     this.criticalDamage = stats.criticalDamage;
 
     this.damageReduction = stats.damageReduction;
-
-    this.moveSpeed = stats.moveSpeed;
 
     this.armor = stats.armor;
     this.magicResistance = stats.magicResistance;
