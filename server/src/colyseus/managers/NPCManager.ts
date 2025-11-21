@@ -2,24 +2,42 @@ import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { NPCState } from "../schema/NPCState";
+
 import NPC from "../../models/NPC";
+
 import { DialogueManager } from "./DialogueManager";
 import { QuestManager } from "./QuestManager";
+import { QuestObjectiveManager } from "./QuestObjectiveManager";
 
 /**
  * NPCManager - Gère tous les NPC d'un serveur
+ * Connecté aux systèmes :
+ *  - DialogueManager (dialogues)
+ *  - QuestManager (accepter/afficher quêtes)
+ *  - QuestObjectiveManager (TALK objective)
  */
 export class NPCManager {
   private serverId: string;
   private gameState: GameState;
+
   private dialogueManager: DialogueManager;
   private questManager: QuestManager;
+  private questObjectiveManager: QuestObjectiveManager;
 
-  constructor(serverId: string, gameState: GameState) {
+  constructor(
+    serverId: string,
+    gameState: GameState,
+    questManager: QuestManager,
+    questObjectiveManager: QuestObjectiveManager
+  ) {
     this.serverId = serverId;
     this.gameState = gameState;
-    this.dialogueManager = new DialogueManager(serverId);
-    this.questManager = new QuestManager(serverId, gameState);
+
+    this.questManager = questManager;
+    this.questObjectiveManager = questObjectiveManager;
+
+    // On injecte QuestObjectiveManager dans DialogueManager
+    this.dialogueManager = new DialogueManager(serverId, questObjectiveManager);
   }
 
   /**
@@ -41,7 +59,7 @@ export class NPCManager {
 
       const npcs = await NPC.find(filter);
 
-      console.log(`✅ [NPCManager] ${npcs.length} NPC trouvé(s) pour ${this.serverId}`);
+      console.log(`✅ [NPCManager] ${npcs.length} NPC trouvé(s)`);
 
       for (const npc of npcs) {
         const npcState = new NPCState(
@@ -67,7 +85,7 @@ export class NPCManager {
         this.gameState.addNPC(npcState);
       }
 
-      console.log(`🤖 [NPCManager] ${npcs.length} NPC chargé(s) dans le GameState`);
+      console.log(`🤖 [NPCManager] Tous les NPC ont été chargés dans GameState`);
 
     } catch (err: any) {
       console.error(`❌ [NPCManager] Erreur lors du chargement des NPC:`, err.message);
@@ -75,7 +93,7 @@ export class NPCManager {
   }
 
   /**
-   * Gestion des interactions avec les NPC
+   * Interaction du joueur avec un NPC
    */
   handleInteraction(client: Client, playerState: PlayerState, message: any): void {
     const { npcId } = message;
@@ -103,11 +121,11 @@ export class NPCManager {
   }
 
   /**
-   * Envoie la réponse d'interaction selon le type de NPC
+   * Détermine le type d'interaction (dialogue / boutique / quêtes)
    */
   private sendInteractionResponse(client: Client, playerState: PlayerState, npc: NPCState): void {
 
-    // Dialogue (priorité)
+    // Dialogue → priorité
     if (npc.dialogueId && 
       (npc.type === "dialogue" || npc.type === "quest_giver" || npc.type === "hybrid")) 
     {
@@ -115,7 +133,7 @@ export class NPCManager {
       return;
     }
 
-    // Merchant
+    // Boutique
     if ((npc.type === "merchant" || npc.type === "hybrid") && npc.shopId) {
       client.send("npc_shop_open", {
         npcId: npc.npcId,
@@ -125,7 +143,7 @@ export class NPCManager {
       return;
     }
 
-    // Quest giver
+    // NPC donneur de quêtes
     if (npc.type === "quest_giver" || npc.type === "hybrid") {
 
       const availableQuests = this.questManager.getAvailableQuestsForNPC(
@@ -153,10 +171,9 @@ export class NPCManager {
   }
 
   /**
-   * Appelé quand le client demande d’accepter une quête
+   * Acceptation d'une quête par le joueur
    */
   handleAcceptQuest(client: Client, playerState: PlayerState, message: any): void {
-
     const { questId, npcId } = message;
 
     if (!questId || !npcId) {
