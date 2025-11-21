@@ -80,6 +80,8 @@ export class WorldRoom extends Room<GameState> {
 
     if (this.serverId === "test") {
       this.spawnTemporaryTestMonsters();
+      this.spawnTemporaryTestNPC();
+      this.loadTestQuests();
     }
 
     console.log("📥 WORLD ROOM READY (messages setup)");
@@ -347,4 +349,63 @@ export class WorldRoom extends Room<GameState> {
 
     this.state.addMonster(m);
   }
+  // Dans WorldRoom.ts
+
+// ... juste après la méthode spawnTemporaryTestMonsters
+
+private spawnTemporaryTestNPC() {
+  const NPCState = require("../schema/NPCState").NPCState;
+
+  const npc = new NPCState(
+    "npc_test_01", // L'ID utilisé dans le script de test
+    "Maître des Quêtes Test", // Nom affiché
+    "quest_giver", // Type
+    99, // Level
+    "neutral", // Faction
+    "test_zone", // Zone
+    5, 0, 5, // Position X, Y, Z
+    0, 0, 0, // Rotation
+    "quest_giver_model", // Model ID
+    "dialogue_test_01", // ID du dialogue (optionnel)
+    "", // Shop ID (vide pour un quest giver)
+    5, // Rayon d'interaction
+    true // isActive
+  );
+
+  this.state.addNPC(npc);
+  console.log("🤖 PNJ de test 'npc_test_01' a été spawn.");
+}
+  private loadTestQuests() {
+  // On crée une fausse quête qui correspond à nos attentes
+  const testQuest: any = {
+    questId: "quest_test_01",
+    name: "Quête du Loup Test",
+    description: "Va tuer un loup de test pour le maître des quêtes.",
+    giverNpcId: "npc_test_01",
+    type: "secondary",
+    requiredLevel: 1,
+    prerequisiteQuestId: "",
+    zoneId: "test_zone",
+    isActive: true,
+    objectives: [
+      {
+        objectiveId: "kill_wolf_obj",
+        type: "kill",
+        count: 1,
+        enemyType: "test_wolf"
+      }
+    ],
+    rewards: {
+      xp: 100,
+      gold: 50,
+      items: [],
+      reputation: []
+    }
+  };
+
+  // On accède au cache privé du QuestManager pour y ajouter notre quête de test
+  // (C'est un peu un "hack" pour le test, mais c'est très efficace)
+  (this.questManager as any).questCache.set(testQuest.questId, testQuest);
+  console.log("📜 Quête de test 'quest_test_01' chargée en mémoire.");
+}
 }
