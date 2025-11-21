@@ -125,7 +125,32 @@ export class TestManager {
       }
     };
 
-    (this.questManager as any).questCache.set(testQuest.questId, testQuest);
+this.questManager["questCache"].set(testQuest.questId, {
+  questId: "quest_test_01",
+  name: "Quête du Loup Test",
+  description: "Va tuer un loup de test pour le maître des quêtes.",
+  giverNpcId: "npc_test_01",
+  type: "secondary",
+  requiredLevel: 1,
+  prerequisiteQuestId: "",
+  zoneId: "test_zone",
+  isActive: true,
+  objectives: [
+    {
+      objectiveId: "kill_wolf_obj",
+      type: "kill",
+      count: 1,
+      enemyType: "test_wolf"
+    }
+  ],
+  rewards: {
+    xp: 100,
+    gold: 50,
+    items: [],
+    reputation: []
+  }
+});
+
     console.log("📜 Quête de test 'quest_test_01' chargée en mémoire.");
   }
 
