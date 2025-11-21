@@ -3,7 +3,7 @@ import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import { NPCState } from "../schema/NPCState";
-import { IQuest } from "../../models/Quest";
+
 import NPC from "../../models/NPC";
 
 import { DialogueManager } from "./DialogueManager";
@@ -25,25 +25,22 @@ export class NPCManager {
   private questManager: QuestManager;
   private questObjectiveManager: QuestObjectiveManager;
 
+  // MODIFIÉ: Le constructeur accepte maintenant le DialogueManager
   constructor(
     serverId: string,
     gameState: GameState,
     questManager: QuestManager,
-    questObjectiveManager: QuestObjectiveManager
+    questObjectiveManager: QuestObjectiveManager,
+    dialogueManager: DialogueManager // AJOUT
   ) {
     this.serverId = serverId;
     this.gameState = gameState;
 
     this.questManager = questManager;
     this.questObjectiveManager = questObjectiveManager;
+    this.dialogueManager = dialogueManager; // AJOUT
 
-    // On injecte QuestObjectiveManager, QuestManager et GameState dans DialogueManager
-    this.dialogueManager = new DialogueManager(
-      serverId, 
-      questObjectiveManager,
-      questManager,
-      gameState
-    );
+    // On n'initialise plus le DialogueManager ici, il est fourni
   }
 
   /**
@@ -157,17 +154,15 @@ export class NPCManager {
         playerState
       );
 
-      // NOUVEAU: Récupérer les quêtes prêtes à être rendues
       const completableQuests = this.questManager.getCompletableQuestsForNPC(
         npc.npcId,
         playerState
       );
 
-      // MODIFIÉ: On envoie les deux listes
       client.send("npc_quests", {
         npcId: npc.npcId,
         npcName: npc.name,
-        availableQuests: availableQuests.map(q => ({
+        availableQuests: availableQuests.map((q: any) => ({
           questId: q.questId,
           name: q.name,
           description: q.description,
@@ -175,11 +170,11 @@ export class NPCManager {
           requiredLevel: q.requiredLevel,
           rewards: q.rewards
         })),
-      completableQuests: completableQuests.map((q: IQuest) => ({ // On ajoute le type IQuest
-        questId: q.questId,
-        name: q.name,
-        rewards: q.rewards
-      }))
+        completableQuests: completableQuests.map((q: any) => ({
+          questId: q.questId,
+          name: q.name,
+          rewards: q.rewards
+        }))
       });
 
       return;
@@ -217,8 +212,6 @@ export class NPCManager {
       return;
     }
 
-    // Le QuestManager se chargera de valider que la quête est bien complétée
-    // et que le PNJ est le bon (si nécessaire)
     this.questManager.turnInQuest(client, playerState, questId);
 
     console.log(`🏁 [NPCManager] Tentative de rendre la quête ${questId} par ${playerState.characterName}`);
