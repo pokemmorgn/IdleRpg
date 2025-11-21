@@ -272,7 +272,7 @@ async function testQuestSystem(room: Colyseus.Room) {
     const room = await client.consumeSeatReservation(mm);
 
     console.log("🔌 CONNECTÉ AU SERVEUR DE JEU !");
-
+    await sleep(1500);
     await testQuestSystem(room);
 
     process.exit(0); // Quitte le script proprement
