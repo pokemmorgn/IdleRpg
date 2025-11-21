@@ -237,15 +237,11 @@ export class QuestObjectiveManager {
   private finishQuest(player: PlayerState, quest: any) {
     const questId = quest.questId;
 
-    // Ajouter aux completed
-    // CORRECTION : On utilise player.quests.completed
-    if (!player.quests.completed.includes(questId)) {
-      player.quests.completed.push(questId);
-    }
-
-    // Nettoyer les progressions
-    // CORRECTION : On utilise player.quests.progress
-    player.quests.progress.delete(questId);
+    this.notify(player.sessionId, "quest_ready_to_turn_in", {
+      questId,
+      questName: quest.name, // Utile pour le client
+      rewards: quest.rewards
+    });
 
     // NOUVEAU: Déclencher la sauvegarde après la fin de la quête
     this.onSavePlayer?.(player);
