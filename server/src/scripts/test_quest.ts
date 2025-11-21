@@ -1,5 +1,5 @@
 /**
- * CLIENT DE TEST – NPC / DIALOGUES / QUETES
+ * CLIENT DE TEST – SYSTÈME DE QUÊTES COMPLET
  */
 
 import * as Colyseus from "colyseus.js";
@@ -7,20 +7,25 @@ import * as Colyseus from "colyseus.js";
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
 
-const TEST_USERNAME = "npc_tester";
+const TEST_USERNAME = "quest_tester";
 const TEST_PASSWORD = "Test123!";
-const TEST_EMAIL = "npc_tester@example.com";
+const TEST_EMAIL = "quest_tester@example.com";
 
 const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
-const CHARACTER_NAME = "NpcTester";
+const CHARACTER_NAME = "QuestTester";
+
+// IDs des éléments de test (à créer dans votre base de données)
+const TEST_NPC_ID = "npc_test_01"; // Un PNJ qui donne la quête
+const TEST_QUEST_ID = "quest_test_01"; // Une quête avec un objectif "kill 1 test_wolf"
+const TEST_ENEMY_TYPE = "test_wolf"; // L'ennemi à tuer pour la quête
 
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ========================================================
-// AUTH + PROFIL
+// AUTH + PROFIL (inchangé)
 // ========================================================
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
@@ -89,7 +94,7 @@ async function getCreationData(token: string) {
 async function createCharacter(token: string, race: string, classId: string) {
     const r = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
         method: "POST",
-        headers: { 
+        headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json"
         },
@@ -114,7 +119,7 @@ async function createCharacter(token: string, race: string, classId: string) {
 async function reserveSeat(token: string) {
     const r = await fetch(`${API_URL}/matchmaking/join-world`, {
         method: "POST",
-        headers: { 
+        headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json"
         },
@@ -130,68 +135,115 @@ async function reserveSeat(token: string) {
 }
 
 // ========================================================
-// NPC / QUEST TEST
+// TEST DU SYSTÈME DE QUÊTES
 // ========================================================
-async function testNPCAndQuests(room: Colyseus.Room) {
+async function testQuestSystem(room: Colyseus.Room) {
 
-    console.log("\n🔥 TEST NPC / DIALOGUE / QUETE\n");
+    console.log("\n🔥 DÉBUT DU TEST DU SYSTÈME DE QUÊTES\n");
 
-    // 📌 Important : écoute des events envoyés par le serveur
+    // Variables pour stocker l'état des quêtes reçu du serveur
+    let availableQuests: any[] = [];
+    let completableQuests: any[] = [];
+
+    // 📌 écoute des events
     room.onMessage("dialogue_node", (msg) => {
         console.log("💬 DIALOGUE NODE →", msg);
     });
 
-    room.onMessage("dialogue_end", (msg) => {
-        console.log("🏁 FIN DU DIALOGUE →", msg);
+    room.onMessage("npc_quests", (msg) => {
+        console.log("📜 LISTE DES QUÊTES (NPC) →", msg);
+        availableQuests = msg.availableQuests || [];
+        completableQuests = msg.completableQuests || [];
     });
 
-    room.onMessage("npc_quests", (msg) => {
-        console.log("📘 NPC QUEST LIST →", msg);
+    room.onMessage("quest_accepted", (msg) => {
+        console.log("✅ QUÊTE ACCEPTÉE →", msg);
     });
 
     room.onMessage("quest_update", (msg) => {
-        console.log("🔄 QUEST PROGRESS →", msg);
+        console.log("🔄 PROGRESSION QUÊTE →", msg);
     });
 
-    room.onMessage("quest_step_complete", (msg) => {
-        console.log("🎉 QUEST STEP COMPLETE →", msg);
+    room.onMessage("quest_ready_to_turn_in", (msg) => {
+        console.log("🏁 QUÊTE PRÊTE À ÊTRE RENDUE →", msg);
     });
 
-    room.onMessage("quest_complete", (msg) => {
-        console.log("🏆 QUEST COMPLETE →", msg);
+    room.onMessage("quest_turned_in", (msg) => {
+        console.log("🏆 QUÊTE RENDUE →", msg);
+    });
+
+    room.onMessage("xp_gained", (msg) => {
+        console.log("⭐ XP GAGNÉ →", msg);
+    });
+
+    room.onMessage("error", (msg) => {
+        console.error("❌ ERREUR SERVEUR →", msg);
     });
 
     await sleep(500);
 
-    // On choisit un NPC test (à mettre dans ta DB)
-    const testNpcId = "npc_test_01";
-
-    console.log("→ Interaction avec NPC…");
-    room.send("npc_interact", { npcId: testNpcId });
-
+    // --- ÉTAPE 1: Interaction initiale ---
+    console.log("\n--- ÉTAPE 1: Interaction avec le PNJ ---");
+    room.send("npc_interact", { npcId: TEST_NPC_ID });
     await sleep(1000);
 
-    console.log("\n→ On accepte la quête test…");
-    room.send("npc_accept_quest", {
-        npcId: testNpcId,
-        questId: "quest_test_01"
-    });
+    if (availableQuests.length === 0) {
+        console.error("❌ Échec du test : Aucune quête disponible !");
+        return;
+    }
+    console.log(`✔ ${availableQuests.length} quête(s) disponible(s).`);
 
+
+    // --- ÉTAPE 2: Accepter la quête ---
+    console.log("\n--- ÉTAPE 2: Acceptation de la quête ---");
+    room.send("npc_accept_quest", { npcId: TEST_NPC_ID, questId: TEST_QUEST_ID });
+    await sleep(1000);
+    
+    // On vérifie que la quête n'est plus disponible
+    room.send("npc_interact", { npcId: TEST_NPC_ID });
+    await sleep(1000);
+    if (availableQuests.some(q => q.questId === TEST_QUEST_ID)) {
+        console.error("❌ Échec du test : La quête acceptée est toujours dans la liste des disponibles !");
+        return;
+    }
+    console.log("✔ La quête a bien disparu de la liste des disponibles.");
+
+
+    // --- ÉTAPE 3: Progresser sur l'objectif ---
+    console.log("\n--- ÉTAPE 3: Progression de l'objectif (simulation d'un kill) ---");
+    room.send("test_trigger_quest_objective", { enemyType: TEST_ENEMY_TYPE });
     await sleep(1000);
 
-    console.log("\n→ Simulation d’un KILL qui valide la quête…");
-    room.send("simulate_monster_kill", {
-        enemyType: "wolf",
-        enemyRarity: "common",
-        isBoss: false
-    });
 
+    // --- ÉTAPE 4: Vérifier que la quête est "prête à être rendue" ---
+    console.log("\n--- ÉTAPE 4: Vérification de l'état 'prêt à être rendu' ---");
+    room.send("npc_interact", { npcId: TEST_NPC_ID });
     await sleep(1000);
 
-    console.log("\n→ Simulation talk pour valider éventuel objectif TALK…");
-    room.send("simulate_talk", {
-        npcId: testNpcId
-    });
+    if (completableQuests.length === 0 || !completableQuests.some(q => q.questId === TEST_QUEST_ID)) {
+        console.error("❌ Échec du test : La quête n'est pas dans la liste 'à rendre' !");
+        return;
+    }
+    console.log("✔ La quête est bien dans la liste des quêtes à rendre.");
+
+
+    // --- ÉTAPE 5: Rendre la quête ---
+    console.log("\n--- ÉTAPE 5: Rendre la quête ---");
+    room.send("npc_turn_in_quest", { npcId: TEST_NPC_ID, questId: TEST_QUEST_ID });
+    await sleep(1000);
+
+
+    // --- ÉTAPE 6: Vérification finale ---
+    console.log("\n--- ÉTAPE 6: Vérification finale (la quête a disparu) ---");
+    room.send("npc_interact", { npcId: TEST_NPC_ID });
+    await sleep(1000);
+
+    if (availableQuests.some(q => q.questId === TEST_QUEST_ID) || completableQuests.some(q => q.questId === TEST_QUEST_ID)) {
+        console.error("❌ Échec du test : La quête rendue est toujours visible !");
+        return;
+    }
+
+    console.log("\n🎉 SUCCÈS ! Le système de quêtes fonctionne correctement.");
 }
 
 // ========================================================
@@ -216,6 +268,7 @@ async function testNPCAndQuests(room: Colyseus.Room) {
 
     console.log("🔌 CONNECTÉ AU SERVEUR DE JEU !");
 
-    await testNPCAndQuests(room);
+    await testQuestSystem(room);
 
+    process.exit(0); // Quitte le script proprement
 })();
