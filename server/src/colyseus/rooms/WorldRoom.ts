@@ -226,7 +226,12 @@ export class WorldRoom extends Room<GameState> {
       this.npcManager.handleAcceptQuest(client, player, msg);
       return;
     }
-
+    // --- Turn In Quest ---
+    if (type === "npc_turn_in_quest") {
+      if (!player) return;
+      this.npcManager.handleTurnInQuest(client, player, msg);
+      return;
+    }
     // --- Dialogue Choice ---
     if (type === "dialogue_choice") {
       if (!player) return;
