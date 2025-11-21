@@ -222,7 +222,7 @@ async function startCombat(room: Colyseus.Room) {
                     console.log(`🗡 You hit ${msg.targetId} for ${msg.damage} (remaining: ${msg.remainingHp})`);
                 }
                 if (msg.target === "player") {
-                    console.log(`💥 Monster ${msg.monsterId} hit YOU for ${msg.damage} (remaining: ${msg.remainingHp})`);
+                    console.log(`💥 Monster ${msg.sourceId} hit YOU for ${msg.damage} (remaining: ${msg.remainingHp})`);
                 }
                 break;
 
