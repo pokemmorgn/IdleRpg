@@ -32,14 +32,14 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
-    // 🔄 UPDATE MAIN LOOP
+    // 🔄 UPDATE LOOP
     // ======================================================
     update(deltaTime: number) {
 
-        // 1. Monsters
+        // Monsters first
         this.monsterSystem.update(deltaTime);
 
-        // 2. Players
+        // Players
         for (const player of this.gameState.players.values()) {
 
             player.updateCombatTimers(deltaTime);
@@ -51,7 +51,7 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
-    // 🛑 STOP MANUEL
+    // 🛑 STOP COMBAT
     // ======================================================
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
@@ -65,38 +65,36 @@ export class CombatManager implements CombatEventCallbacks {
 
         console.log(`🔄 Respawning player: ${player.characterName}`);
 
-        // Restore vital stats
+        // Restore stats
         player.hp = player.maxHp;
         player.isDead = false;
 
-        // Reset combat state
+        // Reset combat
         player.inCombat = false;
         player.targetMonsterId = "";
         player.lastAttackerId = "";
 
-        // Reset locks / casts
+        // Reset locks
         player.castLockRemaining = 0;
         player.animationLockRemaining = 0;
         player.currentCastingSkillId = "";
         player.currentAnimationLockType = "none";
 
-        // Reset movement/position (à adapter)
+        // Reset position
         player.posX = 0;
         player.posY = 0;
         player.posZ = 0;
 
-        // Callback interne
+        // Internal callback
         this.onPlayerRespawn?.(player);
 
-        // Notifier le client
+        // Notify client
         this.net.emitPlayerRespawn(player);
     }
 
     // ======================================================
-    // 🔥 COMBAT EVENTS
+    // 🗡 PLAYER → MONSTER (AUTO)
     // ======================================================
-
-    // AUTO-ATTACK
     onPlayerHit(
         player: PlayerState,
         monster: MonsterState,
@@ -107,7 +105,9 @@ export class CombatManager implements CombatEventCallbacks {
         this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
-    // SKILL HIT
+    // ======================================================
+    // 🎯 PLAYER → MONSTER (SKILL)
+    // ======================================================
     onPlayerSkillHit(
         player: PlayerState,
         monster: MonsterState,
@@ -118,43 +118,92 @@ export class CombatManager implements CombatEventCallbacks {
         this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
-    // MONSTER → PLAYER
+    // ======================================================
+    // 👹 MONSTER → PLAYER (DAMAGE)
+    // ======================================================
     onMonsterHit(monster: MonsterState, player: PlayerState, damage: number) {
         this.net.emitMonsterHit(monster, player, damage);
     }
 
-    // MONSTER DEATH
+    // ======================================================
+    // ❤️ HP UPDATE
+    // ======================================================
+    onHpUpdate(player: PlayerState) {
+        this.net.emitHPUpdate(
+            player.profileId,
+            player.hp,
+            player.maxHp,
+            player.zoneId
+        );
+    }
+
+    // ======================================================
+    // 🎯 MONSTER → PLAYER (MISS / DODGE / CRIT)
+    // ======================================================
+    onMiss(monster: MonsterState, player: PlayerState) {
+        this.net.emitMiss(monster.monsterId, player.profileId, player.zoneId);
+    }
+
+    onDodge(monster: MonsterState, player: PlayerState) {
+        this.net.emitDodge(monster.monsterId, player.profileId, player.zoneId);
+    }
+
+    onCrit(monster: MonsterState, player: PlayerState, extraDamage: number) {
+        // CRIT = hit mais avec dégâts boostés
+        this.net.emitMonsterHit(monster, player, extraDamage);
+    }
+
+    // ======================================================
+    // 💀 DEATH
+    // ======================================================
     onMonsterDeath(monster: MonsterState, killer: PlayerState) {
         this.net.emitMonsterDeath(monster, killer);
     }
 
-    // PLAYER DEATH
     onPlayerDeath(player: PlayerState, monster: MonsterState) {
         this.net.emitPlayerDeath(player, monster);
     }
 
-    // CAST START
+    // ======================================================
+    // 🎬 CAST EVENTS
+    // ======================================================
     onCastStart(player: PlayerState, skillId: string) {
         this.net.emitCastStart(player, skillId, 0);
     }
 
-    // CAST CANCEL
     onCastCancel(player: PlayerState, reason: string) {
         this.net.emitCastCancel(player, reason);
     }
 
-    // HEAL
+    // ======================================================
+    // 🩹 HEAL
+    // ======================================================
     onPlayerHeal(player: PlayerState, amount: number, skillId: string) {
         this.net.emitHeal(player, amount, skillId);
     }
 
-    // BUFF
+    // ======================================================
+    // 💡 BUFF
+    // ======================================================
     onApplyBuff(player: PlayerState, buffId: string, duration: number) {
         this.net.emitBuffApply(player, buffId, duration);
     }
 
-    // RESPAWN CALLBACK
+    // ======================================================
+    // 🧲 THREAT
+    // ======================================================
+    onThreatUpdate(monster: MonsterState, player: PlayerState, threat: number) {
+        this.net.emitThreatUpdate(monster, player, threat);
+    }
+
+    onThreatLost(monster: MonsterState) {
+        // Aucun event client pour l'instant → laissé vide
+    }
+
+    // ======================================================
+    // 🔄 RESPAWN CALLBACK
+    // ======================================================
     onPlayerRespawn(player: PlayerState) {
-        // (optionnel) Hooks internes
+        // Optional internal logic
     }
 }
