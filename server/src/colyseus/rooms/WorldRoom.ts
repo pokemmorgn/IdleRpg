@@ -318,3 +318,7 @@ export class WorldRoom extends Room<GameState> {
       "dummy",
       true
     );
+
+    this.state.addMonster(m);
+  }
+}
