@@ -319,7 +319,8 @@ export class QuestManager {
    */
   private isQuestFullyCompleted(quest: any, objectivesData: any): boolean {
     if (!objectivesData) return false;
-    const step = player.quests.questStep.get(quest.id) || 0;
+    // CORRIGÉ: On utilise questId au lieu de quest.id
+    const step = player.quests.questStep.get(questId) || 0;
     return step >= quest.objectives.length;
   }
 }
