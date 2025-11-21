@@ -167,7 +167,7 @@ export class QuestManager {
     /* === NOUVEAU SYSTÈME === */
     qs.questStep.set(questId, 0);
     qs.questStartedAt.set(questId, Date.now());
-    qs.questObjectives.set(questId, {});
+    qs.questObjectives.set(questId, Object.create(null));
 
     client.send("quest_accepted", { questId });
 
