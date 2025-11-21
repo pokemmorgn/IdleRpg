@@ -26,10 +26,17 @@ export type QuestNotify = (sessionId: string, type: string, payload: any) => voi
 export class QuestObjectiveManager {
   private gameState: GameState;
   private notify: QuestNotify;
+  private onSavePlayer?: (player: PlayerState) => Promise<void>; // AJOUT: Callback de sauvegarde
 
-  constructor(gameState: GameState, notifyCallback: QuestNotify) {
+  // MODIFIÉ: Le constructeur accepte maintenant le callback de sauvegarde
+  constructor(
+    gameState: GameState,
+    notifyCallback: QuestNotify,
+    onSavePlayer?: (player: PlayerState) => Promise<void>
+  ) {
     this.gameState = gameState;
     this.notify = notifyCallback;
+    this.onSavePlayer = onSavePlayer; // Stocker le callback
   }
 
   /* =====================================================================
@@ -239,6 +246,9 @@ export class QuestObjectiveManager {
     // Nettoyer les progressions
     // CORRECTION : On utilise player.quests.progress
     player.quests.progress.delete(questId);
+
+    // NOUVEAU: Déclencher la sauvegarde après la fin de la quête
+    this.onSavePlayer?.(player);
 
     // Notifier le client
     this.notify(player.sessionId, "quest_complete", {
