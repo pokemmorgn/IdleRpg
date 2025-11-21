@@ -145,66 +145,49 @@ export class PlayerState extends Schema {
       this.autoAttackTimer += dt;
   }
 
-  loadStatsFromProfile(stats: any) {
-    this.hp = stats.hp;
-    this.maxHp = stats.maxHp;
-
-    this.resource = stats.resource;
-    this.maxResource = stats.maxResource;
-
-    this.manaRegen = stats.manaRegen;
-    this.rageRegen = stats.rageRegen;
-    this.energyRegen = stats.energyRegen;
-
-    this.attackPower = stats.attackPower;
-    this.spellPower = stats.spellPower;
-    this.attackSpeed = stats.attackSpeed;
-
-    this.criticalChance = stats.criticalChance;
-    this.criticalDamage = stats.criticalDamage;
-
-    this.damageReduction = stats.damageReduction;
-
-    this.armor = stats.armor;
-    this.magicResistance = stats.magicResistance;
-    this.precision = stats.precision;
-    this.evasion = stats.evasion;
-    this.penetration = stats.penetration;
-    this.tenacity = stats.tenacity;
-    this.lifesteal = stats.lifesteal;
-    this.spellPenetration = stats.spellPenetration;
-  }
-
   // ===========================================================
-  // PERSISTENCE DES DONNÉES
+  // QUÊTES
   // ===========================================================
-
-  /**
-   * Charge les données de quêtes depuis un objet brut (de la BDD)
-   */
   loadQuestsFromProfile(questData: any): void {
-    if (!questData) return;
 
-    // RESET
-    this.quests.completed.clear();
-    this.quests.activeRepeatables.clear();
+    // === MODE TEST / NO SAVE ===
+    if (!questData) {
+      this.quests.completed = new ArraySchema<string>();
+      this.quests.activeRepeatables = new ArraySchema<string>();
 
-    this.quests.questStep.clear();
-    this.quests.questStartedAt.clear();
-    this.quests.questObjectives.clear();
+      this.quests.questStep = new MapSchema<number>();
+      this.quests.questStartedAt = new MapSchema<number>();
+      this.quests.questObjectives = new MapSchema<any>();
 
-    this.quests.dailyCooldown.clear();
-    this.quests.weeklyCooldown.clear();
+      this.quests.dailyCooldown = new MapSchema<number>();
+      this.quests.weeklyCooldown = new MapSchema<number>();
 
-    // LISTS
+      this.quests.activeMain = "";
+      this.quests.activeSecondary = "";
+      return;
+    }
+
+    // === RESET PROPRE ===
+    this.quests.completed = new ArraySchema<string>();
+    this.quests.activeRepeatables = new ArraySchema<string>();
+
+    this.quests.questStep = new MapSchema<number>();
+    this.quests.questStartedAt = new MapSchema<number>();
+    this.quests.questObjectives = new MapSchema<any>();
+
+    this.quests.dailyCooldown = new MapSchema<number>();
+    this.quests.weeklyCooldown = new MapSchema<number>();
+
+    // === LISTS ===
     questData.completed?.forEach((id: string) => this.quests.completed.push(id));
     this.quests.activeMain = questData.activeMain || "";
     this.quests.activeSecondary = questData.activeSecondary || "";
+
     questData.activeRepeatables?.forEach((id: string) =>
       this.quests.activeRepeatables.push(id)
     );
 
-    // MAPS
+    // === MAPS ===
     for (const [key, value] of Object.entries(questData.questStep || {})) {
       this.quests.questStep.set(key, value as number);
     }
@@ -226,9 +209,6 @@ export class PlayerState extends Schema {
     }
   }
 
-  /**
-   * Exporte les données de quêtes pour les sauvegarder en BDD
-   */
   saveQuestsToProfile(): any {
     return {
       completed: Array.from(this.quests.completed),
@@ -245,10 +225,6 @@ export class PlayerState extends Schema {
     };
   }
 
-
-  /**
-   * Exporte les stats pour les sauvegarder en BDD
-   */
   saveStatsToProfile(): any {
     return {
       hp: this.hp,
