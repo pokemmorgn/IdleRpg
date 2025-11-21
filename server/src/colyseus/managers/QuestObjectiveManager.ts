@@ -1,197 +1,165 @@
-import { Client } from "colyseus";
-import { PlayerState } from "../schema/PlayerState";
-import { QuestManager } from "./QuestManager";
+// server/src/colyseus/managers/QuestObjectiveManager.ts
 import { GameState } from "../schema/GameState";
+import { PlayerState } from "../schema/PlayerState";
+import { IQuestObjective } from "../../models/Quest";
 import { QuestProgress } from "../schema/QuestProgress";
-import { IQuest, IQuestObjective } from "../../models/Quest";
+import Quest from "../../models/Quest";
 
+/**
+ * Callback signature envoyée depuis WorldRoom
+ */
+export type QuestNotify = (sessionId: string, type: string, payload: any) => void;
+
+/**
+ * QuestObjectiveManager
+ * ----------------------
+ * Gère la progression des objectifs de quêtes :
+ * - Kills
+ * - Loots
+ * - Talk to NPC
+ * - Explore zone
+ * - Activate object
+ * - Collect
+ * - Escort
+ * - Survive
+ */
 export class QuestObjectiveManager {
-  private serverId: string;
   private gameState: GameState;
-  private questManager: QuestManager;
+  private notify: QuestNotify;
 
-  constructor(serverId: string, gameState: GameState, questManager: QuestManager) {
-    this.serverId = serverId;
+  constructor(gameState: GameState, notifyCallback: QuestNotify) {
     this.gameState = gameState;
-    this.questManager = questManager;
+    this.notify = notifyCallback;
   }
 
-  /* ==========================================================================
-     UTILS : Récupération de progression
-     ========================================================================== */
-  private getProgress(player: PlayerState, questId: string): QuestProgress | null {
-    if (!player.questProgress || !player.questProgress.has(questId)) return null;
-    return player.questProgress.get(questId)!;
+  /* =====================================================================
+      1) ENTRYPOINTS APPELÉS PAR LE SERVEUR (MonsterManager / NPCManager…)
+     ===================================================================== */
+
+  /** Monstre tué */
+  onMonsterKilled(player: PlayerState, payload: { enemyType: string; enemyRarity: string; isBoss: boolean }) {
+    this.processAllObjectives(player, "kill", payload);
   }
 
-  private getCurrentObjective(quest: IQuest, progress: QuestProgress): IQuestObjective | null {
-    if (!quest.objectives || progress.step >= quest.objectives.length) return null;
-    return quest.objectives[progress.step];
+  /** Objet ramassé / loot obtenu */
+  onLoot(player: PlayerState, payload: { itemId: string; dropSource?: string }) {
+    this.processAllObjectives(player, "loot", payload);
   }
 
-  /* ==========================================================================
-     DÉCLENCHEURS D’ÉVÉNEMENTS
-     ========================================================================== */
-
-  onKill(player: PlayerState, monsterType: string, monsterRarity: string, zoneId: string) {
-    this.handleEvent(player, "kill", { monsterType, monsterRarity, zoneId });
+  /** Dialogue fini */
+  onTalk(player: PlayerState, payload: { npcId: string }) {
+    this.processAllObjectives(player, "talk", payload);
   }
 
-  onLoot(player: PlayerState, itemId: string, amount: number) {
-    this.handleEvent(player, "loot", { itemId, amount });
+  /** Zone explorée */
+  onExplore(player: PlayerState, payload: { locationId?: string; x?: number; y?: number; z?: number }) {
+    this.processAllObjectives(player, "explore", payload);
   }
 
-  onTalk(player: PlayerState, npcId: string) {
-    this.handleEvent(player, "talk", { npcId });
+  /** Activation d'un mécanisme */
+  onActivate(player: PlayerState, payload: { activationType: string; order?: number }) {
+    this.processAllObjectives(player, "activate", payload);
   }
 
-  onExplore(player: PlayerState, locationId: string) {
-    this.handleEvent(player, "explore", { locationId });
+  /** Collecte */
+  onCollect(player: PlayerState, payload: { resourceId: string }) {
+    this.processAllObjectives(player, "collect", payload);
   }
 
-  onCollect(player: PlayerState, resourceId: string, amount: number) {
-    this.handleEvent(player, "collect", { resourceId, amount });
+  /** Escort — update */
+  onEscort(player: PlayerState, payload: { escortNpcId: string; targetLocationId: string }) {
+    this.processAllObjectives(player, "escort", payload);
   }
 
-  onActivate(player: PlayerState, mechanismId: string) {
-    this.handleEvent(player, "activate", { mechanismId });
+  /** Survive (tick ou fin d’événement) */
+  onSurvive(player: PlayerState, payload: { durationSec?: number; wave?: number }) {
+    this.processAllObjectives(player, "survive", payload);
   }
 
-  onSurvive(player: PlayerState, seconds: number) {
-    this.handleEvent(player, "survive", { seconds });
-  }
+  /* =====================================================================
+      2) MOTEUR CENTRAL DE PROGRESSION
+     ===================================================================== */
 
-  onEscort(player: PlayerState, escortId: string) {
-    this.handleEvent(player, "escort", { escortId });
-  }
+  private async processAllObjectives(
+    player: PlayerState,
+    type: string,
+    payload: any
+  ) {
+    const activeQuests = this.getAllActiveQuests(player);
 
-  /* ==========================================================================
-     HANDLE EVENT - Le cœur du système
-     ========================================================================== */
+    for (const questId of activeQuests) {
+      const progress = this.ensureQuestProgress(player, questId);
 
-  private handleEvent(player: PlayerState, eventType: string, payload: any) {
-    const questIds = this.getAllActiveQuests(player);
-    if (questIds.length === 0) return;
-
-    for (const questId of questIds) {
-
-      const quest = this.questManager.getQuest(questId);
+      const quest = await Quest.findOne({ questId });
       if (!quest) continue;
 
-      const progress = this.getProgress(player, questId);
-      if (!progress) continue;
+      const currentObj = quest.objectives[progress.step];
+      if (!currentObj) continue;
 
-      const objective = this.getCurrentObjective(quest, progress);
-      if (!objective) continue;
+      // L'objectif ne correspond pas au type
+      if (currentObj.type !== type) continue;
 
-      // Type mismatch → ignore
-      if (objective.type !== eventType) continue;
+      // Condition de matching
+      const valid = this.validateObjectiveMatching(currentObj, payload);
+      if (!valid) continue;
 
-      // TRY APPLY OBJECTIVE
-      if (this.applyObjective(player, quest, objective, progress, payload)) {
+      // Mise à jour de progression (selon type)
+      const done = this.incrementObjectiveProgress(progress, currentObj, payload);
 
-        // Vérifier si étape terminée
-        if (this.isObjectiveComplete(objective, progress)) {
+      // Notification client : mise à jour progression
+      this.notify(player.sessionId, "quest_update", {
+        questId,
+        step: progress.step,
+        progress: progress.progress.get(currentObj.objectiveId) || 0
+      });
 
-          // Passer à la prochaine étape
-          progress.step++;
-
-          // Dernière étape ?
-          if (progress.step >= quest.objectives.length) {
-            // Compléter la quête
-            this.questManager.completeQuest(
-              this.gameState.getClientBySessionId(player.sessionId)!,
-              player,
-              questId
-            );
-            continue;
-          }
-
-          // Reset progress pour prochaine étape
-          progress.progress.clear();
-
-          // Notification progression
-          this.sendProgressUpdate(player, questId, progress);
-        }
+      // Si terminé, on passe à l’objectif suivant
+      if (done) {
+        await this.completeObjective(player, questId, quest, progress);
       }
     }
   }
 
-  /* ==========================================================================
-     Appliquer la progression selon le type d’objectif
-     ========================================================================== */
+  /* =====================================================================
+      3) VALIDATION DES OBJETS SELON LE TYPE
+     ===================================================================== */
 
-  private applyObjective(
-    player: PlayerState,
-    quest: IQuest,
-    objective: IQuestObjective,
-    progress: QuestProgress,
-    payload: any
-  ): boolean {
-
-    const objId = objective.objectiveId;
-
-    // Init si nécessaire
-    if (!progress.progress.has(objId)) {
-      progress.progress.set(objId, 0);
-    }
-
-    let current = progress.progress.get(objId)!;
-
+  private validateObjectiveMatching(objective: IQuestObjective, payload: any): boolean {
     switch (objective.type) {
-
-      /* ------ KILL ------ */
       case "kill":
-        if (objective.monsterType && payload.monsterType !== objective.monsterType) return false;
-        if (objective.monsterRarity && payload.monsterRarity !== objective.monsterRarity) return false;
-        if (objective.zoneId && payload.zoneId !== objective.zoneId) return false;
-
-        current += 1;
-        progress.progress.set(objId, current);
+        if (objective.enemyType && payload.enemyType !== objective.enemyType) return false;
+        if (objective.enemyRarity && payload.enemyRarity !== objective.enemyRarity) return false;
+        if (objective.isBoss && !payload.isBoss) return false;
         return true;
 
-      /* ------ LOOT ------ */
       case "loot":
-        if (payload.itemId !== objective.itemId) return false;
-        current += payload.amount ?? 1;
-        progress.progress.set(objId, current);
+        if (objective.itemId && payload.itemId !== objective.itemId) return false;
+        if (objective.dropSource && payload.dropSource !== objective.dropSource) return false;
         return true;
 
-      /* ------ TALK ------ */
       case "talk":
-        if (payload.npcId !== objective.npcId) return false;
-        progress.progress.set(objId, 1);
-        return true;
+        return payload.npcId === objective.npcId;
 
-      /* ------ EXPLORE ------ */
       case "explore":
-        if (payload.locationId !== objective.locationId) return false;
-        progress.progress.set(objId, 1);
+        if (objective.locationId && payload.locationId !== objective.locationId) return false;
         return true;
 
-      /* ------ COLLECT ------ */
-      case "collect":
-        if (payload.resourceId !== objective.resourceId) return false;
-        current += payload.amount ?? 1;
-        progress.progress.set(objId, current);
-        return true;
-
-      /* ------ ACTIVATE ------ */
       case "activate":
-        if (payload.mechanismId !== objective.mechanismId) return false;
-        progress.progress.set(objId, 1);
+        if (objective.activationType && payload.activationType !== objective.activationType) return false;
+        if (objective.order !== undefined && payload.order !== objective.order) return false;
         return true;
 
-      /* ------ SURVIVE ------ */
-      case "survive":
-        current += payload.seconds;
-        progress.progress.set(objId, current);
-        return true;
+      case "collect":
+        return payload.resourceId === objective.resourceId;
 
-      /* ------ ESCORT ------ */
       case "escort":
-        if (payload.escortId !== objective.escortId) return false;
-        progress.progress.set(objId, 1);
+        if (payload.escortNpcId !== objective.escortNpcId) return false;
+        if (objective.targetLocationId && payload.targetLocationId !== objective.targetLocationId) return false;
+        return true;
+
+      case "survive":
+        if (objective.durationSec && payload.durationSec < objective.durationSec) return false;
+        if (objective.waveCount && payload.wave < objective.waveCount) return false;
         return true;
 
       default:
@@ -199,48 +167,106 @@ export class QuestObjectiveManager {
     }
   }
 
-  /* ==========================================================================
-     Vérification si objectif terminé
-     ========================================================================== */
+  /* =====================================================================
+      4) INCREMENT PROGRESSIONS
+     ===================================================================== */
 
-  private isObjectiveComplete(objective: IQuestObjective, progress: QuestProgress): boolean {
-    const objId = objective.objectiveId;
-    const value = progress.progress.get(objId) ?? 0;
+  private incrementObjectiveProgress(
+    progress: QuestProgress,
+    objective: IQuestObjective,
+    payload: any
+  ): boolean {
+    const oid = objective.objectiveId;
 
-    const target = objective.amount ?? 1;
+    if (!progress.progress.has(oid)) progress.progress.set(oid, 0);
 
-    return value >= target;
+    const current = progress.progress.get(oid)!;
+
+    // Si type = kill / loot / collect… => +1
+    const target = objective.count ?? 1;
+    const newValue = Math.min(target, current + 1);
+
+    progress.progress.set(oid, newValue);
+
+    return newValue >= target;
   }
 
-  /* ==========================================================================
-     Récupère toutes les quêtes actives d’un joueur
-     ========================================================================== */
+  /* =====================================================================
+      5) FIN D’OBJECTIF → FIN DE QUÊTE ?
+     ===================================================================== */
 
+  private async completeObjective(
+    player: PlayerState,
+    questId: string,
+    quest: any,
+    progress: QuestProgress
+  ) {
+    const step = progress.step;
+
+    this.notify(player.sessionId, "quest_step_complete", {
+      questId,
+      step
+    });
+
+    // Passer au next step
+    progress.step++;
+
+    const finalStep = quest.objectives.length;
+
+    // Si fin complète de la quête
+    if (progress.step >= finalStep) {
+      this.finishQuest(player, quest);
+    }
+  }
+
+  /* =====================================================================
+      6) FIN DE QUÊTE
+     ===================================================================== */
+
+  private finishQuest(player: PlayerState, quest: any) {
+    const questId = quest.questId;
+
+    // Ajouter aux completed
+    if (!player.completedQuests.includes(questId)) {
+      player.completedQuests.push(questId);
+    }
+
+    // Nettoyer les progressions
+    player.questProgress.delete(questId);
+
+    // Notifier le client
+    this.notify(player.sessionId, "quest_complete", {
+      questId,
+      rewards: quest.rewards
+    });
+  }
+
+  /* =====================================================================
+      7) UTILS
+     ===================================================================== */
+
+  /** Toutes les quêtes actives (main + secondaires + daily/repeatables) */
   private getAllActiveQuests(player: PlayerState): string[] {
     const list: string[] = [];
 
     if (player.activeMainQuest) list.push(player.activeMainQuest);
     if (player.activeSecondaryQuest) list.push(player.activeSecondaryQuest);
-
-    if (player.activeRepeatableQuests) {
-      for (const q of player.activeRepeatableQuests) list.push(q);
+    if (player.activeRepeatableQuests.length > 0) {
+      list.push(...player.activeRepeatableQuests);
     }
 
     return list;
   }
 
-  /* ==========================================================================
-     Envoi de l’état de progression
-     ========================================================================== */
-
-  private sendProgressUpdate(player: PlayerState, questId: string, progress: QuestProgress) {
-    const client = this.gameState.getClientBySessionId(player.sessionId);
-    if (!client) return;
-
-    client.send("quest_progress", {
-      questId,
-      step: progress.step,
-      progress: [...progress.progress.entries()]
-    });
+  /** Initialise la progression si absente */
+  private ensureQuestProgress(player: PlayerState, questId: string): QuestProgress {
+    if (!player.questProgress.has(questId)) {
+      const p = new QuestProgress();
+      p.step = 0;
+      p.startedAt = Date.now();
+      player.questProgress.set(questId, p);
+      return p;
+    }
+    return player.questProgress.get(questId)!;
   }
 }
