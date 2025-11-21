@@ -18,16 +18,13 @@ export class CombatManager implements CombatEventCallbacks {
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {
-        // 🌐 Network emitter
         this.net = new CombatNetworkEmitter(gameState, broadcast);
 
-        // 🧠 Player combat
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
             this
         );
 
-        // 👹 Monster AI
         this.monsterSystem = new MonsterCombatSystem(
             this.gameState,
             this
@@ -62,26 +59,28 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
-    // 🔥 RESPAWN JOUeur
+    // 🔥 RESPAWN PLAYER
     // ======================================================
     public respawnPlayer(player: PlayerState) {
 
-        // Restaurer les stats vitales
+        console.log(`🔄 Respawning player: ${player.characterName}`);
+
+        // Restore vital stats
         player.hp = player.maxHp;
         player.isDead = false;
-
-        // Reset casts & locks
-        player.castLockRemaining = 0;
-        player.animationLockRemaining = 0;
-        player.currentCastingSkillId = "";
-        player.currentAnimationLockType = "none";
 
         // Reset combat state
         player.inCombat = false;
         player.targetMonsterId = "";
         player.lastAttackerId = "";
 
-        // Replacer le joueur (à adapter)
+        // Reset locks / casts
+        player.castLockRemaining = 0;
+        player.animationLockRemaining = 0;
+        player.currentCastingSkillId = "";
+        player.currentAnimationLockType = "none";
+
+        // Reset movement/position (à adapter)
         player.posX = 0;
         player.posY = 0;
         player.posZ = 0;
@@ -89,15 +88,15 @@ export class CombatManager implements CombatEventCallbacks {
         // Callback interne
         this.onPlayerRespawn?.(player);
 
-        // 👌 Notifier tous les joueurs de la zone
-        this.net.emitRespawn(player.profileId, player.zoneId);
+        // Notifier le client
+        this.net.emitPlayerRespawn(player);
     }
 
     // ======================================================
     // 🔥 COMBAT EVENTS
     // ======================================================
 
-    // PLAYER → MONSTER (auto)
+    // AUTO-ATTACK
     onPlayerHit(
         player: PlayerState,
         monster: MonsterState,
@@ -108,7 +107,7 @@ export class CombatManager implements CombatEventCallbacks {
         this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
-    // PLAYER → MONSTER (skill)
+    // SKILL HIT
     onPlayerSkillHit(
         player: PlayerState,
         monster: MonsterState,
@@ -136,7 +135,7 @@ export class CombatManager implements CombatEventCallbacks {
 
     // CAST START
     onCastStart(player: PlayerState, skillId: string) {
-        this.net.emitCastStart(player, skillId, 0); // castTime inconnu → 0
+        this.net.emitCastStart(player, skillId, 0);
     }
 
     // CAST CANCEL
@@ -154,8 +153,8 @@ export class CombatManager implements CombatEventCallbacks {
         this.net.emitBuffApply(player, buffId, duration);
     }
 
-    // 🔄 RESPAWN CALLBACK (optionnel)
+    // RESPAWN CALLBACK
     onPlayerRespawn(player: PlayerState) {
-        // rien de spécial ici — tout est envoyé via emitRespawn()
+        // (optionnel) Hooks internes
     }
 }
