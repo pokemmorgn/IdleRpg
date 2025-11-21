@@ -1,3 +1,4 @@
+// server/src/colyseus/rooms/WorldRoom.ts
 import { Room, Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
@@ -11,6 +12,7 @@ import { CombatManager } from "../managers/CombatManager";
 
 import { QuestManager } from "../managers/QuestManager";
 import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
+import { TestManager } from "../test/TestManager"; // AJOUT: Import du TestManager
 
 import ServerProfile from "../../models/ServerProfile";
 
@@ -26,6 +28,7 @@ export class WorldRoom extends Room<GameState> {
 
   private questManager!: QuestManager;
   private questObjectiveManager!: QuestObjectiveManager;
+  private testManager?: TestManager; // AJOUT: Propriété pour le TestManager
 
   // ===========================================================
   // onCreate
@@ -38,11 +41,10 @@ export class WorldRoom extends Room<GameState> {
     console.log("🧬 GameState initialisé");
 
     // --- CREATION QUEST SYSTEM ---
-    // MODIFIÉ: On passe le callback de sauvegarde aux managers
     this.questManager = new QuestManager(
       this.serverId,
       this.state,
-      this.savePlayerData.bind(this) // On lie la méthode à l'instance de la room
+      this.savePlayerData.bind(this)
     );
 
     this.questObjectiveManager = new QuestObjectiveManager(
@@ -51,7 +53,7 @@ export class WorldRoom extends Room<GameState> {
         const client = this.clients.find(c => c.sessionId === sessionId);
         if (client) client.send(type, payload);
       },
-      this.savePlayerData.bind(this) // On lie la méthode à l'instance de la room
+      this.savePlayerData.bind(this)
     );
 
     // --- NPC + MONSTER ---
@@ -78,10 +80,10 @@ export class WorldRoom extends Room<GameState> {
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
+    // --- LOAD TEST ENTITIES (SI SERVEUR DE TEST) ---
     if (this.serverId === "test") {
-      this.spawnTemporaryTestMonsters();
-      this.spawnTemporaryTestNPC();
-      this.loadTestQuests();
+      this.testManager = new TestManager(this.state, this.questManager, this.dialogueManager);
+      this.testManager.loadAll();
     }
 
     console.log("📥 WORLD ROOM READY (messages setup)");
@@ -138,7 +140,6 @@ export class WorldRoom extends Room<GameState> {
 
     const p = load.profile;
 
-    // MODIFIÉ : On retourne aussi les données persistantes (stats et quêtes)
     return {
       playerId: p.playerId,
       profileId: p.profileId,
@@ -147,8 +148,8 @@ export class WorldRoom extends Room<GameState> {
       characterClass: p.class,
       characterRace: p.race,
       characterSlot: p.characterSlot,
-      stats: p.stats, // AJOUT
-      questData: p.questData // AJOUT
+      stats: p.stats,
+      questData: p.questData
     };
   }
 
@@ -194,7 +195,6 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     
     if (player) {
-      // MODIFIÉ: Utiliser la méthode centralisée de sauvegarde
       await this.savePlayerData(player);
     }
 
@@ -205,43 +205,44 @@ export class WorldRoom extends Room<GameState> {
   // HANDLE MESSAGES
   // ===========================================================
   private handleMessage(client: Client, type: string, msg: any) {
-
     const player = this.state.players.get(client.sessionId);
+    if (!player) return;
 
     // --- RESPAWN ---
     if (type === "respawn") {
-      if (!player || !player.isDead) return;
+      if (!player.isDead) return;
       this.combatManager.respawnPlayer(player);
       return;
     }
 
     // --- NPC Interaction ---
     if (type === "npc_interact") {
-      if (!player) return;
       this.npcManager.handleInteraction(client, player, msg);
       return;
     }
 
     // --- Accept Quest ---
     if (type === "npc_accept_quest") {
-      if (!player) return;
       this.npcManager.handleAcceptQuest(client, player, msg);
       return;
     }
+
     // --- Turn In Quest ---
     if (type === "npc_turn_in_quest") {
-      if (!player) return;
       this.npcManager.handleTurnInQuest(client, player, msg);
       return;
     }
-    // === AJOUT POUR LE TEST ===
-    // Permet de déclencher un objectif de quête sans combat
+
+    // --- Dialogue Choice ---
+    if (type === "dialogue_choice") {
+      this.npcManager.handleDialogueChoice(client, player, msg);
+      return;
+    }
+
+    // === TEST TRIGGER (GARDÉ CAR FONCTIONNEL) ===
     if (type === "test_trigger_quest_objective") {
-      // On retourne immédiatement si le joueur n'est pas trouvé
       if (!player) return;
-    
       console.log(`[TEST] Triggering quest objective for ${player.characterName} with payload:`, msg);
-      // On simule un "kill" de monstre
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
         enemyRarity: msg.enemyRarity,
@@ -250,12 +251,7 @@ export class WorldRoom extends Room<GameState> {
       });
       return;
     }
-    // --- Dialogue Choice ---
-    if (type === "dialogue_choice") {
-      if (!player) return;
-      this.npcManager.handleDialogueChoice(client, player, msg);
-      return;
-    }
+    // =============================================
 
     // --- TEST SPAWN ---
     if (type === "spawn_test_monster") {
@@ -288,7 +284,7 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // TEMPORARY TEST MONSTER
+  // TEMPORARY TEST MONSTER (GARDÉ POUR LES TESTS MANUELS)
   // ===========================================================
   private spawnTestMonster(msg: any) {
     const MonsterState = require("../schema/MonsterState").MonsterState;
@@ -319,93 +315,4 @@ export class WorldRoom extends Room<GameState> {
 
     this.state.addMonster(m);
   }
-
-  private spawnTemporaryTestMonsters() {
-    const MonsterState = require("../schema/MonsterState").MonsterState;
-
-    const m = new MonsterState(
-      "test_dummy_1",
-      "Training Dummy",
-      "dummy",
-      1,
-      50,
-      50,
-      5,
-      0,
-      2,
-      "test_zone",
-      3, 0, 0,
-      0, 0, 0,
-      "aggressive",
-      10,
-      25,
-      2,
-      5,
-      3,
-      true,
-      "dummy_model",
-      true
-    );
-
-    this.state.addMonster(m);
-  }
-  // Dans WorldRoom.ts
-
-// ... juste après la méthode spawnTemporaryTestMonsters
-
-private spawnTemporaryTestNPC() {
-  const NPCState = require("../schema/NPCState").NPCState;
-
-  const npc = new NPCState(
-    "npc_test_01", // L'ID utilisé dans le script de test
-    "Maître des Quêtes Test", // Nom affiché
-    "quest_giver", // Type
-    99, // Level
-    "neutral", // Faction
-    "test_zone", // Zone
-    5, 0, 5, // Position X, Y, Z
-    0, 0, 0, // Rotation
-    "quest_giver_model", // Model ID
-    "dialogue_test_01", // ID du dialogue (optionnel)
-    "", // Shop ID (vide pour un quest giver)
-    5, // Rayon d'interaction
-    true // isActive
-  );
-
-  this.state.addNPC(npc);
-  console.log("🤖 PNJ de test 'npc_test_01' a été spawn.");
-}
-  private loadTestQuests() {
-  // On crée une fausse quête qui correspond à nos attentes
-  const testQuest: any = {
-    questId: "quest_test_01",
-    name: "Quête du Loup Test",
-    description: "Va tuer un loup de test pour le maître des quêtes.",
-    giverNpcId: "npc_test_01",
-    type: "secondary",
-    requiredLevel: 1,
-    prerequisiteQuestId: "",
-    zoneId: "test_zone",
-    isActive: true,
-    objectives: [
-      {
-        objectiveId: "kill_wolf_obj",
-        type: "kill",
-        count: 1,
-        enemyType: "test_wolf"
-      }
-    ],
-    rewards: {
-      xp: 100,
-      gold: 50,
-      items: [],
-      reputation: []
-    }
-  };
-
-  // On accède au cache privé du QuestManager pour y ajouter notre quête de test
-  // (C'est un peu un "hack" pour le test, mais c'est très efficace)
-  (this.questManager as any).questCache.set(testQuest.questId, testQuest);
-  console.log("📜 Quête de test 'quest_test_01' chargée en mémoire.");
-}
 }
