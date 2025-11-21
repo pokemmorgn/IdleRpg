@@ -37,7 +37,10 @@ export class QuestObjectiveManager {
      ===================================================================== */
 
   /** Monstre tué */
-  onMonsterKilled(player: PlayerState, payload: { enemyType: string; enemyRarity: string; isBoss: boolean }) {
+  onMonsterKilled(
+    player: PlayerState,
+    payload: { enemyType: string; enemyRarity?: string; isBoss?: boolean; zoneId: string }
+  ) {
     this.processAllObjectives(player, "kill", payload);
   }
 
@@ -130,6 +133,7 @@ export class QuestObjectiveManager {
         if (objective.enemyType && payload.enemyType !== objective.enemyType) return false;
         if (objective.enemyRarity && payload.enemyRarity !== objective.enemyRarity) return false;
         if (objective.isBoss && !payload.isBoss) return false;
+        if (objective.zoneId && payload.zoneId !== objective.zoneId) return false;
         return true;
 
       case "loot":
