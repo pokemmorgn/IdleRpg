@@ -219,29 +219,30 @@ private spawnTemporaryTestMonsters() {
 
     const MonsterState = require("../schema/MonsterState").MonsterState;
 
-    const m = new MonsterState(
-        "test_dummy_1",
-        "Training Dummy",
-        "test_zone",
-        1,
-        50,     // max HP
-        50,     // HP
-        5,      // attack
-        0,      // spellPower
-        1,      // attackSpeed
-        "test_zone",
-        3, 0, 0,  // position (à 3 mètres à droite du joueur)
-        0, 0, 0,  // rotation
-        "aggressive",
-        10,     // detectionRange
-        20,     // chaseRange
-        2,      // attackRange
-        5,      // wanderRadius
-        3,      // respawnTime
-        false,
-        "dummy_model",
-        true
-    );
+      const m = new MonsterState(
+          "test_dummy_1",
+          "Training Dummy",
+          "dummy",
+          1,          // level
+          50,         // hp
+          50,         // maxHp
+          5,          // attack
+          0,          // defense
+          2,          // speed
+          "test_zone",// zoneId
+          3, 0, 0,    // posX posY posZ
+          0, 0, 0,    // rotX rotY rotZ
+          "aggressive",
+          10,         // aggroRange
+          25,         // leashRange
+          2,          // attackRange
+          5,          // xpReward
+          3,          // respawnTime (SECONDES)
+          true,       // respawnOnDeath (IMPORTANT)
+          "dummy_model",
+          true        // isActive
+      );
+
 
     this.state.addMonster(m);
 
