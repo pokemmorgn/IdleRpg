@@ -62,6 +62,38 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
+    // 🔥 RESPAWN JOUeur
+    // ======================================================
+    public respawnPlayer(player: PlayerState) {
+
+        // Restaurer les stats vitales
+        player.hp = player.maxHp;
+        player.isDead = false;
+
+        // Reset casts & locks
+        player.castLockRemaining = 0;
+        player.animationLockRemaining = 0;
+        player.currentCastingSkillId = "";
+        player.currentAnimationLockType = "none";
+
+        // Reset combat state
+        player.inCombat = false;
+        player.targetMonsterId = "";
+        player.lastAttackerId = "";
+
+        // Replacer le joueur (à adapter)
+        player.posX = 0;
+        player.posY = 0;
+        player.posZ = 0;
+
+        // Callback interne
+        this.onPlayerRespawn?.(player);
+
+        // 👌 Notifier tous les joueurs de la zone
+        this.net.emitRespawn(player.profileId, player.zoneId);
+    }
+
+    // ======================================================
     // 🔥 COMBAT EVENTS
     // ======================================================
 
@@ -104,7 +136,7 @@ export class CombatManager implements CombatEventCallbacks {
 
     // CAST START
     onCastStart(player: PlayerState, skillId: string) {
-        this.net.emitCastStart(player, skillId, 0); // castTime inconnu → 0 par défaut
+        this.net.emitCastStart(player, skillId, 0); // castTime inconnu → 0
     }
 
     // CAST CANCEL
@@ -120,5 +152,10 @@ export class CombatManager implements CombatEventCallbacks {
     // BUFF
     onApplyBuff(player: PlayerState, buffId: string, duration: number) {
         this.net.emitBuffApply(player, buffId, duration);
+    }
+
+    // 🔄 RESPAWN CALLBACK (optionnel)
+    onPlayerRespawn(player: PlayerState) {
+        // rien de spécial ici — tout est envoyé via emitRespawn()
     }
 }
