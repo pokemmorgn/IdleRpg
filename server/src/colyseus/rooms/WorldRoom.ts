@@ -235,6 +235,9 @@ export class WorldRoom extends Room<GameState> {
     // === AJOUT POUR LE TEST ===
     // Permet de déclencher un objectif de quête sans combat
     if (type === "test_trigger_quest_objective") {
+      // On retourne immédiatement si le joueur n'est pas trouvé
+      if (!player) return;
+    
       console.log(`[TEST] Triggering quest objective for ${player.characterName} with payload:`, msg);
       // On simule un "kill" de monstre
       this.questObjectiveManager.onMonsterKilled(player, {
