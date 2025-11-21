@@ -28,9 +28,8 @@ export class QuestState extends Schema {
   questStartedAt = new MapSchema<number>();
 
   // questId -> { objectiveId: count }
-  @type({ map: "json" })
-  questObjectives = new MapSchema<any>();
-
+  @type({ map: "number" })
+  questObjectives = new MapSchema<number>();
   // --- FIN DES AJOUTS ---
 
   // Cooldowns
