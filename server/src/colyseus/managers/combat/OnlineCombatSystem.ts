@@ -6,7 +6,7 @@ import { TargetSelector } from "./TargetSelector";
 import { SkillRotation } from "./SkillRotation";
 import { SkillExecutor } from "./SkillExecutor";
 import { AutoAttackController } from "./AutoAttackController";
-import { CombatEventCallbacks } from "../combat/CombatEventCallbacks";
+import { CombatEventCallbacks } from "./CombatEventCallbacks";
 
 export class OnlineCombatSystem {
 
