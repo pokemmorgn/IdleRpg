@@ -192,12 +192,6 @@ async function spawnTestMobs(room: Colyseus.Room) {
         name: "Dummy A",
         x: 0, y: 0, z: 1
     });
-
-    room.send("spawn_test_monster", {
-        monsterId: "mob_02",
-        name: "Dummy B",
-        x: 0, y: 0, z: 2
-    });
 }
 
 async function startCombat(room: Colyseus.Room) {
@@ -243,48 +237,50 @@ async function startCombat(room: Colyseus.Room) {
 
     console.log("🔌 WebSocket connecté !");
 
-    // ========== FIX ICI ==========
-    room.onMessage("combat_event", (msg) => {
-        console.log("📩 combat_event:", msg);
+// =========================================================
+// 🟢 AJOUTER ICI LE HANDLER DES combat_event
+// =========================================================
+room.onMessage("combat_event", (msg) => {
+    console.log("📩 combat_event:", msg);
 
-        switch (msg.event) {
-            case "hit":
-            case "crit":
-                if (msg.target === "monster") {
-                    const id = msg.targetId;
-                    HUD_MOBS[id] = HUD_MOBS[id] || { hp: msg.maxHp, maxHp: msg.maxHp };
-                    HUD_MOBS[id].hp = msg.remainingHp;
-                    HUD_TARGET = id;
-                }
-                if (msg.target === "player") {
-                    HUD_PLAYER_HP = msg.remainingHp;
-                }
-                break;
+    switch (msg.event) {
+        case "hit":
+        case "crit":
+            if (msg.target === "monster") {
+                const id = msg.targetId;
+                HUD_MOBS[id] = HUD_MOBS[id] || { hp: msg.maxHp, maxHp: msg.maxHp };
+                HUD_MOBS[id].hp = msg.remainingHp;
+                HUD_TARGET = id;
+            }
+            if (msg.target === "player") {
+                HUD_PLAYER_HP = msg.remainingHp;
+            }
+            break;
 
-            case "heal":
-                HUD_PLAYER_HP = msg.hp;
-                break;
+        case "heal":
+            HUD_PLAYER_HP = msg.hp;
+            break;
 
-            case "death":
-                if (msg.entity === "monster") delete HUD_MOBS[msg.entityId];
-                if (msg.entity === "player") HUD_PLAYER_HP = 0;
-                break;
+        case "death":
+            if (msg.entity === "monster") delete HUD_MOBS[msg.entityId];
+            if (msg.entity === "player") HUD_PLAYER_HP = 0;
+            break;
 
-            case "hp_update":
-                if (HUD_MOBS[msg.entityId]) {
-                    HUD_MOBS[msg.entityId].hp = msg.hp;
-                    HUD_MOBS[msg.entityId].maxHp = msg.maxHp;
-                }
-                break;
+        case "hp_update":
+            if (HUD_MOBS[msg.entityId]) {
+                HUD_MOBS[msg.entityId].hp = msg.hp;
+                HUD_MOBS[msg.entityId].maxHp = msg.maxHp;
+            }
+            break;
 
-            case "target_change":
-                HUD_TARGET = msg.targetId || "-";
-                break;
-        }
+        case "target_change":
+            HUD_TARGET = msg.targetId || "-";
+            break;
+    }
 
-        renderHUD();
-    });
-    // ==============================
+    renderHUD();
+});
+// =========================================================
 
     // On attend un peu
     await sleep(300);
