@@ -1,6 +1,6 @@
 /**
- * CLIENT DE TEST COMPLET – COMBAT + HUD + CREATION PERSONNAGE
- * 100% compatible protocole Colyseus.js
+ * CLIENT DE TEST COMPLET – COMBAT + CREATION PERSONNAGE + RESPAWN
+ * Version simplifiée : logs uniquement (pas de HUD)
  */
 
 import * as Colyseus from "colyseus.js";
@@ -24,34 +24,6 @@ const CHARACTER_NAME = "TestCharacter";
 // =====================
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// HUD ================================
-let HUD_PLAYER_HP = 100;
-let HUD_PLAYER_MAXHP = 100;
-
-const HUD_MOBS: Record<string, { hp: number; maxHp: number }> = {};
-let HUD_TARGET = "-";
-
-function renderHUD() {
-    console.clear();
-    console.log("=========================================");
-    console.log("        🟩 COMBAT HUD – IdleRPG           ");
-    console.log("=========================================");
-
-    console.log(`👤 Player: HP ${HUD_PLAYER_HP}/${HUD_PLAYER_MAXHP}`);
-    console.log(`🎯 Target: ${HUD_TARGET}`);
-
-    console.log("\n👹 MOBS :");
-    if (Object.keys(HUD_MOBS).length === 0) {
-        console.log("  Aucun monstre.");
-    } else {
-        for (const [id, mob] of Object.entries(HUD_MOBS)) {
-            console.log(`  - ${id} = ${mob.hp}/${mob.maxHp}`);
-        }
-    }
-
-    console.log("=========================================\n");
 }
 
 // =============================
@@ -237,56 +209,58 @@ async function startCombat(room: Colyseus.Room) {
 
     console.log("🔌 WebSocket connecté !");
 
-// =========================================================
-// 🟢 AJOUTER ICI LE HANDLER DES combat_event
-// =========================================================
-room.onMessage("combat_event", (msg) => {
-    console.log("📩 combat_event:", msg);
+    // ===============================================
+    // 🔥 HANDLER COMBAT_EVENT (simple, sans HUD)
+    // ===============================================
+    room.onMessage("combat_event", async (msg) => {
+        console.log("📩 combat_event:", msg);
 
-    switch (msg.event) {
-        case "hit":
-        case "crit":
-            if (msg.target === "monster") {
-                const id = msg.targetId;
-                HUD_MOBS[id] = HUD_MOBS[id] || { hp: msg.maxHp, maxHp: msg.maxHp };
-                HUD_MOBS[id].hp = msg.remainingHp;
-                HUD_TARGET = id;
-            }
-            if (msg.target === "player") {
-                HUD_PLAYER_HP = msg.remainingHp;
-            }
-            break;
+        switch (msg.event) {
 
-        case "heal":
-            HUD_PLAYER_HP = msg.hp;
-            break;
+            case "hit":
+                if (msg.target === "monster") {
+                    console.log(`🗡 You hit ${msg.targetId} for ${msg.damage} (remaining: ${msg.remainingHp})`);
+                }
+                if (msg.target === "player") {
+                    console.log(`💥 Monster ${msg.monsterId} hit YOU for ${msg.damage} (remaining: ${msg.remainingHp})`);
+                }
+                break;
 
-        case "death":
-            if (msg.entity === "monster") delete HUD_MOBS[msg.entityId];
-            if (msg.entity === "player") HUD_PLAYER_HP = 0;
-            break;
+            case "crit":
+                console.log(`🔥 CRIT! +${msg.damage} vs ${msg.targetId}`);
+                break;
 
-        case "hp_update":
-            if (HUD_MOBS[msg.entityId]) {
-                HUD_MOBS[msg.entityId].hp = msg.hp;
-                HUD_MOBS[msg.entityId].maxHp = msg.maxHp;
-            }
-            break;
+            case "heal":
+                console.log(`💚 Healed: +${msg.amount} HP (now ${msg.hp})`);
+                break;
 
-        case "target_change":
-            HUD_TARGET = msg.targetId || "-";
-            break;
-    }
+            case "death":
+                if (msg.entity === "player") {
+                    console.log("💀 YOU DIED! Respawn in 3s...");
+                    await sleep(3000);
+                    console.log("🔁 Sending respawn request...");
+                    room.send("request_respawn");
+                }
+                if (msg.entity === "monster") {
+                    console.log(`☠ Monster ${msg.entityId} died.`);
+                }
+                break;
 
-    renderHUD();
-});
-// =========================================================
+            case "hp_update":
+                console.log(`❤️ HP update for ${msg.entityId}: ${msg.hp}/${msg.maxHp}`);
+                break;
 
-    // On attend un peu
+            case "target_change":
+                console.log(`🎯 Target changed → ${msg.targetId || "none"}`);
+                break;
+        }
+    });
+
+    // =====================================================
+    // START SEQUENCE
+    // =====================================================
     await sleep(300);
-
     await spawnTestMobs(room);
     await sleep(300);
     await startCombat(room);
-
 })();
