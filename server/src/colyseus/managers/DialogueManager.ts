@@ -4,7 +4,7 @@ import Dialogue, { IDialogue, IDialogueNode, IDialogueCondition, IDialogueAction
 import DialogueInteraction, { IDialogueInteraction } from "../../models/DialogueInteraction";
 import ServerProfile from "../../models/ServerProfile";
 import { GameplayTagManager } from "../../managers/GameplayTagManager";
-
+import { QuestObjectiveManager } from "./QuestObjectiveManager";
 /**
  * DialogueManager - Gère tous les dialogues du jeu
  * Responsabilités :
@@ -16,9 +16,10 @@ import { GameplayTagManager } from "../../managers/GameplayTagManager";
  */
 export class DialogueManager {
   private serverId: string;
-
+  private questObjectiveManager?: QuestObjectiveManager;
   constructor(serverId: string) {
     this.serverId = serverId;
+    this.questObjectiveManager = questObjectiveManager;
   }
 
   /**
@@ -101,6 +102,8 @@ export class DialogueManager {
       );
 
       // 9. Envoyer le dialogue au client
+      // 🔥 Hook quêtes : objectif TALK
+      this.questObjectiveManager?.onTalk(playerState, { npcId });
       client.send("dialogue_node", {
         dialogueId: dialogue.dialogueId,
         npcId: npcId,
@@ -124,12 +127,13 @@ export class DialogueManager {
    * Gère le choix d'un joueur dans un dialogue
    */
   async handleDialogueChoice(
-    client: Client,
-    playerState: PlayerState,
-    dialogueId: string,
-    currentNodeId: string,
-    choiceIndex: number
-  ): Promise<void> {
+  client: Client,
+  playerState: PlayerState,
+  npcId: string,       // <-- AJOUT
+  dialogueId: string,
+  currentNodeId: string,
+  choiceIndex: number
+): Promise<void> {
     try {
       console.log(`💬 [DialogueManager] ${playerState.characterName} choix ${choiceIndex} sur noeud ${currentNodeId}`);
 
@@ -193,7 +197,9 @@ export class DialogueManager {
         playerState.profileId,
         profile
       );
-
+      // 🔥 Hook quêtes : objectif TALK (dans un choix)
+      this.questObjectiveManager?.onTalk(playerState, { npcId });
+      
       // 8. Filtrer les choix selon les conditions
       const availableChoices = await this.filterChoices(
         nextNode.choices,
