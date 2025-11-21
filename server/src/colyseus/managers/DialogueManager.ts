@@ -78,7 +78,8 @@ export class DialogueManager {
       );
 
       const startNodeId = this.determineStartNode(dialogue, interactionCount);
-      const startNode = dialogue.nodes.find(n => n.nodeId === startNodeId);
+      // CORRIGÉ: Ajout du type explicite
+      const startNode = dialogue.nodes.find((n: any) => n.nodeId === startNodeId);
 
       if (!startNode) {
         client.send("error", { message: `Node ${startNodeId} not found` });
@@ -136,13 +137,15 @@ export class DialogueManager {
       
       if (!dialogue) return;
 
-      const currentNode = dialogue.nodes.find(n => n.nodeId === currentNodeId);
+      // CORRIGÉ: Ajout du type explicite
+      const currentNode = dialogue.nodes.find((n: any) => n.nodeId === currentNodeId);
       if (!currentNode) return;
 
       const choice = currentNode.choices[choiceIndex];
       if (!choice) return;
 
-      const nextNode = dialogue.nodes.find(n => n.nodeId === choice.nextNode);
+      // CORRIGÉ: Ajout du type explicite
+      const nextNode = dialogue.nodes.find((n: any) => n.nodeId === choice.nextNode);
       if (!nextNode) return;
 
       const profile = await ServerProfile.findById(playerState.profileId);
