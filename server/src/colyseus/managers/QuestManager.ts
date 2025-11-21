@@ -220,4 +220,66 @@ export class QuestManager {
   private getQuestState(player: PlayerState): QuestState {
     return player.quests;
   }
+  /**
+ * Termine une quête et donne les récompenses.
+ * Appelé quand le joueur rend la quête au PNJ.
+ */
+turnInQuest(client: Client, player: PlayerState, questId: string): void {
+  const quest = this.getQuest(questId);
+  if (!quest) {
+    client.send("error", { message: "Quest not found" });
+    return;
+  }
+
+  const qs = this.getQuestState(player);
+
+  // Vérifier que la quête est bien active et que tous les objectifs sont faits
+  // (Cette logique est déjà dans finishQuest, mais une double vérification ne fait pas de mal)
+  const progress = qs.progress.get(questId);
+  if (!progress || !this.isQuestFullyCompleted(quest, progress)) {
+    client.send("error", { message: "This quest is not ready to be turned in." });
+    return;
+  }
+
+  console.log(`🏁 [QuestManager] ${player.characterName} rend la quête ${questId}`);
+
+  // Ajouter au completed
+  if (!qs.completed.includes(questId)) {
+    qs.completed.push(questId);
+  }
+
+  // Libérer les slots
+  if (qs.activeMain === questId) qs.activeMain = "";
+  if (qs.activeSecondary === questId) qs.activeSecondary = "";
+
+  // Retirer des repeatables
+  const idx = qs.activeRepeatables.indexOf(questId);
+  if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
+
+  // Supprimer progression
+  if (qs.progress.has(questId)) qs.progress.delete(questId);
+
+  // Marquer cooldown
+  if (quest.type === "daily") {
+    qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000);
+  }
+  if (quest.type === "weekly") {
+    qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
+  }
+
+  // Récompenses
+  this.applyRewards(client, player, quest);
+
+  // NOUVEAU: Déclencher la sauvegarde après la remise de la quête
+  this.onSavePlayer?.(player);
+
+  client.send("quest_turned_in", { questId });
+}
+
+// Méthode utilitaire pour vérifier si tous les objectifs sont faits
+private isQuestFullyCompleted(quest: any, progress: QuestProgress): boolean {
+  // La logique exacte dépend de votre structure de quête,
+  // mais généralement, si `progress.step` est supérieur ou égal au nombre d'objectifs...
+  return progress.step >= quest.objectives.length;
+}
 }
