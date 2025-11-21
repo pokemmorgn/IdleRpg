@@ -3,11 +3,13 @@
 import { GameState } from "../schema/GameState";
 import { QuestManager } from "../managers/QuestManager";
 import { DialogueManager } from "../managers/DialogueManager";
-import { IQuest } from "../../models/Quest";
 
 /**
  * TestManager - Gère tous les éléments de test pour le serveur de test
- * (PNJ, quêtes, dialogues, monstres)
+ * (PNJ, dialogues, monstres)
+ *
+ * ⚠️ NOTE : Les quêtes test NE SONT PLUS CRÉÉES ICI.
+ * Elles doivent être seedées dans MongoDB.
  */
 export class TestManager {
   private gameState: GameState;
@@ -31,7 +33,7 @@ export class TestManager {
     console.log("🧪 Chargement des éléments de test...");
     this.spawnTemporaryTestMonsters();
     this.spawnTemporaryTestNPC();
-    this.loadTestQuests();
+    // ❌ loadTestQuests supprimé (quêtes maintenant seedées dans la BDD)
     this.loadTestDialogues();
     console.log("✅ Éléments de test chargés.");
   }
@@ -94,42 +96,6 @@ export class TestManager {
 
     this.gameState.addNPC(npc);
     console.log("🤖 PNJ de test 'npc_test_01' a été spawn.");
-  }
-
-  /* =====================================================================
-      QUÊTES
-     ===================================================================== */
-  private loadTestQuests() {
-    const testQuest: IQuest = {
-      questId: "quest_test_01",
-      name: "Quête du Loup Test",
-      description: "Va tuer un loup de test pour le maître des quêtes.",
-      giverNpcId: "npc_test_01",
-      type: "secondary",
-      requiredLevel: 1,
-      prerequisiteQuestId: "",
-      zoneId: "test_zone",
-      isActive: true,
-      objectives: [
-        {
-          objectiveId: "kill_wolf_obj",
-          type: "kill",
-          count: 1,
-          enemyType: "test_wolf"
-        }
-      ],
-      rewards: {
-        xp: 100,
-        gold: 50,
-        items: [],
-        reputation: []
-      }
-    } as unknown as IQuest; // Cast volontaire pour le mode test
-
-    // Injection dans le questCache du QuestManager
-    this.questManager["questCache"].set(testQuest.questId, testQuest);
-
-    console.log("📜 Quête de test 'quest_test_01' chargée en mémoire.");
   }
 
   /* =====================================================================
