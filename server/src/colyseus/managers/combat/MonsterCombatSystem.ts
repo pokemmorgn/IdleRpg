@@ -15,19 +15,53 @@ export class MonsterCombatSystem {
 
     update(dt: number) {
         this.gameState.monsters.forEach(monster => {
-            if (!monster.isAlive) return;
+            if (monster.isDead) {
+                this.updateRespawn(monster, dt);
+                return;
+            }
             this.updateMonster(monster, dt);
         });
     }
 
+    // ======================================================
+    // 🔄 RESPAWN HANDLER
+    // ======================================================
+    private updateRespawn(monster: MonsterState, dt: number) {
+
+        if (!monster.respawnOnDeath) return;
+
+        monster.respawnTimer += dt;
+
+        if (monster.respawnTimer >= monster.respawnTime * 1000) {
+
+            monster.respawnTimer = 0;
+
+            // Reset vie
+            monster.hp = monster.maxHp;
+            monster.isAlive = true;
+            monster.isDead = false;
+
+            // Reset combat
+            monster.targetPlayerId = "";
+
+            // Retour au spawn
+            monster.posX = monster.spawnX;
+            monster.posZ = monster.spawnZ;
+
+            this.cb.onMonsterRespawn?.(monster);
+        }
+    }
+
+    // ======================================================
+    // 🧠 IA PRINCIPALE
+    // ======================================================
     private updateMonster(monster: MonsterState, dt: number) {
 
         monster.attackTimer += dt;
 
         // ======================================================
-        // 🎯 1) ACQUISITION / VALIDATION DE LA CIBLE
+        // 1) ACQUISITION / VALIDATION DE LA CIBLE
         // ======================================================
-
         if (!monster.targetPlayerId) {
             const nearest = this.findNearestPlayer(monster, monster.aggroRange);
             if (nearest) {
@@ -36,29 +70,32 @@ export class MonsterCombatSystem {
             }
         }
 
-        const target = monster.targetPlayerId
+        let target = monster.targetPlayerId
             ? this.gameState.players.get(monster.targetPlayerId)
             : null;
 
+        // Si la cible n'est plus valide → retour au spawn
         if (!target || !CombatUtils.isValidTarget(target)) {
             monster.targetPlayerId = "";
+            this.returnToSpawn(monster, dt);
             return;
         }
 
         // ======================================================
-        // 📏 2) DISTANCE
+        // 2) DISTANCE
         // ======================================================
         const dist = this.getDistance(monster, target);
 
-        // Trop loin → LOSE AGGRO
+        // Trop loin → LOSE AGGRO + retour au spawn
         if (dist > monster.leashRange) {
             monster.targetPlayerId = "";
             this.cb.onThreatLost?.(monster);
+            this.returnToSpawn(monster, dt);
             return;
         }
 
         // ======================================================
-        // 🏃‍♂️ 3) CHASE si pas dans l’attackRange
+        // 3) CHASE
         // ======================================================
         if (dist > monster.attackRange) {
             this.chase(monster, target, dt);
@@ -66,9 +103,10 @@ export class MonsterCombatSystem {
         }
 
         // ======================================================
-        // 🗡 4) ATTACK si à portée
+        // 4) ATTACK
         // ======================================================
         if (monster.attackTimer >= this.MONSTER_ATTACK_COOLDOWN) {
+
             monster.attackTimer = 0;
 
             const roll = Math.random();
@@ -96,6 +134,7 @@ export class MonsterCombatSystem {
             if (target.hp <= 0 && !target.isDead) {
                 target.isDead = true;
                 target.hp = 0;
+
                 this.cb.onPlayerDeath(target, monster);
                 monster.targetPlayerId = "";
                 this.cb.onThreatLost?.(monster);
@@ -104,13 +143,9 @@ export class MonsterCombatSystem {
     }
 
     // ======================================================
-    // 🏃‍♂️ POURSUTE + ROTATION
+    // 🏃‍♂️ CHASE
     // ======================================================
     private chase(monster: MonsterState, target: PlayerState, dt: number) {
-
-        // ta propriété réelle = speed
-        const moveSpeed = monster.speed * 0.01; // Ajustable selon ton gameplay
-        const step = moveSpeed * (dt / 16);    // dt normalisé pour 60 FPS
 
         const dx = target.posX - monster.posX;
         const dz = target.posZ - monster.posZ;
@@ -121,11 +156,40 @@ export class MonsterCombatSystem {
         const nx = dx / len;
         const nz = dz / len;
 
-        // Déplacement
+        const speed = monster.speed * 0.01;
+        const step = speed * (dt / 16);
+
         monster.posX += nx * step;
         monster.posZ += nz * step;
 
-        // Rotation (Y uniquement)
+        monster.rotY = Math.atan2(nz, nx);
+    }
+
+    // ======================================================
+    // 🏞 RETOUR AU POINT DE SPAWN
+    // ======================================================
+    private returnToSpawn(monster: MonsterState, dt: number) {
+
+        const dx = monster.spawnX - monster.posX;
+        const dz = monster.spawnZ - monster.posZ;
+
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist < 0.1) {
+            // Arrivé
+            monster.rotY = 0;
+            return;
+        }
+
+        const nx = dx / dist;
+        const nz = dz / dist;
+
+        const speed = monster.speed * 0.008;
+        const step = speed * (dt / 16);
+
+        monster.posX += nx * step;
+        monster.posZ += nz * step;
+
         monster.rotY = Math.atan2(nz, nx);
     }
 
@@ -149,9 +213,6 @@ export class MonsterCombatSystem {
         return best;
     }
 
-    // ======================================================
-    // 📏 DISTANCE
-    // ======================================================
     private getDistance(a: MonsterState, b: PlayerState): number {
         const dx = a.posX - b.posX;
         const dy = a.posY - b.posY;
