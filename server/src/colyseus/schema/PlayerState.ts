@@ -185,26 +185,42 @@ export class PlayerState extends Schema {
   loadQuestsFromProfile(questData: any): void {
     if (!questData) return;
 
-    // Vider les données actuelles
+    // RESET
     this.quests.completed.clear();
     this.quests.activeRepeatables.clear();
-    this.quests.progress.clear();
+
+    this.quests.questStep.clear();
+    this.quests.questStartedAt.clear();
+    this.quests.questObjectives.clear();
+
     this.quests.dailyCooldown.clear();
     this.quests.weeklyCooldown.clear();
 
-    // Charger les nouvelles données
+    // LISTS
     questData.completed?.forEach((id: string) => this.quests.completed.push(id));
     this.quests.activeMain = questData.activeMain || "";
     this.quests.activeSecondary = questData.activeSecondary || "";
-    questData.activeRepeatables?.forEach((id: string) => this.quests.activeRepeatables.push(id));
-    
-    // Utiliser une boucle pour les MapSchema
-    for (const [key, value] of Object.entries(questData.progress || {})) {
-      this.quests.progress.set(key, value);
+    questData.activeRepeatables?.forEach((id: string) =>
+      this.quests.activeRepeatables.push(id)
+    );
+
+    // MAPS
+    for (const [key, value] of Object.entries(questData.questStep || {})) {
+      this.quests.questStep.set(key, value as number);
     }
+
+    for (const [key, value] of Object.entries(questData.questStartedAt || {})) {
+      this.quests.questStartedAt.set(key, value as number);
+    }
+
+    for (const [key, value] of Object.entries(questData.questObjectives || {})) {
+      this.quests.questObjectives.set(key, value);
+    }
+
     for (const [key, value] of Object.entries(questData.dailyCooldown || {})) {
       this.quests.dailyCooldown.set(key, value as number);
     }
+
     for (const [key, value] of Object.entries(questData.weeklyCooldown || {})) {
       this.quests.weeklyCooldown.set(key, value as number);
     }
@@ -219,11 +235,16 @@ export class PlayerState extends Schema {
       activeMain: this.quests.activeMain,
       activeSecondary: this.quests.activeSecondary,
       activeRepeatables: Array.from(this.quests.activeRepeatables),
-      progress: Object.fromEntries(this.quests.progress),
+
+      questStep: Object.fromEntries(this.quests.questStep),
+      questStartedAt: Object.fromEntries(this.quests.questStartedAt),
+      questObjectives: Object.fromEntries(this.quests.questObjectives),
+
       dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
     };
   }
+
 
   /**
    * Exporte les stats pour les sauvegarder en BDD
