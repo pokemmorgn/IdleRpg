@@ -1,4 +1,5 @@
-// server/src/colyseus/schema/QuestState.ts
+// Dans QuestState.ts
+
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 
 export class QuestState extends Schema {
@@ -18,10 +19,9 @@ export class QuestState extends Schema {
   @type([ "string" ])
   activeRepeatables = new ArraySchema<string>();
 
-  // MODIFIÉ: On stocke les données de progression directement
-  // au lieu d'un objet QuestProgress.
-  // progress: questId -> { step: number, startedAt: number, progress: { objectiveId: count } }
-  @type({ map: "json" })
+  // MODIFIÉ: On change le type pour débugger
+  // Progression → questId → { step: number, startedAt: number, progress: { [objectiveId]: count } }
+  @type({ map: "json" }) // Gardons "json" pour l'instant, mais si ça ne marche pas, on essaiera autre chose.
   progress = new MapSchema<any>();
 
   // Cooldowns
