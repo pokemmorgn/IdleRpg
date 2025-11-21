@@ -54,11 +54,23 @@ export interface CombatEventCallbacks {
 
     onCastCancel(player: PlayerState, reason: string): void;
 
-    // Nouveau : cast terminé
     onCastEnd?(player: PlayerState, skillId: string): void;
 
-    // Nouveau : cast interrompu (silence, stun, knockback…)
     onCastInterrupted?(player: PlayerState, skillId: string, reason: string): void;
+
+    // =====================================================================
+    // 🆕 SKILL EXECUTION / COOLDOWN
+    // =====================================================================
+    onSkillExecute?(
+        player: PlayerState,
+        skillId: string
+    ): void;
+
+    onCooldown?(
+        player: PlayerState,
+        skillId: string,
+        cooldownEnd: number
+    ): void;
 
     // =====================================================================
     // 🩹 HEAL & BUFF
@@ -180,15 +192,11 @@ export interface CombatEventCallbacks {
         target: MonsterState | PlayerState
     ): void;
 
-    onCombatEnd?(
-        player: PlayerState
-    ): void;
+    onCombatEnd?(player: PlayerState): void;
 
     // =====================================================================
-    // 🤯 CROWD CONTROL (CC)
+    // 🤯 CROWD CONTROL
     // =====================================================================
-
-    // Stun, root, silence, fear, freeze, slow, knockback, snare, disarm…
     onApplyCC?(
         target: PlayerState | MonsterState,
         ccType: string,
@@ -200,7 +208,6 @@ export interface CombatEventCallbacks {
         ccType: string
     ): void;
 
-    // Purge (supprimer buffs) / Dispel (supprimer debuffs)
     onDispel?(
         caster: PlayerState,
         target: PlayerState | MonsterState,
