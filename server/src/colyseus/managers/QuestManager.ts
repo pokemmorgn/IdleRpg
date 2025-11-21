@@ -182,7 +182,7 @@ export class QuestManager {
 
     qs.questStep.set(questId, 0);
     qs.questStartedAt.set(questId, Date.now());
-    qs.questObjectives.set(questId, Object.create(null));
+    qs.questObjectives.set(questId, new MapSchema<number>());
 
     client.send("quest_accepted", { questId });
 
