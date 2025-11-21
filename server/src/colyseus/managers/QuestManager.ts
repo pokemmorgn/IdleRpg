@@ -1,19 +1,16 @@
 import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
+
 import Quest, { IQuest } from "../../models/Quest";
 
+import { QuestState } from "../schema/QuestState";
 import { QuestProgress } from "../schema/QuestProgress";
-import { ArraySchema, MapSchema } from "@colyseus/schema";
 
 /**
  * QuestManager
  * ------------
- * - Charge les quêtes depuis MongoDB
- * - Filtre les quêtes disponibles chez un NPC
- * - Gestion des acceptations
- * - Gestion des validations
- * - Gestion des resets daily/weekly/repeat
+ * Version compatible avec le nouveau système QuestState.
  */
 export class QuestManager {
   private serverId: string;
@@ -55,12 +52,12 @@ export class QuestManager {
      3) Quêtes disponibles pour un NPC
      =========================================================== */
   getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
+    const qs = this.getQuestState(player);
     const available: IQuest[] = [];
 
     for (const quest of this.questCache.values()) {
       if (quest.giverNpcId !== npcId) continue;
-
-      if (!this.isQuestAvailableForPlayer(quest, player)) continue;
+      if (!this.isQuestAvailableForPlayer(quest, player, qs)) continue;
 
       available.push(quest);
     }
@@ -71,7 +68,11 @@ export class QuestManager {
   /* ===========================================================
      4) Conditions d’accès
      =========================================================== */
-  private isQuestAvailableForPlayer(quest: IQuest, player: PlayerState): boolean {
+  private isQuestAvailableForPlayer(
+    quest: IQuest,
+    player: PlayerState,
+    qs: QuestState
+  ): boolean {
 
     // Niveau requis
     if (player.level < quest.requiredLevel) return false;
@@ -79,18 +80,27 @@ export class QuestManager {
     // Zone
     if (quest.zoneId && quest.zoneId !== player.zoneId) return false;
 
-    // Prérequis
+    // Déjà complétée ?
+    if (qs.completed.includes(quest.questId)) return false;
+
+    // Prérequis ?
     if (quest.prerequisiteQuestId) {
-      if (!player.completedQuests?.includes(quest.prerequisiteQuestId)) return false;
+      if (!qs.completed.includes(quest.prerequisiteQuestId)) return false;
     }
 
-    // Slots
-    if (quest.type === "main" && player.activeMainQuest) return false;
-    if (quest.type === "secondary" && player.activeSecondaryQuest) return false;
+    // Slots uniques
+    if (quest.type === "main" && qs.activeMain !== "") return false;
+    if (quest.type === "secondary" && qs.activeSecondary !== "") return false;
 
-    // One-shot
-    if (quest.isOneShot && player.completedQuests?.includes(quest.questId)) {
-      return false;
+    // Daily / Weekly déjà faite ?
+    if (quest.type === "daily") {
+      const ts = qs.dailyCooldowns.get(quest.questId);
+      if (ts && Date.now() < ts) return false;
+    }
+
+    if (quest.type === "weekly") {
+      const ts = qs.weeklyCooldowns.get(quest.questId);
+      if (ts && Date.now() < ts) return false;
     }
 
     return true;
@@ -106,40 +116,31 @@ export class QuestManager {
       return false;
     }
 
-    if (!this.isQuestAvailableForPlayer(quest, player)) {
+    const qs = this.getQuestState(player);
+
+    if (!this.isQuestAvailableForPlayer(quest, player, qs)) {
       client.send("error", { message: "Quest not available" });
       return false;
     }
 
-    // Slots
+    // Affectation dans QuestState
     if (quest.type === "main") {
-      player.activeMainQuest = questId;
+      qs.activeMain = questId;
     } else if (quest.type === "secondary") {
-      player.activeSecondaryQuest = questId;
+      qs.activeSecondary = questId;
     } else {
-      // Repeatable, daily, weekly
-      if (!player.activeRepeatableQuests) {
-        player.activeRepeatableQuests = new ArraySchema<string>();
-      }
-
-      if (!player.activeRepeatableQuests.includes(questId)) {
-        player.activeRepeatableQuests.push(questId);
+      if (!qs.activeRepeatables.includes(questId)) {
+        qs.activeRepeatables.push(questId);
       }
     }
 
     // Progression
-    if (!player.questProgress) {
-      player.questProgress = new MapSchema<QuestProgress>();
-    }
-
     const progress = new QuestProgress();
     progress.step = 0;
     progress.startedAt = Date.now();
-
-    player.questProgress.set(questId, progress);
+    qs.progress.set(questId, progress);
 
     client.send("quest_accepted", { questId });
-
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
 
     return true;
@@ -155,30 +156,32 @@ export class QuestManager {
       return;
     }
 
+    const qs = this.getQuestState(player);
+
     console.log(`🏆 [QuestManager] ${player.characterName} complète ${questId}`);
 
-    // Ajout dans completedQuests
-    if (!player.completedQuests) {
-      player.completedQuests = new ArraySchema<string>();
-    }
-
-    if (!player.completedQuests.includes(questId)) {
-      player.completedQuests.push(questId);
+    // Ajouter au completed
+    if (!qs.completed.includes(questId)) {
+      qs.completed.push(questId);
     }
 
     // Libérer les slots
-    if (player.activeMainQuest === questId) player.activeMainQuest = "";
-    if (player.activeSecondaryQuest === questId) player.activeSecondaryQuest = "";
+    if (qs.activeMain === questId) qs.activeMain = "";
+    if (qs.activeSecondary === questId) qs.activeSecondary = "";
 
-    // Nettoyer activeRepeatableQuests
-    if (player.activeRepeatableQuests?.includes(questId)) {
-      const index = player.activeRepeatableQuests.indexOf(questId);
-      if (index !== -1) player.activeRepeatableQuests.splice(index, 1);
-    }
+    // Retirer des repeatables
+    const idx = qs.activeRepeatables.indexOf(questId);
+    if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
 
     // Supprimer progression
-    if (player.questProgress?.has(questId)) {
-      player.questProgress.delete(questId);
+    if (qs.progress.has(questId)) qs.progress.delete(questId);
+
+    // Marquer cooldown
+    if (quest.type === "daily") {
+      qs.dailyCooldowns.set(questId, Date.now() + 24 * 3600 * 1000);
+    }
+    if (quest.type === "weekly") {
+      qs.weeklyCooldowns.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
     }
 
     // Récompenses
@@ -199,4 +202,10 @@ export class QuestManager {
     if (r.reputation?.length) client.send("reputation_gained", { rep: r.reputation });
   }
 
+  /* ===========================================================
+     UTIL: récupérer le QuestState du joueur
+     =========================================================== */
+  private getQuestState(player: PlayerState): QuestState {
+    return this.gameState.questStates.get(player.profileId);
+  }
 }
