@@ -70,7 +70,37 @@ export class QuestManager {
 
     return available;
   }
-
+  /**
+   * Récupère les quêtes qu'un joueur peut rendre à un NPC
+   * (quêtes actives dont les objectifs sont complétés)
+   */
+  getCompletableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
+    const qs = this.getQuestState(player);
+    const completable: IQuest[] = [];
+  
+    // On parcourt les quêtes ACTIVES du joueur
+    const activeQuests = [
+      qs.activeMain,
+      qs.activeSecondary,
+      ...qs.activeRepeatables
+    ].filter(Boolean); // Filtre les chaînes vides
+  
+    for (const questId of activeQuests) {
+      const quest = this.getQuest(questId);
+      if (!quest) continue;
+  
+      // La quête doit être rendue à ce PNJ spécifique
+      if (quest.giverNpcId !== npcId) continue;
+  
+      // On vérifie si tous les objectifs sont complétés
+      const progress = qs.progress.get(questId);
+      if (progress && this.isQuestFullyCompleted(quest, progress)) {
+        completable.push(quest);
+      }
+    }
+  
+    return completable;
+  }
   /* ===========================================================
      4) Conditions d'accès
      =========================================================== */
@@ -278,8 +308,6 @@ turnInQuest(client: Client, player: PlayerState, questId: string): void {
 
 // Méthode utilitaire pour vérifier si tous les objectifs sont faits
 private isQuestFullyCompleted(quest: any, progress: QuestProgress): boolean {
-  // La logique exacte dépend de votre structure de quête,
-  // mais généralement, si `progress.step` est supérieur ou égal au nombre d'objectifs...
   return progress.step >= quest.objectives.length;
 }
 }
