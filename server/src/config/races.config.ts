@@ -26,10 +26,10 @@ export interface RaceConfig {
 
 export const ALL_RACES: RaceConfig[] = [
   {
-    raceId: "human_elion",
-    nameKey: "race.human_elion.name",
-    descriptionKey: "race.human_elion.description",
-    loreKey: "race.human_elion.lore",
+    raceId: "humans",
+    nameKey: "race.humans.name",
+    descriptionKey: "race.humans.description",
+    loreKey: "race.humans.lore",
     faction: "AURION",
     statsModifiers: {
       primaryPercent: { intelligence: 5 },
@@ -38,10 +38,10 @@ export const ALL_RACES: RaceConfig[] = [
   },
 
   {
-    raceId: "dwarf_rune",
-    nameKey: "race.dwarf_rune.name",
-    descriptionKey: "race.dwarf_rune.description",
-    loreKey: "race.dwarf_rune.lore",
+    raceId: "dwarfs",
+    nameKey: "race.dwarfs.name",
+    descriptionKey: "race.dwarfs.description",
+    loreKey: "race.dwarfs.lore",
     faction: "AURION",
     statsModifiers: {
       computedPercent: {
@@ -64,10 +64,10 @@ export const ALL_RACES: RaceConfig[] = [
   },
 
   {
-    raceId: "sylphide_forest",
-    nameKey: "race.sylphide_forest.name",
-    descriptionKey: "race.sylphide_forest.description",
-    loreKey: "race.sylphide_forest.lore",
+    raceId: "noxariens",
+    nameKey: "race.noxariens.name",
+    descriptionKey: "race.noxariens.description",
+    loreKey: "race.noxariens.lore",
     faction: "AURION",
     statsModifiers: {
       primaryPercent: { spirit: 5 },
@@ -76,10 +76,10 @@ export const ALL_RACES: RaceConfig[] = [
   },
 
   {
-    raceId: "varkyns_beast",
-    nameKey: "race.varkyns_beast.name",
-    descriptionKey: "race.varkyns_beast.description",
-    loreKey: "race.varkyns_beast.lore",
+    raceId: "varkyns",
+    nameKey: "race.varkyns.name",
+    descriptionKey: "race.varkyns.description",
+    loreKey: "race.varkyns.lore",
     faction: "OMBRE",
     statsModifiers: {
       primaryPercent: { strength: 5 },
@@ -88,10 +88,10 @@ export const ALL_RACES: RaceConfig[] = [
   },
 
   {
-    raceId: "arkanids_insect",
-    nameKey: "race.arkanids_insect.name",
-    descriptionKey: "race.arkanids_insect.description",
-    loreKey: "race.arkanids_insect.lore",
+    raceId: "arkanyds",
+    nameKey: "race.arkanyds.name",
+    descriptionKey: "race.arkanyds.description",
+    loreKey: "race.arkanyds.lore",
     faction: "OMBRE",
     statsModifiers: {
       primaryPercent: { agility: 5 },
@@ -100,10 +100,10 @@ export const ALL_RACES: RaceConfig[] = [
   },
 
   {
-    raceId: "ghrannite_stone",
-    nameKey: "race.ghrannite_stone.name",
-    descriptionKey: "race.ghrannite_stone.description",
-    loreKey: "race.ghrannite_stone.lore",
+    raceId: "orcs",
+    nameKey: "race.orcs.name",
+    descriptionKey: "race.orcs.description",
+    loreKey: "race.orcs.lore",
     faction: "OMBRE",
     statsModifiers: {
       primaryPercent: { endurance: 5 },
@@ -112,10 +112,10 @@ export const ALL_RACES: RaceConfig[] = [
   },
 
   {
-    raceId: "selenite_lunar",
-    nameKey: "race.selenite_lunar.name",
-    descriptionKey: "race.selenite_lunar.description",
-    loreKey: "race.selenite_lunar.lore",
+    raceId: "trolls",
+    nameKey: "race.trolls.name",
+    descriptionKey: "race.trolls.description",
+    loreKey: "race.trolls.lore",
     faction: "OMBRE",
     statsModifiers: {
       primaryPercent: { wisdom: 5 },
