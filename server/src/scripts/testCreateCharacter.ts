@@ -4,7 +4,6 @@
  */
 
 import * as Colyseus from "colyseus.js";
-import fetch from "node-fetch";
 
 // =====================
 // CONSTANTES
@@ -242,7 +241,7 @@ async function startCombat(room: Colyseus.Room) {
 
     const room = await client.consumeSeatReservation(mm);
 
-    console.log("🔌 WebSocket connecté ! Room:", room.id);
+    console.log("🔌 WebSocket connecté !");
 
     // MESSAGES
     room.onMessage("combat_log", (log) => {
