@@ -7,7 +7,7 @@ import { NPCState } from "../schema/NPCState";
 import NPC from "../../models/NPC";
 
 import { DialogueManager } from "./DialogueManager";
-import { QuestManager } from "./QuestManager";
+import { QuestManager, IQuest } from "./QuestManager";
 import { QuestObjectiveManager } from "./QuestObjectiveManager";
 
 /**
