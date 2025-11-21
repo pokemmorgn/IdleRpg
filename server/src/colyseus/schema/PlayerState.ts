@@ -1,34 +1,100 @@
-import { Schema, type } from "@colyseus/schema";
-import { QuestState } from "./QuestState";
-import { CombatState } from "./CombatState";
-import { PositionState } from "./PositionState";
+import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 
 /**
- * Schema principal : PlayerState
- * Réduit → sous-schemas obligatoires pour éviter la limite de 64 champs
+ * État d'un joueur connecté + stats de combat synchronisées.
+ * Version optimisée < 64 champs.
  */
 export class PlayerState extends Schema {
 
-  // ===== IDENTIFIANTS =====
+  // ===== IDENTITÉ =====
   @type("string") sessionId: string = "";
   @type("string") playerId: string = "";
   @type("string") profileId: string = "";
   @type("number") characterSlot: number = 1;
 
-  // ===== INFOS PERSO =====
+  // ===== INFO PERSO =====
   @type("string") characterName: string = "";
   @type("number") level: number = 1;
   @type("string") class: string = "";
   @type("string") race: string = "";
 
-  // ===== TIMERS / ÉTAT =====
+  // ===== CONNEXION =====
   @type("number") connectedAt: number = 0;
   @type("number") lastActivity: number = 0;
 
-  // ===== SOUS SCHÉMAS =====
-  @type(CombatState) combat: CombatState = new CombatState();
-  @type(PositionState) position: PositionState = new PositionState();
-  @type(QuestState) quests: QuestState = new QuestState();
+  // ===== VIE =====
+  @type("number") hp: number = 100;
+  @type("number") maxHp: number = 100;
+
+  // ===== RESSOURCE =====
+  @type("number") resource: number = 100;
+  @type("number") maxResource: number = 100;
+
+  @type("number") manaRegen: number = 0;
+  @type("number") rageRegen: number = 0;
+  @type("number") energyRegen: number = 0;
+
+  // ===== COMBAT BASE =====
+  @type("number") attackPower: number = 10;
+  @type("number") spellPower: number = 10;
+  @type("number") attackSpeed: number = 2.5;
+
+  @type("number") criticalChance: number = 0;
+  @type("number") criticalDamage: number = 150;
+
+  @type("number") damageReduction: number = 0;
+  @type("number") armor: number = 0;
+  @type("number") magicResistance: number = 0;
+  @type("number") penetration: number = 0;
+  @type("number") spellPenetration: number = 0;
+  @type("number") precision: number = 0;
+  @type("number") evasion: number = 0;
+  @type("number") tenacity: number = 0;
+  @type("number") lifesteal: number = 0;
+
+  // ===== COMBAT =====
+  @type("boolean") inCombat: boolean = false;
+  @type("string") targetMonsterId: string = "";
+  @type("string") lastAttackerId: string = "";
+
+  @type("number") attackTimer: number = 0;
+  @type("number") gcdRemaining: number = 0;
+  @type("number") autoAttackTimer: number = 0;
+
+  @type("number") castLockRemaining: number = 0;
+  @type("number") animationLockRemaining: number = 0;
+  @type("string") currentCastingSkillId: string = "";
+  @type("string") currentAnimationLockType: string = "none";
+
+  @type({ map: "number" }) cooldowns = new MapSchema<number>();
+  @type({ map: "number" }) activeBuffs = new MapSchema<number>();
+
+  @type(["string"]) skillBar = new ArraySchema<string>();
+  @type({ map: "json" }) skills = new MapSchema<any>();
+  @type("string") queuedSkill: string = "";
+
+  // ===== MOUVEMENT =====
+  @type("string") zoneId: string = "default";
+  @type("number") posX: number = 0;
+  @type("number") posY: number = 0;
+  @type("number") posZ: number = 0;
+
+  @type("number") lastMovementTime: number = 0;
+
+  // ===== AFK =====
+  @type("number") afkRefX: number = 0;
+  @type("number") afkRefY: number = 0;
+  @type("number") afkRefZ: number = 0;
+
+  @type("boolean") isAFK: boolean = false;
+  @type("boolean") isDead: boolean = false;
+  @type("number") deathTimer: number = 0;
+
+  @type("number") lastAFKCombatCheck: number = 0;
+
+  // ===== CONSOMMABLES =====
+  @type("number") potionHP: number = 10;
+  @type("number") food: number = 20;
 
   constructor(
     sessionId: string,
@@ -41,18 +107,68 @@ export class PlayerState extends Schema {
     characterRace: string
   ) {
     super();
-
     this.sessionId = sessionId;
     this.playerId = playerId;
     this.profileId = profileId;
     this.characterSlot = characterSlot;
-
     this.characterName = characterName;
     this.level = level;
     this.class = characterClass;
     this.race = characterRace;
-
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
+  }
+
+  updateCombatTimers(dt: number) {
+    if (this.isDead || this.isAFK) return;
+
+    if (this.gcdRemaining > 0)
+      this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
+
+    if (this.castLockRemaining > 0) {
+      this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
+      if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
+    }
+
+    if (this.animationLockRemaining > 0) {
+      this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
+      if (this.animationLockRemaining === 0)
+        this.currentAnimationLockType = "none";
+    }
+
+    if (this.autoAttackTimer < this.attackSpeed * 1000)
+      this.autoAttackTimer += dt;
+  }
+
+  loadStatsFromProfile(stats: any) {
+    this.hp = stats.hp;
+    this.maxHp = stats.maxHp;
+
+    this.resource = stats.resource;
+    this.maxResource = stats.maxResource;
+
+    this.manaRegen = stats.manaRegen;
+    this.rageRegen = stats.rageRegen;
+    this.energyRegen = stats.energyRegen;
+
+    this.attackPower = stats.attackPower;
+    this.spellPower = stats.spellPower;
+    this.attackSpeed = stats.attackSpeed;
+
+    this.criticalChance = stats.criticalChance;
+    this.criticalDamage = stats.criticalDamage;
+
+    this.damageReduction = stats.damageReduction;
+
+    this.moveSpeed = stats.moveSpeed;
+
+    this.armor = stats.armor;
+    this.magicResistance = stats.magicResistance;
+    this.precision = stats.precision;
+    this.evasion = stats.evasion;
+    this.penetration = stats.penetration;
+    this.tenacity = stats.tenacity;
+    this.lifesteal = stats.lifesteal;
+    this.spellPenetration = stats.spellPenetration;
   }
 }
