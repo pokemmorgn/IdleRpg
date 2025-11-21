@@ -1,3 +1,4 @@
+// server/src/colyseus/managers/NPCManager.ts
 import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
@@ -36,8 +37,13 @@ export class NPCManager {
     this.questManager = questManager;
     this.questObjectiveManager = questObjectiveManager;
 
-    // On injecte QuestObjectiveManager dans DialogueManager
-    this.dialogueManager = new DialogueManager(serverId, questObjectiveManager);
+    // On injecte QuestObjectiveManager, QuestManager et GameState dans DialogueManager
+    this.dialogueManager = new DialogueManager(
+      serverId, 
+      questObjectiveManager,
+      questManager, // AJOUT: Passage du QuestManager
+      gameState      // AJOUT: Passage du GameState
+    );
   }
 
   /**
@@ -186,5 +192,30 @@ export class NPCManager {
     if (success) {
       console.log(`📘 [NPCManager] Quête ${questId} acceptée par ${playerState.characterName}`);
     }
+  }
+
+  /**
+   * Gestion des choix de dialogue
+   */
+  handleDialogueChoice(
+    client: Client,
+    playerState: PlayerState,
+    message: any
+  ): void {
+    const { dialogueId, currentNodeId, choiceIndex, npcId } = message;
+
+    if (!dialogueId || currentNodeId === undefined || choiceIndex === undefined) {
+      client.send("error", { message: "Missing dialogue parameters" });
+      return;
+    }
+
+    this.dialogueManager.handleDialogueChoice(
+      client,
+      playerState,
+      dialogueId,
+      currentNodeId,
+      choiceIndex,
+      npcId
+    );
   }
 }
