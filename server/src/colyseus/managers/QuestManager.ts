@@ -1,3 +1,4 @@
+// server/src/colyseus/managers/QuestManager.ts
 import { Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
@@ -94,8 +95,8 @@ export class QuestManager {
       if (quest.giverNpcId !== npcId) continue;
 
       // On vérifie si tous les objectifs sont complétés
-      const progressData = qs.progress.get(questId);
-      if (progressData && this.isQuestFullyCompleted(quest, progressData)) {
+      const objectivesData = player.quests.questObjectives.get(questId);
+      if (objectivesData && this.isQuestFullyCompleted(quest, objectivesData)) {
         completable.push(quest);
       }
     }
@@ -172,14 +173,12 @@ export class QuestManager {
       }
     }
 
-    // MODIFIÉ: On crée un objet de progression simple
-    const progressData = {
-      step: 0,
-      startedAt: Date.now(),
-    //  progress: {} // Commence avec une progression vide
-    };
-
-    qs.progress.set(questId, progressData);
+    // MODIFIÉ: On stocke la progression de manière "aplatie"
+    // On initialise le step et les objectifs
+    player.quests.questStep.set(questId, 0);
+    player.quests.questStartedAt.set(questId, Date.now());
+    // On initialise la map des objectifs à vide
+    player.quests.questObjectives.set(questId, {});
 
     client.send("quest_accepted", { questId });
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
@@ -217,8 +216,10 @@ export class QuestManager {
     const idx = qs.activeRepeatables.indexOf(questId);
     if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
 
-    // Supprimer progression
-    if (qs.progress.has(questId)) qs.progress.delete(questId);
+    // MODIFIÉ: Nettoyer les données de progression "aplaties"
+    player.quests.questStep.delete(questId);
+    player.quests.questStartedAt.delete(questId);
+    player.quests.questObjectives.delete(questId);
 
     // Marquer cooldown
     if (quest.type === "daily") {
@@ -251,8 +252,8 @@ export class QuestManager {
     const qs = this.getQuestState(player);
 
     // Vérifier que la quête est bien active et que tous les objectifs sont faits
-    const progressData = qs.progress.get(questId);
-    if (!progressData || !this.isQuestFullyCompleted(quest, progressData)) {
+    const objectivesData = player.quests.questObjectives.get(questId);
+    if (!objectivesData || !this.isQuestFullyCompleted(quest, objectivesData)) {
       client.send("error", { message: "This quest is not ready to be turned in." });
       return;
     }
@@ -272,8 +273,10 @@ export class QuestManager {
     const idx = qs.activeRepeatables.indexOf(questId);
     if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
 
-    // Supprimer progression
-    if (qs.progress.has(questId)) qs.progress.delete(questId);
+    // MODIFIÉ: Nettoyer les données de progression "aplaties"
+    player.quests.questStep.delete(questId);
+    player.quests.questStartedAt.delete(questId);
+    player.quests.questObjectives.delete(questId);
 
     // Marquer cooldown
     if (quest.type === "daily") {
@@ -314,10 +317,9 @@ export class QuestManager {
   /**
    * Méthode utilitaire pour vérifier si tous les objectifs sont faits
    */
-  private isQuestFullyCompleted(quest: any, progressData: any): boolean {
-    // La logique exacte dépend de votre structure de quête,
-    // mais généralement, si `progressData.step` est supérieur ou égal au nombre d'objectifs...
-    if (!progressData) return false;
-    return progressData.step >= quest.objectives.length;
+  private isQuestFullyCompleted(quest: any, objectivesData: any): boolean {
+    if (!objectivesData) return false;
+    const step = player.quests.questStep.get(quest.id) || 0;
+    return step >= quest.objectives.length;
   }
 }
