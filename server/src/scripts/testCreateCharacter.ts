@@ -259,8 +259,6 @@ async function startCombat(room: Colyseus.Room) {
     // =====================================================
     // START SEQUENCE
     // =====================================================
-    await sleep(300);
-    await spawnTestMobs(room);
-    await sleep(300);
-    await startCombat(room);
+await sleep(300);
+await startCombat(room);
 })();
