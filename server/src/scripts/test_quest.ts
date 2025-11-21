@@ -196,14 +196,17 @@ async function testQuestSystem(room: Colyseus.Room) {
     console.log(`✔ ${availableQuests.length} quête(s) disponible(s).`);
 
 
+    
     // --- ÉTAPE 2: Accepter la quête ---
     console.log("\n--- ÉTAPE 2: Acceptation de la quête ---");
     room.send("npc_accept_quest", { npcId: TEST_NPC_ID, questId: TEST_QUEST_ID });
-    await sleep(1000);
+    await sleep(2000); // AJOUT: On augmente la pause à 2 secondes
     
     // On vérifie que la quête n'est plus disponible
+    console.log("\n--- Vérification de l'état du joueur ---");
     room.send("npc_interact", { npcId: TEST_NPC_ID });
     await sleep(1000);
+    
     if (availableQuests.some(q => q.questId === TEST_QUEST_ID)) {
         console.error("❌ Échec du test : La quête acceptée est toujours dans la liste des disponibles !");
         return;
