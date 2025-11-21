@@ -163,7 +163,7 @@ async function createCharacter(token: string, race: string, classId: string) {
 async function reserveSeat(token: string, profile: any) {
     console.log("→ Matchmaking Colyseus…");
 
-    const res = await fetch(`${API_URL}/matchmaking/jjoin-world`, {
+    const res = await fetch(`${API_URL}/matchmaking/join-world`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
