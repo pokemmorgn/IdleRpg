@@ -10,17 +10,23 @@ import { QuestProgress } from "../schema/QuestProgress";
 /**
  * QuestManager
  * ------------
- * Version compatible avec le nouveau système QuestState.
+ * Version compatible avec le nouveau système QuestState et le callback de sauvegarde.
  */
 export class QuestManager {
   private serverId: string;
   private gameState: GameState;
-
   private questCache: Map<string, IQuest> = new Map();
+  private onSavePlayer?: (player: PlayerState) => Promise<void>; // AJOUT: Callback de sauvegarde
 
-  constructor(serverId: string, gameState: GameState) {
+  // MODIFIÉ: Le constructeur accepte maintenant le callback de sauvegarde
+  constructor(
+    serverId: string,
+    gameState: GameState,
+    onSavePlayer?: (player: PlayerState) => Promise<void>
+  ) {
     this.serverId = serverId;
     this.gameState = gameState;
+    this.onSavePlayer = onSavePlayer; // Stocker le callback
   }
 
   /* ===========================================================
@@ -94,12 +100,12 @@ export class QuestManager {
 
     // Daily / Weekly déjà faite ?
     if (quest.type === "daily") {
-      const ts = qs.dailyCooldown.get(quest.questId); // Corrigé: dailyCooldowns -> dailyCooldown
+      const ts = qs.dailyCooldown.get(quest.questId);
       if (ts && Date.now() < ts) return false;
     }
 
     if (quest.type === "weekly") {
-      const ts = qs.weeklyCooldown.get(quest.questId); // Corrigé: weeklyCooldowns -> weeklyCooldown
+      const ts = qs.weeklyCooldown.get(quest.questId);
       if (ts && Date.now() < ts) return false;
     }
 
@@ -143,6 +149,9 @@ export class QuestManager {
     client.send("quest_accepted", { questId });
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
 
+    // NOUVEAU: Déclencher la sauvegarde après l'acceptation
+    this.onSavePlayer?.(player);
+
     return true;
   }
 
@@ -178,14 +187,17 @@ export class QuestManager {
 
     // Marquer cooldown
     if (quest.type === "daily") {
-      qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000); // Corrigé: dailyCooldowns -> dailyCooldown
+      qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000);
     }
     if (quest.type === "weekly") {
-      qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000); // Corrigé: weeklyCooldowns -> weeklyCooldown
+      qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
     }
 
     // Récompenses
     this.applyRewards(client, player, quest);
+
+    // NOUVEAU: Déclencher la sauvegarde après la complétion
+    this.onSavePlayer?.(player);
 
     client.send("quest_completed", { questId });
   }
@@ -206,6 +218,6 @@ export class QuestManager {
      UTIL: récupérer le QuestState du joueur
      =========================================================== */
   private getQuestState(player: PlayerState): QuestState {
-    return player.quests; // Corrigé: gameState.questStates -> player.quests
+    return player.quests;
   }
 }
