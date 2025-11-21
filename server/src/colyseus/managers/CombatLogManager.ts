@@ -4,12 +4,12 @@ import { MonsterState } from "../schema/MonsterState";
 
 export interface CombatLogEntry {
     timestamp: number;
-    action: string;          // "hit" | "crit" | "miss" | "dodge" | ...
+    action: string;
     actorId: string;
     actorType: "player" | "monster";
     targetId: string;
     targetType: "player" | "monster";
-    value?: number;          // dmg/heal
+    value?: number;
     skillId?: string;
     zoneId?: string;
 }
@@ -22,7 +22,7 @@ export class CombatLogManager {
     ) {}
 
     // ---------------------------------------
-    // 🌍 ENVOI AUX JOUEURS DANS UNE ZONE
+    // Envoi zone
     // ---------------------------------------
     private sendToZone(zoneId: string, entry: CombatLogEntry) {
         for (const [_, player] of this.state.players) {
@@ -33,15 +33,12 @@ export class CombatLogManager {
     }
 
     // ---------------------------------------
-    // 🎯 ENVOI À UN SEUL JOUEUR
+    // Envoi joueur unique
     // ---------------------------------------
     private sendToPlayer(player: PlayerState, entry: CombatLogEntry) {
         this.broadcast(player.sessionId, "combat_log", entry);
     }
 
-    // ---------------------------------------
-    // 🧱 CRÉATEUR DE LOG
-    // ---------------------------------------
     private createEntry(params: Partial<CombatLogEntry>): CombatLogEntry {
         return {
             timestamp: Date.now(),
@@ -56,16 +53,18 @@ export class CombatLogManager {
         };
     }
 
-    // ============================================================
-    // 🔥 API PUBLIQUE – APPELÉE PAR CombatManager / Skills / AI
-    // ============================================================
-
-    // ---------------------------------------
-    // 🗡️ Touché (autos / skills)
-    // ---------------------------------------
-    hit(player: PlayerState, monster: MonsterState, damage: number, skillId?: string) {
+    // ==========================================================
+    // PLAYER → MONSTER HIT
+    // ==========================================================
+    hit(
+        player: PlayerState,
+        monster: MonsterState,
+        damage: number,
+        skillId?: string,
+        crit: boolean = false
+    ) {
         const entry = this.createEntry({
-            action: "hit",
+            action: crit ? "crit" : "hit",
             actorId: player.profileId,
             actorType: "player",
             targetId: monster.monsterId,
@@ -78,56 +77,9 @@ export class CombatLogManager {
         this.sendToZone(player.zoneId, entry);
     }
 
-    // ---------------------------------------
-    // 💥 Coup critique
-    // ---------------------------------------
-    crit(player: PlayerState, monster: MonsterState, damage: number, skillId?: string) {
-        const entry = this.createEntry({
-            action: "crit",
-            actorId: player.profileId,
-            actorType: "player",
-            targetId: monster.monsterId,
-            targetType: "monster",
-            value: damage,
-            skillId,
-            zoneId: player.zoneId
-        });
-
-        this.sendToZone(player.zoneId, entry);
-    }
-
-    // ---------------------------------------
-    // 🛑 Miss / Dodge
-    // ---------------------------------------
-    miss(player: PlayerState, monster: MonsterState) {
-        const entry = this.createEntry({
-            action: "miss",
-            actorId: player.profileId,
-            actorType: "player",
-            targetId: monster.monsterId,
-            targetType: "monster",
-            zoneId: player.zoneId
-        });
-
-        this.sendToZone(player.zoneId, entry);
-    }
-
-    dodge(monster: MonsterState, player: PlayerState) {
-        const entry = this.createEntry({
-            action: "dodge",
-            actorId: monster.monsterId,
-            actorType: "monster",
-            targetId: player.profileId,
-            targetType: "player",
-            zoneId: player.zoneId
-        });
-
-        this.sendToPlayer(player, entry);
-    }
-
-    // ---------------------------------------
-    // 🐺 Dégâts du monstre au joueur
-    // ---------------------------------------
+    // ==========================================================
+    // MONSTER HIT PLAYER
+    // ==========================================================
     monsterHit(monster: MonsterState, player: PlayerState, damage: number) {
         const entry = this.createEntry({
             action: "monster_hit",
@@ -142,9 +94,9 @@ export class CombatLogManager {
         this.sendToZone(player.zoneId, entry);
     }
 
-    // ---------------------------------------
-    // 💀 Mort de monstre
-    // ---------------------------------------
+    // ==========================================================
+    // MONSTER DEATH
+    // ==========================================================
     monsterDeath(monster: MonsterState, killer: PlayerState) {
         const entry = this.createEntry({
             action: "monster_death",
@@ -158,9 +110,9 @@ export class CombatLogManager {
         this.sendToZone(killer.zoneId, entry);
     }
 
-    // ---------------------------------------
-    // ⚰️ Mort du joueur
-    // ---------------------------------------
+    // ==========================================================
+    // PLAYER DEATH
+    // ==========================================================
     playerDeath(player: PlayerState, monster: MonsterState) {
         const entry = this.createEntry({
             action: "player_death",
@@ -168,6 +120,41 @@ export class CombatLogManager {
             actorType: "monster",
             targetId: player.profileId,
             targetType: "player",
+            zoneId: player.zoneId
+        });
+
+        this.sendToZone(player.zoneId, entry);
+    }
+
+    // ==========================================================
+    // CAST START
+    // ==========================================================
+    castStart(player: PlayerState, skillId: string) {
+        const entry = this.createEntry({
+            action: "cast_start",
+            actorId: player.profileId,
+            actorType: "player",
+            targetId: "",
+            targetType: "monster",
+            skillId,
+            zoneId: player.zoneId
+        });
+
+        this.sendToZone(player.zoneId, entry);
+    }
+
+    // ==========================================================
+    // CAST CANCEL
+    // ==========================================================
+    castCancel(player: PlayerState, reason: string) {
+        const entry = this.createEntry({
+            action: "cast_cancel",
+            actorId: player.profileId,
+            actorType: "player",
+            targetId: "",
+            targetType: "monster",
+            value: undefined,
+            skillId: reason,
             zoneId: player.zoneId
         });
 
