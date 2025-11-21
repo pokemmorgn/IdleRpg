@@ -1,8 +1,9 @@
+// server/src/colyseus/schema/PlayerState.ts
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 
 /**
- * État d'un joueur connecté + stats de combat synchronisées.
+ * État d'un joueur connecté + stats synchronisées.
  */
 export class PlayerState extends Schema {
 
@@ -12,7 +13,7 @@ export class PlayerState extends Schema {
   @type("string") profileId: string = "";
   @type("number") characterSlot: number = 1;
 
-  // ===== INFO PERSO =====
+  // ===== INFO =====
   @type("string") characterName: string = "";
   @type("number") level: number = 1;
   @type("string") class: string = "";
@@ -29,7 +30,6 @@ export class PlayerState extends Schema {
   // ===== RESSOURCE =====
   @type("number") resource: number = 100;
   @type("number") maxResource: number = 100;
-
   @type("number") manaRegen: number = 0;
   @type("number") rageRegen: number = 0;
   @type("number") energyRegen: number = 0;
@@ -60,9 +60,9 @@ export class PlayerState extends Schema {
   @type("number") attackTimer: number = 0;
   @type("number") gcdRemaining: number = 0;
   @type("number") autoAttackTimer: number = 0;
-
   @type("number") castLockRemaining: number = 0;
   @type("number") animationLockRemaining: number = 0;
+
   @type("string") currentCastingSkillId: string = "";
   @type("string") currentAnimationLockType: string = "none";
 
@@ -93,8 +93,7 @@ export class PlayerState extends Schema {
   @type("number") lastAFKCombatCheck: number = 0;
 
   // ===== QUÊTES =====
-  @type(QuestState)
-  quests: QuestState = new QuestState();
+  @type(QuestState) quests: QuestState = new QuestState();
 
   // ===== CONSOMMABLES =====
   @type("number") potionHP: number = 10;
@@ -124,7 +123,7 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // COMBAT TIMERS
+  // COMBAT UPDATE
   // ===========================================================
   updateCombatTimers(dt: number) {
     if (this.isDead || this.isAFK) return;
@@ -139,8 +138,7 @@ export class PlayerState extends Schema {
 
     if (this.animationLockRemaining > 0) {
       this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
-      if (this.animationLockRemaining === 0)
-        this.currentAnimationLockType = "none";
+      if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
     }
 
     if (this.autoAttackTimer < this.attackSpeed * 1000)
@@ -183,20 +181,18 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // QUÊTES : LOAD
+  // LOAD QUESTS (★★★ CORRIGÉ ★★★)
   // ===========================================================
   loadQuestsFromProfile(questData: any): void {
 
-    // === AUCUNE SAVE (mode test) ===
     if (!questData) {
       this.quests = new QuestState();
       return;
     }
 
-    // === RESET PROPRE ===
     this.quests = new QuestState();
 
-    // === LISTS ===
+    // LISTS
     questData.completed?.forEach((id: string) =>
       this.quests.completed.push(id)
     );
@@ -208,26 +204,37 @@ export class PlayerState extends Schema {
       this.quests.activeRepeatables.push(id)
     );
 
-    // === MAPS ===
+    // MAP: questStep / questStartedAt
     Object.entries(questData.questStep || {}).forEach(([k, v]) =>
       this.quests.questStep.set(k, v as number)
     );
-
     Object.entries(questData.questStartedAt || {}).forEach(([k, v]) =>
       this.quests.questStartedAt.set(k, v as number)
     );
 
-    Object.entries(questData.questObjectives || {}).forEach(([k, v]) =>
-      this.quests.questObjectives.set(k, v)
-    );
-
+    // MAP: cooldowns
     Object.entries(questData.dailyCooldown || {}).forEach(([k, v]) =>
       this.quests.dailyCooldown.set(k, v as number)
     );
-
     Object.entries(questData.weeklyCooldown || {}).forEach(([k, v]) =>
       this.quests.weeklyCooldown.set(k, v as number)
     );
+
+    // ===========================================================
+    // QUEST OBJECTIVES : JSON → MapSchema<MapSchema<number>>
+    // ===========================================================
+    Object.entries(questData.questObjectives || {}).forEach(([questId, raw]) => {
+      const innerMap = new MapSchema<number>();
+
+      if (raw && typeof raw === "object") {
+        Object.entries(raw as Record<string, number>)
+          .forEach(([objectiveId, count]) => {
+            innerMap.set(objectiveId, count ?? 0);
+          });
+      }
+
+      this.quests.questObjectives.set(questId, innerMap);
+    });
   }
 
   // ===========================================================
@@ -242,7 +249,13 @@ export class PlayerState extends Schema {
 
       questStep: Object.fromEntries(this.quests.questStep),
       questStartedAt: Object.fromEntries(this.quests.questStartedAt),
-      questObjectives: Object.fromEntries(this.quests.questObjectives),
+
+      questObjectives: Object.fromEntries(
+        [...this.quests.questObjectives].map(([qid, map]) => [
+          qid,
+          Object.fromEntries(map)
+        ])
+      ),
 
       dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
