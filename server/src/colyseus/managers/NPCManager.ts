@@ -14,7 +14,7 @@ import { QuestObjectiveManager } from "./QuestObjectiveManager";
  * NPCManager - Gère tous les NPC d'un serveur
  * Connecté aux systèmes :
  *  - DialogueManager (dialogues)
- *  - QuestManager (accepter/afficher quêtes)
+ *  - QuestManager (accepter/afficher/rendre quêtes)
  *  - QuestObjectiveManager (TALK objective)
  */
 export class NPCManager {
@@ -41,8 +41,8 @@ export class NPCManager {
     this.dialogueManager = new DialogueManager(
       serverId, 
       questObjectiveManager,
-      questManager, // AJOUT: Passage du QuestManager
-      gameState      // AJOUT: Passage du GameState
+      questManager,
+      gameState
     );
   }
 
@@ -157,15 +157,27 @@ export class NPCManager {
         playerState
       );
 
+      // NOUVEAU: Récupérer les quêtes prêtes à être rendues
+      const completableQuests = this.questManager.getCompletableQuestsForNPC(
+        npc.npcId,
+        playerState
+      );
+
+      // MODIFIÉ: On envoie les deux listes
       client.send("npc_quests", {
         npcId: npc.npcId,
         npcName: npc.name,
-        quests: availableQuests.map(q => ({
+        availableQuests: availableQuests.map(q => ({
           questId: q.questId,
           name: q.name,
           description: q.description,
           type: q.type,
           requiredLevel: q.requiredLevel,
+          rewards: q.rewards
+        })),
+        completableQuests: completableQuests.map(q => ({ // NOUVEAU
+          questId: q.questId,
+          name: q.name,
           rewards: q.rewards
         }))
       });
@@ -192,6 +204,24 @@ export class NPCManager {
     if (success) {
       console.log(`📘 [NPCManager] Quête ${questId} acceptée par ${playerState.characterName}`);
     }
+  }
+
+  /**
+   * NOUVEAU: Rendre une quête par le joueur
+   */
+  handleTurnInQuest(client: Client, playerState: PlayerState, message: any): void {
+    const { questId, npcId } = message;
+
+    if (!questId || !npcId) {
+      client.send("error", { message: "Missing questId or npcId" });
+      return;
+    }
+
+    // Le QuestManager se chargera de valider que la quête est bien complétée
+    // et que le PNJ est le bon (si nécessaire)
+    this.questManager.turnInQuest(client, playerState, questId);
+
+    console.log(`🏁 [NPCManager] Tentative de rendre la quête ${questId} par ${playerState.characterName}`);
   }
 
   /**
