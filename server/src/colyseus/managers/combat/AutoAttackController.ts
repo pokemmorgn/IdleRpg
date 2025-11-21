@@ -29,7 +29,7 @@ export class AutoAttackController {
         const dmg = Math.max(1, player.attackPower);
 
         monster.setHp(monster.hp - dmg);
-        monster.targetPlayerId = player.sessionId;
+        monster.targetPlayerId = player.profileId;
 
         // Reset du timer AA
         player.autoAttackTimer = 0;
