@@ -5,50 +5,50 @@ import { MonsterState } from "../schema/MonsterState";
 import { OnlineCombatSystem } from "./combat/OnlineCombatSystem";
 import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 
-import { CombatLogManager } from "./CombatLogManager";
 import { CombatEventCallbacks } from "./combat/CombatEventCallbacks";
+import { CombatNetworkEmitter } from "./combat/CombatNetworkEmitter";
 
 export class CombatManager implements CombatEventCallbacks {
 
     private onlineSystem: OnlineCombatSystem;
     private monsterSystem: MonsterCombatSystem;
-    private logs: CombatLogManager;
+    private net: CombatNetworkEmitter;
 
     constructor(
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {
         // -------------------------------
-        // 📘 CombatLogManager
+        // 🌐 NETWORK EMITTER
         // -------------------------------
-        this.logs = new CombatLogManager(this.gameState, this.broadcast);
+        this.net = new CombatNetworkEmitter(gameState, broadcast);
 
         // -------------------------------
-        // 🧠 Online Combat System (joueur)
+        // 🧠 ONLINE COMBAT SYSTEM
         // -------------------------------
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
-            this // <-- CombatManager implémente TOUTES les callbacks
+            this // callbacks internes
         );
 
         // -------------------------------
-        // 👹 AI Combat (monstres)
+        // 👹 MONSTER AI
         // -------------------------------
         this.monsterSystem = new MonsterCombatSystem(
             this.gameState,
-            this // <-- idem ici
+            this // callbacks internes
         );
     }
 
     // ======================================================
-    // 🔄 MAIN UPDATE LOOP
+    // 🔄 UPDATE MAIN LOOP
     // ======================================================
     update(deltaTime: number) {
 
-        // 1. IA Monstres
+        // 1. Monstres
         this.monsterSystem.update(deltaTime);
 
-        // 2. Joueurs : cast / gcd / auto / skills
+        // 2. Joueurs
         for (const player of this.gameState.players.values()) {
 
             player.updateCombatTimers(deltaTime);
@@ -60,7 +60,7 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
-    // 🛑 STOP MANUEL (si besoin)
+    // 🛑 STOP MANUEL
     // ======================================================
     public forceStopCombat(player: PlayerState) {
         player.inCombat = false;
@@ -68,109 +68,51 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
-    // 🔥 CombatEventCallbacks IMPLEMENTATION
+    // 🔥 COMBAT EVENT CALLBACKS
     // ======================================================
 
-    // ---------------------------------------
-    // 🗡️ PLAYER → MONSTER (auto-attack)
-    // ---------------------------------------
-    onPlayerHit(
-        player: PlayerState,
-        monster: MonsterState,
-        damage: number,
-        crit: boolean,
-        skillId?: string
-    ): void {
-        if (crit) {
-            this.logs.crit(player, monster, damage, skillId);
-        } else {
-            this.logs.hit(player, monster, damage, skillId);
-        }
+    // PLAYER → MONSTER (auto)
+    onPlayerHit(player: PlayerState, monster: MonsterState, damage: number, crit: boolean, skillId?: string) {
+        this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
-    // ---------------------------------------
-    // ☄️ PLAYER → MONSTER (skill)
-    // ---------------------------------------
-    onPlayerSkillHit(
-        player: PlayerState,
-        monster: MonsterState,
-        damage: number,
-        crit: boolean,
-        skillId: string
-    ): void {
-        if (crit) {
-            this.logs.crit(player, monster, damage, skillId);
-        } else {
-            this.logs.hit(player, monster, damage, skillId);
-        }
+    // PLAYER → MONSTER (skill)
+    onPlayerSkillHit(player: PlayerState, monster: MonsterState, damage: number, crit: boolean, skillId: string) {
+        this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
-    // ---------------------------------------
-    // 🩹 HEAL
-    // ---------------------------------------
-    onPlayerHeal(player: PlayerState, amount: number, skillId: string): void {
-        // (optionnel pour l’instant)
-        this.broadcast(player.sessionId, "combat_log", {
-            action: "heal",
-            skillId,
-            amount,
-            hp: player.hp
-        });
+    // MONSTER → PLAYER
+    onMonsterHit(monster: MonsterState, player: PlayerState, damage: number) {
+        this.net.emitMonsterHit(monster, player, damage);
     }
 
-    // ---------------------------------------
-    // ⭐ BUFF
-    // ---------------------------------------
-    onApplyBuff(player: PlayerState, buffId: string, duration: number): void {
-        this.broadcast(player.sessionId, "combat_log", {
-            action: "buff",
-            buffId,
-            duration
-        });
+    // MONSTER DEATH
+    onMonsterDeath(monster: MonsterState, killer: PlayerState) {
+        this.net.emitMonsterDeath(monster, killer);
     }
 
-    // ---------------------------------------
-    // 👹 MONSTER → PLAYER
-    // ---------------------------------------
-    onMonsterHit(
-        monster: MonsterState,
-        player: PlayerState,
-        damage: number
-    ): void {
-        this.logs.monsterHit(monster, player, damage);
+    // PLAYER DEATH
+    onPlayerDeath(player: PlayerState, monster: MonsterState) {
+        this.net.emitPlayerDeath(player, monster);
     }
 
-    // ---------------------------------------
-    // 💀 MORT DU MONSTRE
-    // ---------------------------------------
-    onMonsterDeath(monster: MonsterState, killerPlayer: PlayerState): void {
-        this.logs.monsterDeath(monster, killerPlayer);
+    // CAST START
+    onCastStart(player: PlayerState, skillId: string) {
+        this.net.emitCastStart(player, skillId);
     }
 
-    // ---------------------------------------
-    // ⚰️ MORT DU JOUEUR
-    // ---------------------------------------
-    onPlayerDeath(player: PlayerState, killerMonster: MonsterState): void {
-        this.logs.playerDeath(player, killerMonster);
+    // CAST CANCEL
+    onCastCancel(player: PlayerState, reason: string) {
+        this.net.emitCastCancel(player, reason);
     }
 
-    // ---------------------------------------
-    // 🎬 CAST START
-    // ---------------------------------------
-    onCastStart(player: PlayerState, skillId: string): void {
-        this.broadcast(player.sessionId, "combat_log", {
-            action: "cast_start",
-            skillId
-        });
+    // HEAL
+    onPlayerHeal(player: PlayerState, amount: number, skillId: string) {
+        this.net.emitPlayerHeal(player, amount, skillId);
     }
 
-    // ---------------------------------------
-    // ❌ CAST CANCEL
-    // ---------------------------------------
-    onCastCancel(player: PlayerState, reason: string): void {
-        this.broadcast(player.sessionId, "combat_log", {
-            action: "cast_cancel",
-            reason
-        });
+    // BUFF
+    onApplyBuff(player: PlayerState, buffId: string, duration: number) {
+        this.net.emitBuff(player, buffId, duration);
     }
 }
