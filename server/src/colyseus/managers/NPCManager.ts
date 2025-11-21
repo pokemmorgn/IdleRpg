@@ -126,62 +126,62 @@ export class NPCManager {
   /**
    * Détermine le type d'interaction (dialogue / boutique / quêtes)
    */
-  private sendInteractionResponse(client: Client, playerState: PlayerState, npc: NPCState): void {
+private sendInteractionResponse(client: Client, playerState: PlayerState, npc: NPCState): void {
 
-    // Dialogue → priorité
-    if (npc.dialogueId && 
-      (npc.type === "dialogue" || npc.type === "quest_giver" || npc.type === "hybrid")) 
-    {
-      this.dialogueManager.startDialogue(client, playerState, npc.npcId, npc.dialogueId);
-      return;
-    }
-
-    // Boutique
-    if ((npc.type === "merchant" || npc.type === "hybrid") && npc.shopId) {
-      client.send("npc_shop_open", {
-        npcId: npc.npcId,
-        npcName: npc.name,
-        shopId: npc.shopId
-      });
-      return;
-    }
-
-    // NPC donneur de quêtes
-    if (npc.type === "quest_giver" || npc.type === "hybrid") {
-
-      const availableQuests = this.questManager.getAvailableQuestsForNPC(
-        npc.npcId,
-        playerState
-      );
-
-      const completableQuests = this.questManager.getCompletableQuestsForNPC(
-        npc.npcId,
-        playerState
-      );
-
-      client.send("npc_quests", {
-        npcId: npc.npcId,
-        npcName: npc.name,
-        availableQuests: availableQuests.map((q: any) => ({
-          questId: q.questId,
-          name: q.name,
-          description: q.description,
-          type: q.type,
-          requiredLevel: q.requiredLevel,
-          rewards: q.rewards
-        })),
-        completableQuests: completableQuests.map((q: any) => ({
-          questId: q.questId,
-          name: q.name,
-          rewards: q.rewards
-        }))
-      });
-
-      return;
-    }
-
-    client.send("error", { message: "NPC has no interaction configured" });
+  // Dialogue → priorité
+  if (npc.dialogueId && 
+    (npc.type === "dialogue" || npc.type === "quest_giver" || npc.type === "hybrid")) 
+  {
+    this.dialogueManager.startDialogue(client, playerState, npc.npcId, npc.dialogueId);
+    // SUPPRIMÉ: On enlève le 'return' pour que le code continue
   }
+
+  // Boutique
+  if ((npc.type === "merchant" || npc.type === "hybrid") && npc.shopId) {
+    client.send("npc_shop_open", {
+      npcId: npc.npcId,
+      npcName: npc.name,
+      shopId: npc.shopId
+    });
+    return;
+  }
+
+  // NPC donneur de quêtes
+  if (npc.type === "quest_giver" || npc.type === "hybrid") {
+
+    const availableQuests = this.questManager.getAvailableQuestsForNPC(
+      npc.npcId,
+      playerState
+    );
+
+    const completableQuests = this.questManager.getCompletableQuestsForNPC(
+      npc.npcId,
+      playerState
+    );
+
+    client.send("npc_quests", {
+      npcId: npc.npcId,
+      npcName: npc.name,
+      availableQuests: availableQuests.map((q: IQuest) => ({
+        questId: q.questId,
+        name: q.name,
+        description: q.description,
+        type: q.type,
+        requiredLevel: q.requiredLevel,
+        rewards: q.rewards
+      })),
+      completableQuests: completableQuests.map((q: IQuest) => ({
+        questId: q.questId,
+        name: q.name,
+        rewards: q.rewards
+      }))
+    });
+
+    return;
+  }
+
+  client.send("error", { message: "NPC has no interaction configured" });
+}
 
   /**
    * Acceptation d'une quête par le joueur
