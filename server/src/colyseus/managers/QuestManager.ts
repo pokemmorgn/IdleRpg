@@ -176,7 +176,7 @@ export class QuestManager {
     const progressData = {
       step: 0,
       startedAt: Date.now(),
-      progress: {} // Commence avec une progression vide
+    //  progress: {} // Commence avec une progression vide
     };
 
     qs.progress.set(questId, progressData);
