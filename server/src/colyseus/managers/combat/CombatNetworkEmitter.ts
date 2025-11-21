@@ -298,4 +298,19 @@ export class CombatNetworkEmitter {
             entityId
         });
     }
+    // ===========================================================
+    // PLAYER RESPAWN (correct)
+    // ===========================================================
+    emitPlayerRespawn(player: PlayerState) {
+        this.sendToPlayer(player, {
+            event: "respawn",
+            entity: "player",
+            entityId: player.profileId,
+            hp: player.hp,
+            maxHp: player.maxHp,
+            x: player.posX,
+            y: player.posY,
+            z: player.posZ
+        });
+    }
 }
