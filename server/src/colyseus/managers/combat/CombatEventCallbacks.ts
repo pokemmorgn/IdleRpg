@@ -3,7 +3,20 @@ import { MonsterState } from "../../schema/MonsterState";
 
 export interface CombatEventCallbacks {
 
-    // === PLAYER → MONSTER ===
+    // ======================================
+    // PLAYER → MONSTER (SKILLS)
+    // ======================================
+    onPlayerSkillHit(
+        player: PlayerState,
+        monster: MonsterState,
+        damage: number,
+        crit: boolean,
+        skillId: string
+    ): void;
+
+    // ======================================
+    // PLAYER → MONSTER (AUTO-ATTACK)
+    // ======================================
     onPlayerHit(
         player: PlayerState,
         monster: MonsterState,
@@ -12,33 +25,43 @@ export interface CombatEventCallbacks {
         skillId?: string
     ): void;
 
-    // === MONSTER → PLAYER ===
+    // ======================================
+    // MONSTER → PLAYER
+    // ======================================
     onMonsterHit(
         monster: MonsterState,
         player: PlayerState,
         damage: number
     ): void;
 
-    // === MORT D'UN MONSTRE ===
+    // ======================================
+    // DEATH EVENTS
+    // ======================================
     onMonsterDeath(
         monster: MonsterState,
         killerPlayer: PlayerState
     ): void;
 
-    // === MORT DU JOUEUR ===
     onPlayerDeath(
         player: PlayerState,
         killerMonster: MonsterState
     ): void;
 
-    // === CASTING DE SORT ===
-    onCastStart(
-        player: PlayerState,
-        skillId: string
-    ): void;
+    // ======================================
+    // CASTING EVENTS
+    // ======================================
+    onCastStart(player: PlayerState, skillId: string): void;
 
-    onCastCancel(
+    onCastCancel(player: PlayerState, reason: string): void;
+
+    // ======================================
+    // HEAL / BUFF
+    // ======================================
+    onPlayerHeal?(player: PlayerState, amount: number, skillId: string): void;
+
+    onApplyBuff?(
         player: PlayerState,
-        reason: string
+        buffId: string,
+        duration: number
     ): void;
 }
