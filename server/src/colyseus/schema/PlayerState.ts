@@ -174,4 +174,83 @@ export class PlayerState extends Schema {
     this.lifesteal = stats.lifesteal;
     this.spellPenetration = stats.spellPenetration;
   }
+
+  // ===========================================================
+  // PERSISTENCE DES DONNÉES
+  // ===========================================================
+
+  /**
+   * Charge les données de quêtes depuis un objet brut (de la BDD)
+   */
+  loadQuestsFromProfile(questData: any): void {
+    if (!questData) return;
+
+    // Vider les données actuelles
+    this.quests.completed.clear();
+    this.quests.activeRepeatables.clear();
+    this.quests.progress.clear();
+    this.quests.dailyCooldown.clear();
+    this.quests.weeklyCooldown.clear();
+
+    // Charger les nouvelles données
+    questData.completed?.forEach((id: string) => this.quests.completed.push(id));
+    this.quests.activeMain = questData.activeMain || "";
+    this.quests.activeSecondary = questData.activeSecondary || "";
+    questData.activeRepeatables?.forEach((id: string) => this.quests.activeRepeatables.push(id));
+    
+    // Utiliser une boucle pour les MapSchema
+    for (const [key, value] of Object.entries(questData.progress || {})) {
+      this.quests.progress.set(key, value);
+    }
+    for (const [key, value] of Object.entries(questData.dailyCooldown || {})) {
+      this.quests.dailyCooldown.set(key, value as number);
+    }
+    for (const [key, value] of Object.entries(questData.weeklyCooldown || {})) {
+      this.quests.weeklyCooldown.set(key, value as number);
+    }
+  }
+
+  /**
+   * Exporte les données de quêtes pour les sauvegarder en BDD
+   */
+  saveQuestsToProfile(): any {
+    return {
+      completed: Array.from(this.quests.completed),
+      activeMain: this.quests.activeMain,
+      activeSecondary: this.quests.activeSecondary,
+      activeRepeatables: Array.from(this.quests.activeRepeatables),
+      progress: Object.fromEntries(this.quests.progress),
+      dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
+      weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
+    };
+  }
+
+  /**
+   * Exporte les stats pour les sauvegarder en BDD
+   */
+  saveStatsToProfile(): any {
+    return {
+      hp: this.hp,
+      maxHp: this.maxHp,
+      resource: this.resource,
+      maxResource: this.maxResource,
+      manaRegen: this.manaRegen,
+      rageRegen: this.rageRegen,
+      energyRegen: this.energyRegen,
+      attackPower: this.attackPower,
+      spellPower: this.spellPower,
+      attackSpeed: this.attackSpeed,
+      criticalChance: this.criticalChance,
+      criticalDamage: this.criticalDamage,
+      damageReduction: this.damageReduction,
+      armor: this.armor,
+      magicResistance: this.magicResistance,
+      precision: this.precision,
+      evasion: this.evasion,
+      penetration: this.penetration,
+      tenacity: this.tenacity,
+      lifesteal: this.lifesteal,
+      spellPenetration: this.spellPenetration
+    };
+  }
 }
