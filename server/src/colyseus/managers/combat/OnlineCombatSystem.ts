@@ -18,26 +18,27 @@ export class OnlineCombatSystem {
         private readonly cb: CombatEventCallbacks
     ) {}
 
-    // ---------------------------------------
-    // CIBLAGE
-    // ---------------------------------------
+    // ======================================================
+    // 🎯 Acquisition de cible
+    // ======================================================
     private acquireTarget(player: PlayerState): MonsterState | null {
+
         let target: MonsterState | null = null;
 
-        // 1) Riposte si on vient d’être attaqué
+        // 1) Riposte automatique
         if (player.lastAttackerId) {
             const attacker = this.gameState.monsters.get(player.lastAttackerId);
             if (attacker && attacker.isAlive) target = attacker;
             player.lastAttackerId = "";
         }
 
-        // 2) Cible manuelle
+        // 2) Cible forcée par le joueur
         if (!target && player.targetMonsterId) {
             const manual = this.gameState.monsters.get(player.targetMonsterId);
             if (manual && manual.isAlive) target = manual;
         }
 
-        // 3) Auto-target
+        // 3) Auto-target le plus proche
         if (!target) {
             target = TargetSelector.getNearestInRange(
                 player,
@@ -46,49 +47,49 @@ export class OnlineCombatSystem {
             );
         }
 
-        // --- Nouveau : changement de cible → notifier le manager ---
-        const oldTarget = player.targetMonsterId;
-        const newTarget = target ? target.monsterId : "";
+        // === EVENT TARGET CHANGED ===
+        const newTargetId = target ? target.monsterId : null;
 
-        if (oldTarget !== newTarget) {
-            player.targetMonsterId = newTarget;
-            this.cb.onCastCancel(player, "target_change");
+        if (player.targetMonsterId !== newTargetId) {
+
+            const oldTarget = this.gameState.monsters.get(player.targetMonsterId) || null;
+
+            this.cb.onTargetChanged?.(player, target ?? null);
+            player.targetMonsterId = newTargetId ?? "";
         }
 
-        if (target) {
-            player.inCombat = true;
-        } else {
-            player.inCombat = false;
-        }
-
+        player.inCombat = !!target;
         return target;
     }
 
-    // ---------------------------------------
-    // UPDATE PRINCIPAL
-    // ---------------------------------------
+    // ======================================================
+    // 🔄 MAIN UPDATE LOOP
+    // ======================================================
     update(player: PlayerState, dt: number) {
 
         const isMoving = (Date.now() - player.lastMovementTime) < 150;
 
-        // Cast annulé par le mouvement
+        // Annulation du cast si mouvement interdit
         if (isMoving && CombatUtils.shouldCancelOnMovement(player)) {
-            player.castLockRemaining = 0;
+            if (player.currentCastingSkillId) {
+                this.cb.onCastInterrupted?.(player, player.currentCastingSkillId, "movement");
+            }
+
             player.currentCastingSkillId = "";
+            player.castLockRemaining = 0;
             player.animationLockRemaining = 0;
             player.currentAnimationLockType = "none";
-
-            this.cb.onCastCancel(player, "movement");
         }
 
         if (player.isDead || player.isAFK) return;
 
         let monster = this.gameState.monsters.get(player.targetMonsterId) || null;
 
-        // Recalcul ciblage
+        // ======================================================
+        // 🎯 Ciblage ou reciblage
+        // ======================================================
         if (!player.inCombat || !monster || !monster.isAlive) {
 
-            // Si le joueur bouge → pas d'acquisition
             if (isMoving) {
                 player.inCombat = false;
                 player.targetMonsterId = "";
@@ -98,25 +99,25 @@ export class OnlineCombatSystem {
             monster = this.acquireTarget(player);
             if (!monster) return;
 
-            // Nouveau combat → event
-            this.cb.onCastCancel(player, "combat_start");
+            // === COMBAT START ===
+            this.cb.onCombatStart?.(player, monster);
         }
 
         if (isMoving) return;
 
-        // ====================
-        // 1) QUEUED SKILL
-        // ====================
+        // ======================================================
+        // 1) Exécution skill mis en file
+        // ======================================================
         if (player.queuedSkill) {
-            const result = SkillExecutor.tryExecuteQueuedSkill(
+            const done = SkillExecutor.tryExecuteQueuedSkill(
                 player, monster, this.gameState, this.cb
             );
-            if (result) return;
+            if (done) return;
         }
 
-        // ====================
-        // 2) ROTATION BASIQUE
-        // ====================
+        // ======================================================
+        // 2) Rotation auto
+        // ======================================================
         const nextSkill = SkillRotation.getNextSkill(player, monster);
 
         if (nextSkill) {
@@ -126,13 +127,12 @@ export class OnlineCombatSystem {
                 this.gameState,
                 this.cb
             );
-
-            return; // SkillExecutor déclenche déjà les logs
+            return;
         }
 
-        // ====================
+        // ======================================================
         // 3) AUTO-ATTAQUE
-        // ====================
+        // ======================================================
         if (this.getDistance(player, monster) <= this.ATTACK_RANGE) {
 
             if (AutoAttackController.shouldTrigger(player)) {
@@ -147,7 +147,8 @@ export class OnlineCombatSystem {
                     player.inCombat = false;
                     player.targetMonsterId = "";
 
-                    this.cb.onCastCancel(player, "combat_end");
+                    // === COMBAT END ===
+                    this.cb.onCombatEnd?.(player);
                 }
             }
         }
@@ -157,6 +158,6 @@ export class OnlineCombatSystem {
         const dx = a.posX - b.posX;
         const dy = a.posY - b.posY;
         const dz = a.posZ - b.posZ;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return Math.sqrt(dx*dx + dy*dy + dz*dz);
     }
 }
