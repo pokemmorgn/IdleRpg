@@ -3,23 +3,19 @@ import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 
 import Quest, { IQuest } from "../../models/Quest";
-
 import { QuestState } from "../schema/QuestState";
 
 /**
  * QuestManager
- * ------------
- * Version alignée avec le nouveau QuestState :
- * - questStep
- * - questStartedAt
- * - questObjectives
- *
- * Plus aucun usage de `progress`.
+ * Version alignée avec le nouveau QuestState
  */
 export class QuestManager {
   private serverId: string;
   private gameState: GameState;
-  private questCache: Map<string, IQuest> = new Map();
+
+  // 🟦 Cache mémoire des quêtes
+  public questCache: Map<string, IQuest> = new Map();
+
   private onSavePlayer?: (player: PlayerState) => Promise<void>;
 
   constructor(
@@ -33,34 +29,39 @@ export class QuestManager {
   }
 
   /* ===========================================================
-     1) Chargement des quêtes
+     1) CHARGEMENT DB AU DÉMARRAGE
      =========================================================== */
-  async loadQuests(): Promise<void> {
-    try {
-      console.log(`📘 [QuestManager] Chargement des quêtes...`);
+  async loadAllQuestsFromDB() {
+    console.log("📥 [QuestManager] Chargement des quêtes depuis MongoDB...");
 
-      const quests = await Quest.find({ isActive: true });
+    try {
+      const quests = await Quest.find({});
+      console.log(`📥 ${quests.length} quêtes trouvées.`);
 
       this.questCache.clear();
-      quests.forEach(q => this.questCache.set(q.questId, q));
 
-      console.log(`✅ [QuestManager] ${quests.length} quêtes chargées`);
-    } catch (err: any) {
-      console.error("❌ [QuestManager] Erreur loadQuests:", err);
+      for (const q of quests) {
+        this.questCache.set(q.questId, q.toObject());
+        console.log(`  ➕ Loaded quest: ${q.questId}`);
+      }
+
+      console.log("✅ [QuestManager] Toutes les quêtes sont chargées !");
+    } catch (err) {
+      console.error("❌ [QuestManager] Erreur lors du chargement des quêtes :", err);
     }
   }
 
   /* ===========================================================
-     2) Récupérer une quête
+     2) GET QUEST
      =========================================================== */
   getQuest(questId: string): IQuest | undefined {
     return this.questCache.get(questId);
   }
 
   /* ===========================================================
-     3) Quêtes disponibles pour un NPC
+     3) QUÊTES DISPONIBLES POUR UN NPC
      =========================================================== */
-getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
+  getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     const qs = this.getQuestState(player);
     const available: IQuest[] = [];
 
@@ -74,28 +75,30 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     console.log("Repeatables:", qs.activeRepeatables);
 
     for (const quest of this.questCache.values()) {
-        console.log("➡️ Checking quest:", quest.questId);
+      console.log("➡️ Checking quest:", quest.questId);
 
-        if (quest.giverNpcId !== npcId) {
-            console.log("❌ NPC mismatch");
-            continue;
-        }
-        if (!this.isQuestAvailableForPlayer(quest, player, qs)) {
-            console.log("❌ isQuestAvailableForPlayer → FALSE");
-            continue;
-        }
+      // Mauvais NPC ?
+      if (quest.giverNpcId !== npcId) {
+        console.log("❌ NPC mismatch");
+        continue;
+      }
 
-        console.log("✅ QUEST AVAILABLE:", quest.questId);
-        available.push(quest);
+      // Conditions d'accès
+      if (!this.isQuestAvailableForPlayer(quest, player, qs)) {
+        console.log("❌ isQuestAvailableForPlayer → FALSE");
+        continue;
+      }
+
+      console.log("✅ QUEST AVAILABLE:", quest.questId);
+      available.push(quest);
     }
 
     return available;
-}
+  }
 
-
-  /**
-   * Récupère les quêtes qu’un joueur peut rendre à un NPC
-   */
+  /* ===========================================================
+     4) QUÊTES PRÊTES À ÊTRE RENDUES
+     =========================================================== */
   getCompletableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     const qs = this.getQuestState(player);
     const completable: IQuest[] = [];
@@ -122,7 +125,7 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
   }
 
   /* ===========================================================
-     4) Conditions d'accès
+     5) Conditions d'accès
      =========================================================== */
   private isQuestAvailableForPlayer(
     quest: IQuest,
@@ -157,7 +160,7 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
   }
 
   /* ===========================================================
-     5) Acceptation d'une quête
+     6) Acceptation d'une quête
      =========================================================== */
   acceptQuest(client: Client, player: PlayerState, questId: string): boolean {
     const quest = this.getQuest(questId);
@@ -173,17 +176,10 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
       return false;
     }
 
-    if (quest.type === "main") {
-      qs.activeMain = questId;
-    } else if (quest.type === "secondary") {
-      qs.activeSecondary = questId;
-    } else {
-      if (!qs.activeRepeatables.includes(questId)) {
-        qs.activeRepeatables.push(questId);
-      }
-    }
+    if (quest.type === "main") qs.activeMain = questId;
+    else if (quest.type === "secondary") qs.activeSecondary = questId;
+    else if (!qs.activeRepeatables.includes(questId)) qs.activeRepeatables.push(questId);
 
-    /* === NOUVEAU SYSTÈME === */
     qs.questStep.set(questId, 0);
     qs.questStartedAt.set(questId, Date.now());
     qs.questObjectives.set(questId, Object.create(null));
@@ -197,49 +193,8 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
   }
 
   /* ===========================================================
-     6) Complétion interne d’une quête
+     7) Tournée de quête (turn in)
      =========================================================== */
-  completeQuest(client: Client, player: PlayerState, questId: string): void {
-    const quest = this.getQuest(questId);
-    if (!quest) {
-      client.send("error", { message: "Quest not found" });
-      return;
-    }
-
-    const qs = this.getQuestState(player);
-
-    console.log(`🏆 [QuestManager] ${player.characterName} complète ${questId}`);
-
-    if (!qs.completed.includes(questId)) {
-      qs.completed.push(questId);
-    }
-
-    if (qs.activeMain === questId) qs.activeMain = "";
-    if (qs.activeSecondary === questId) qs.activeSecondary = "";
-
-    const idx = qs.activeRepeatables.indexOf(questId);
-    if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
-
-    qs.questStep.delete(questId);
-    qs.questStartedAt.delete(questId);
-    qs.questObjectives.delete(questId);
-
-    if (quest.type === "daily") {
-      qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000);
-    }
-    if (quest.type === "weekly") {
-      qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
-    }
-
-    this.applyRewards(client, player, quest);
-
-    this.onSavePlayer?.(player);
-    client.send("quest_completed", { questId });
-  }
-
-  /**
-   * Rendre une quête (turn in)
-   */
   turnInQuest(client: Client, player: PlayerState, questId: string): void {
     const quest = this.getQuest(questId);
     if (!quest) {
@@ -248,8 +203,8 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     }
 
     const qs = this.getQuestState(player);
-
     const step = qs.questStep.get(questId) || 0;
+
     if (!this.isQuestFullyCompleted(quest, step)) {
       client.send("error", { message: "This quest is not ready to be turned in." });
       return;
@@ -257,9 +212,7 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
 
     console.log(`🏁 [QuestManager] ${player.characterName} rend ${questId}`);
 
-    if (!qs.completed.includes(questId)) {
-      qs.completed.push(questId);
-    }
+    if (!qs.completed.includes(questId)) qs.completed.push(questId);
 
     if (qs.activeMain === questId) qs.activeMain = "";
     if (qs.activeSecondary === questId) qs.activeSecondary = "";
@@ -271,13 +224,6 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     qs.questStartedAt.delete(questId);
     qs.questObjectives.delete(questId);
 
-    if (quest.type === "daily") {
-      qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000);
-    }
-    if (quest.type === "weekly") {
-      qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
-    }
-
     this.applyRewards(client, player, quest);
     this.onSavePlayer?.(player);
 
@@ -285,7 +231,7 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
   }
 
   /* ===========================================================
-     7) Récompenses
+     8) Récompenses
      =========================================================== */
   private applyRewards(client: Client, player: PlayerState, quest: IQuest): void {
     const r = quest.rewards;
@@ -303,9 +249,6 @@ getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     return player.quests;
   }
 
-  /**
-   * Vérifie si tous les objectifs sont complétés
-   */
   private isQuestFullyCompleted(quest: IQuest, step: number): boolean {
     return step >= quest.objectives.length;
   }
