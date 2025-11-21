@@ -74,7 +74,7 @@ export class QuestObjectiveManager {
     this.processAllObjectives(player, "escort", payload);
   }
 
-  /** Survive (tick ou fin d’événement) */
+  /** Survive (tick ou fin d'événement) */
   onSurvive(player: PlayerState, payload: { durationSec?: number; wave?: number }) {
     this.processAllObjectives(player, "survive", payload);
   }
@@ -116,7 +116,7 @@ export class QuestObjectiveManager {
         progress: progress.progress.get(currentObj.objectiveId) || 0
       });
 
-      // Si terminé, on passe à l’objectif suivant
+      // Si terminé, on passe à l'objectif suivant
       if (done) {
         await this.completeObjective(player, questId, quest, progress);
       }
@@ -196,7 +196,7 @@ export class QuestObjectiveManager {
   }
 
   /* =====================================================================
-      5) FIN D’OBJECTIF → FIN DE QUÊTE ?
+      5) FIN D'OBJECTIF → FIN DE QUÊTE ?
      ===================================================================== */
 
   private async completeObjective(
@@ -231,12 +231,14 @@ export class QuestObjectiveManager {
     const questId = quest.questId;
 
     // Ajouter aux completed
-    if (!player.completedQuests.includes(questId)) {
-      player.completedQuests.push(questId);
+    // CORRECTION : On utilise player.quests.completed
+    if (!player.quests.completed.includes(questId)) {
+      player.quests.completed.push(questId);
     }
 
     // Nettoyer les progressions
-    player.questProgress.delete(questId);
+    // CORRECTION : On utilise player.quests.progress
+    player.quests.progress.delete(questId);
 
     // Notifier le client
     this.notify(player.sessionId, "quest_complete", {
@@ -253,10 +255,13 @@ export class QuestObjectiveManager {
   private getAllActiveQuests(player: PlayerState): string[] {
     const list: string[] = [];
 
-    if (player.activeMainQuest) list.push(player.activeMainQuest);
-    if (player.activeSecondaryQuest) list.push(player.activeSecondaryQuest);
-    if (player.activeRepeatableQuests.length > 0) {
-      list.push(...player.activeRepeatableQuests);
+    // CORRECTION : On utilise player.quests.activeMain
+    if (player.quests.activeMain) list.push(player.quests.activeMain);
+    // CORRECTION : On utilise player.quests.activeSecondary
+    if (player.quests.activeSecondary) list.push(player.quests.activeSecondary);
+    // CORRECTION : On utilise player.quests.activeRepeatables
+    if (player.quests.activeRepeatables.length > 0) {
+      list.push(...player.quests.activeRepeatables);
     }
 
     return list;
@@ -264,13 +269,15 @@ export class QuestObjectiveManager {
 
   /** Initialise la progression si absente */
   private ensureQuestProgress(player: PlayerState, questId: string): QuestProgress {
-    if (!player.questProgress.has(questId)) {
+    // CORRECTION : On utilise player.quests.progress
+    if (!player.quests.progress.has(questId)) {
       const p = new QuestProgress();
       p.step = 0;
       p.startedAt = Date.now();
-      player.questProgress.set(questId, p);
+      player.quests.progress.set(questId, p);
       return p;
     }
-    return player.questProgress.get(questId)!;
+    // CORRECTION : On utilise player.quests.progress
+    return player.quests.progress.get(questId)!;
   }
 }
