@@ -1,31 +1,25 @@
 import mongoose from "mongoose";
+import Quest from "../models/Quest";
 import dotenv from "dotenv";
-import Quest from "../models/Quest"; // ton modèle officiel
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/idlerpg";
-
 async function seed() {
-  await mongoose.connect(MONGO_URI);
-  console.log("🌱 Connected to DB");
+  await mongoose.connect(process.env.MONGO_URI!);
 
-  const questId = "quest_test_01";
+  console.log("📌 Connexion Mongo OK");
 
-  // Si elle existe déjà on supprime
-  await Quest.deleteOne({ questId });
-
-  await Quest.create({
+  const q = {
     questId: "quest_test_01",
     name: "Quête du Loup Test",
-    description: "Va tuer un loup de test pour le maître des quêtes.",
+    description: "Va tuer un loup de test.",
     giverNpcId: "npc_test_01",
     type: "secondary",
     requiredLevel: 1,
     prerequisiteQuestId: "",
     zoneId: "test_zone",
-    isOneShot: true,
     isActive: true,
+    isOneShot: true,
 
     objectives: [
       {
@@ -42,13 +36,13 @@ async function seed() {
       items: [],
       reputation: []
     }
-  });
+  };
 
-  console.log("✅ Test quest seeded into DB !");
+  await Quest.deleteOne({ questId: "quest_test_01" });
+  await Quest.create(q);
+
+  console.log("✅ Quête test créée en DB !");
   process.exit(0);
 }
 
-seed().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+seed().catch(err => console.error(err));
