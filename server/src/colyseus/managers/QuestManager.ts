@@ -5,20 +5,20 @@ import { PlayerState } from "../schema/PlayerState";
 import Quest, { IQuest } from "../../models/Quest";
 
 import { QuestState } from "../schema/QuestState";
-import { QuestProgress } from "../schema/QuestProgress";
 
 /**
  * QuestManager
  * ------------
  * Version compatible avec le nouveau système QuestState et le callback de sauvegarde.
+ * La progression des quêtes est stockée sous forme d'objets JSON simples
+ * pour éviter les problèmes de schémas imbriqués avec Colyseus.
  */
 export class QuestManager {
   private serverId: string;
   private gameState: GameState;
   private questCache: Map<string, IQuest> = new Map();
-  private onSavePlayer?: (player: PlayerState) => Promise<void>; // AJOUT: Callback de sauvegarde
+  private onSavePlayer?: (player: PlayerState) => Promise<void>;
 
-  // MODIFIÉ: Le constructeur accepte maintenant le callback de sauvegarde
   constructor(
     serverId: string,
     gameState: GameState,
@@ -26,7 +26,7 @@ export class QuestManager {
   ) {
     this.serverId = serverId;
     this.gameState = gameState;
-    this.onSavePlayer = onSavePlayer; // Stocker le callback
+    this.onSavePlayer = onSavePlayer;
   }
 
   /* ===========================================================
@@ -70,6 +70,7 @@ export class QuestManager {
 
     return available;
   }
+
   /**
    * Récupère les quêtes qu'un joueur peut rendre à un NPC
    * (quêtes actives dont les objectifs sont complétés)
@@ -77,30 +78,31 @@ export class QuestManager {
   getCompletableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     const qs = this.getQuestState(player);
     const completable: IQuest[] = [];
-  
+
     // On parcourt les quêtes ACTIVES du joueur
     const activeQuests = [
       qs.activeMain,
       qs.activeSecondary,
       ...qs.activeRepeatables
     ].filter(Boolean); // Filtre les chaînes vides
-  
+
     for (const questId of activeQuests) {
       const quest = this.getQuest(questId);
       if (!quest) continue;
-  
+
       // La quête doit être rendue à ce PNJ spécifique
       if (quest.giverNpcId !== npcId) continue;
-  
+
       // On vérifie si tous les objectifs sont complétés
-      const progress = qs.progress.get(questId);
-      if (progress && this.isQuestFullyCompleted(quest, progress)) {
+      const progressData = qs.progress.get(questId);
+      if (progressData && this.isQuestFullyCompleted(quest, progressData)) {
         completable.push(quest);
       }
     }
-  
+
     return completable;
   }
+
   /* ===========================================================
      4) Conditions d'accès
      =========================================================== */
@@ -170,11 +172,14 @@ export class QuestManager {
       }
     }
 
-    // Progression
-    const progress = new QuestProgress();
-    progress.step = 0;
-    progress.startedAt = Date.now();
-    qs.progress.set(questId, progress);
+    // MODIFIÉ: On crée un objet de progression simple
+    const progressData = {
+      step: 0,
+      startedAt: Date.now(),
+      progress: {} // Commence avec une progression vide
+    };
+
+    qs.progress.set(questId, progressData);
 
     client.send("quest_accepted", { questId });
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
@@ -232,6 +237,61 @@ export class QuestManager {
     client.send("quest_completed", { questId });
   }
 
+  /**
+   * Termine une quête et donne les récompenses.
+   * Appelé quand le joueur rend la quête au PNJ.
+   */
+  turnInQuest(client: Client, player: PlayerState, questId: string): void {
+    const quest = this.getQuest(questId);
+    if (!quest) {
+      client.send("error", { message: "Quest not found" });
+      return;
+    }
+
+    const qs = this.getQuestState(player);
+
+    // Vérifier que la quête est bien active et que tous les objectifs sont faits
+    const progressData = qs.progress.get(questId);
+    if (!progressData || !this.isQuestFullyCompleted(quest, progressData)) {
+      client.send("error", { message: "This quest is not ready to be turned in." });
+      return;
+    }
+
+    console.log(`🏁 [QuestManager] ${player.characterName} rend la quête ${questId}`);
+
+    // Ajouter au completed
+    if (!qs.completed.includes(questId)) {
+      qs.completed.push(questId);
+    }
+
+    // Libérer les slots
+    if (qs.activeMain === questId) qs.activeMain = "";
+    if (qs.activeSecondary === questId) qs.activeSecondary = "";
+
+    // Retirer des repeatables
+    const idx = qs.activeRepeatables.indexOf(questId);
+    if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
+
+    // Supprimer progression
+    if (qs.progress.has(questId)) qs.progress.delete(questId);
+
+    // Marquer cooldown
+    if (quest.type === "daily") {
+      qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000);
+    }
+    if (quest.type === "weekly") {
+      qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
+    }
+
+    // Récompenses
+    this.applyRewards(client, player, quest);
+
+    // NOUVEAU: Déclencher la sauvegarde après la remise de la quête
+    this.onSavePlayer?.(player);
+
+    client.send("quest_turned_in", { questId });
+  }
+
   /* ===========================================================
      7) Récompenses
      =========================================================== */
@@ -250,64 +310,14 @@ export class QuestManager {
   private getQuestState(player: PlayerState): QuestState {
     return player.quests;
   }
+
   /**
- * Termine une quête et donne les récompenses.
- * Appelé quand le joueur rend la quête au PNJ.
- */
-turnInQuest(client: Client, player: PlayerState, questId: string): void {
-  const quest = this.getQuest(questId);
-  if (!quest) {
-    client.send("error", { message: "Quest not found" });
-    return;
+   * Méthode utilitaire pour vérifier si tous les objectifs sont faits
+   */
+  private isQuestFullyCompleted(quest: any, progressData: any): boolean {
+    // La logique exacte dépend de votre structure de quête,
+    // mais généralement, si `progressData.step` est supérieur ou égal au nombre d'objectifs...
+    if (!progressData) return false;
+    return progressData.step >= quest.objectives.length;
   }
-
-  const qs = this.getQuestState(player);
-
-  // Vérifier que la quête est bien active et que tous les objectifs sont faits
-  // (Cette logique est déjà dans finishQuest, mais une double vérification ne fait pas de mal)
-  const progress = qs.progress.get(questId);
-  if (!progress || !this.isQuestFullyCompleted(quest, progress)) {
-    client.send("error", { message: "This quest is not ready to be turned in." });
-    return;
-  }
-
-  console.log(`🏁 [QuestManager] ${player.characterName} rend la quête ${questId}`);
-
-  // Ajouter au completed
-  if (!qs.completed.includes(questId)) {
-    qs.completed.push(questId);
-  }
-
-  // Libérer les slots
-  if (qs.activeMain === questId) qs.activeMain = "";
-  if (qs.activeSecondary === questId) qs.activeSecondary = "";
-
-  // Retirer des repeatables
-  const idx = qs.activeRepeatables.indexOf(questId);
-  if (idx !== -1) qs.activeRepeatables.splice(idx, 1);
-
-  // Supprimer progression
-  if (qs.progress.has(questId)) qs.progress.delete(questId);
-
-  // Marquer cooldown
-  if (quest.type === "daily") {
-    qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000);
-  }
-  if (quest.type === "weekly") {
-    qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
-  }
-
-  // Récompenses
-  this.applyRewards(client, player, quest);
-
-  // NOUVEAU: Déclencher la sauvegarde après la remise de la quête
-  this.onSavePlayer?.(player);
-
-  client.send("quest_turned_in", { questId });
-}
-
-// Méthode utilitaire pour vérifier si tous les objectifs sont faits
-private isQuestFullyCompleted(quest: any, progress: QuestProgress): boolean {
-  return progress.step >= quest.objectives.length;
-}
 }
