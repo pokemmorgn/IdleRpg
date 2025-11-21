@@ -18,25 +18,19 @@ export class CombatManager implements CombatEventCallbacks {
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void
     ) {
-        // -------------------------------
-        // 🌐 NETWORK EMITTER
-        // -------------------------------
+        // 🌐 Network emitter
         this.net = new CombatNetworkEmitter(gameState, broadcast);
 
-        // -------------------------------
-        // 🧠 ONLINE COMBAT SYSTEM
-        // -------------------------------
+        // 🧠 Player combat
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
-            this // callbacks internes
+            this
         );
 
-        // -------------------------------
-        // 👹 MONSTER AI
-        // -------------------------------
+        // 👹 Monster AI
         this.monsterSystem = new MonsterCombatSystem(
             this.gameState,
-            this // callbacks internes
+            this
         );
     }
 
@@ -45,10 +39,10 @@ export class CombatManager implements CombatEventCallbacks {
     // ======================================================
     update(deltaTime: number) {
 
-        // 1. Monstres
+        // 1. Monsters
         this.monsterSystem.update(deltaTime);
 
-        // 2. Joueurs
+        // 2. Players
         for (const player of this.gameState.players.values()) {
 
             player.updateCombatTimers(deltaTime);
@@ -68,16 +62,28 @@ export class CombatManager implements CombatEventCallbacks {
     }
 
     // ======================================================
-    // 🔥 COMBAT EVENT CALLBACKS
+    // 🔥 COMBAT EVENTS
     // ======================================================
 
     // PLAYER → MONSTER (auto)
-    onPlayerHit(player: PlayerState, monster: MonsterState, damage: number, crit: boolean, skillId?: string) {
+    onPlayerHit(
+        player: PlayerState,
+        monster: MonsterState,
+        damage: number,
+        crit: boolean,
+        skillId?: string
+    ) {
         this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
     // PLAYER → MONSTER (skill)
-    onPlayerSkillHit(player: PlayerState, monster: MonsterState, damage: number, crit: boolean, skillId: string) {
+    onPlayerSkillHit(
+        player: PlayerState,
+        monster: MonsterState,
+        damage: number,
+        crit: boolean,
+        skillId: string
+    ) {
         this.net.emitPlayerHit(player, monster, damage, crit, skillId);
     }
 
@@ -98,7 +104,7 @@ export class CombatManager implements CombatEventCallbacks {
 
     // CAST START
     onCastStart(player: PlayerState, skillId: string) {
-        this.net.emitCastStart(player, skillId);
+        this.net.emitCastStart(player, skillId, 0); // castTime inconnu → 0 par défaut
     }
 
     // CAST CANCEL
@@ -108,11 +114,11 @@ export class CombatManager implements CombatEventCallbacks {
 
     // HEAL
     onPlayerHeal(player: PlayerState, amount: number, skillId: string) {
-        this.net.emitPlayerHeal(player, amount, skillId);
+        this.net.emitHeal(player, amount, skillId);
     }
 
     // BUFF
     onApplyBuff(player: PlayerState, buffId: string, duration: number) {
-        this.net.emitBuff(player, buffId, duration);
+        this.net.emitBuffApply(player, buffId, duration);
     }
 }
