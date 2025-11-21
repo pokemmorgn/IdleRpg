@@ -134,7 +134,7 @@ export class OnlineCombatSystem {
         if (this.getDistance(player, monster) <= this.ATTACK_RANGE) {
             if (AutoAttackController.shouldTrigger(player)) {
 
-                const damage = AutoAttackController.trigger(player, monster);
+                const damage = AutoAttackController.trigger(player, monster, this.cb);
 
                 this.cb.onPlayerHit(
                     player,
