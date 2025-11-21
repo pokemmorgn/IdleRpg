@@ -66,7 +66,7 @@ export class QuestManager {
   }
 
   /* ===========================================================
-     4) Conditions d’accès
+     4) Conditions d'accès
      =========================================================== */
   private isQuestAvailableForPlayer(
     quest: IQuest,
@@ -94,12 +94,12 @@ export class QuestManager {
 
     // Daily / Weekly déjà faite ?
     if (quest.type === "daily") {
-      const ts = qs.dailyCooldowns.get(quest.questId);
+      const ts = qs.dailyCooldown.get(quest.questId); // Corrigé: dailyCooldowns -> dailyCooldown
       if (ts && Date.now() < ts) return false;
     }
 
     if (quest.type === "weekly") {
-      const ts = qs.weeklyCooldowns.get(quest.questId);
+      const ts = qs.weeklyCooldown.get(quest.questId); // Corrigé: weeklyCooldowns -> weeklyCooldown
       if (ts && Date.now() < ts) return false;
     }
 
@@ -178,10 +178,10 @@ export class QuestManager {
 
     // Marquer cooldown
     if (quest.type === "daily") {
-      qs.dailyCooldowns.set(questId, Date.now() + 24 * 3600 * 1000);
+      qs.dailyCooldown.set(questId, Date.now() + 24 * 3600 * 1000); // Corrigé: dailyCooldowns -> dailyCooldown
     }
     if (quest.type === "weekly") {
-      qs.weeklyCooldowns.set(questId, Date.now() + 7 * 24 * 3600 * 1000);
+      qs.weeklyCooldown.set(questId, Date.now() + 7 * 24 * 3600 * 1000); // Corrigé: weeklyCooldowns -> weeklyCooldown
     }
 
     // Récompenses
@@ -206,6 +206,6 @@ export class QuestManager {
      UTIL: récupérer le QuestState du joueur
      =========================================================== */
   private getQuestState(player: PlayerState): QuestState {
-    return this.gameState.questStates.get(player.profileId);
+    return player.quests; // Corrigé: gameState.questStates -> player.quests
   }
 }
