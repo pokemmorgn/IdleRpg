@@ -1,4 +1,6 @@
 import { Client } from "colyseus";
+import { MapSchema } from "@colyseus/schema";
+
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 
@@ -7,13 +9,13 @@ import { QuestState } from "../schema/QuestState";
 
 /**
  * QuestManager
- * Version alignée avec le nouveau QuestState
+ * Aligné avec QuestState utilisant MapSchema<MapSchema<number>>
  */
 export class QuestManager {
   private serverId: string;
   private gameState: GameState;
 
-  // 🟦 Cache mémoire des quêtes
+  // Cache mémoire des quêtes MongoDB
   public questCache: Map<string, IQuest> = new Map();
 
   private onSavePlayer?: (player: PlayerState) => Promise<void>;
@@ -29,7 +31,7 @@ export class QuestManager {
   }
 
   /* ===========================================================
-     1) CHARGEMENT DB AU DÉMARRAGE
+     CHARGEMENT DB
      =========================================================== */
   async loadAllQuestsFromDB() {
     console.log("📥 [QuestManager] Chargement des quêtes depuis MongoDB...");
@@ -47,19 +49,19 @@ export class QuestManager {
 
       console.log("✅ [QuestManager] Toutes les quêtes sont chargées !");
     } catch (err) {
-      console.error("❌ [QuestManager] Erreur lors du chargement des quêtes :", err);
+      console.error("❌ [QuestManager] Erreur :", err);
     }
   }
 
   /* ===========================================================
-     2) GET QUEST
+     GET QUEST
      =========================================================== */
   getQuest(questId: string): IQuest | undefined {
     return this.questCache.get(questId);
   }
 
   /* ===========================================================
-     3) QUÊTES DISPONIBLES POUR UN NPC
+     QUÊTES DISPONIBLES POUR NPC
      =========================================================== */
   getAvailableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     const qs = this.getQuestState(player);
@@ -70,22 +72,13 @@ export class QuestManager {
     console.log("Player zone:", player.zoneId);
     console.log("Quest cache:", Array.from(this.questCache.keys()));
     console.log("Completed:", qs.completed);
-    console.log("activeMain:", qs.activeMain);
-    console.log("activeSecondary:", qs.activeSecondary);
-    console.log("Repeatables:", qs.activeRepeatables);
 
     for (const quest of this.questCache.values()) {
       console.log("➡️ Checking quest:", quest.questId);
 
-      // Mauvais NPC ?
-      if (quest.giverNpcId !== npcId) {
-        console.log("❌ NPC mismatch");
-        continue;
-      }
+      if (quest.giverNpcId !== npcId) continue;
 
-      // Conditions d'accès
       if (!this.isQuestAvailableForPlayer(quest, player, qs)) {
-        console.log("❌ isQuestAvailableForPlayer → FALSE");
         continue;
       }
 
@@ -97,35 +90,34 @@ export class QuestManager {
   }
 
   /* ===========================================================
-     4) QUÊTES PRÊTES À ÊTRE RENDUES
+     QUÊTES PRÊTES À ÊTRE RENDUES
      =========================================================== */
   getCompletableQuestsForNPC(npcId: string, player: PlayerState): IQuest[] {
     const qs = this.getQuestState(player);
     const completable: IQuest[] = [];
 
-    const activeQuests = [
+    const active = [
       qs.activeMain,
       qs.activeSecondary,
       ...qs.activeRepeatables
     ].filter(Boolean);
 
-    for (const questId of activeQuests) {
+    for (const questId of active) {
       const quest = this.getQuest(questId);
       if (!quest) continue;
+
       if (quest.giverNpcId !== npcId) continue;
 
       const step = qs.questStep.get(questId) || 0;
 
-      if (this.isQuestFullyCompleted(quest, step)) {
-        completable.push(quest);
-      }
+      if (this.isQuestFullyCompleted(quest, step)) completable.push(quest);
     }
 
     return completable;
   }
 
   /* ===========================================================
-     5) Conditions d'accès
+     CONDITIONS D’ACCÈS
      =========================================================== */
   private isQuestAvailableForPlayer(
     quest: IQuest,
@@ -147,20 +139,20 @@ export class QuestManager {
     if (quest.type === "secondary" && qs.activeSecondary !== "") return false;
 
     if (quest.type === "daily") {
-      const ts = qs.dailyCooldown.get(quest.questId);
-      if (ts && Date.now() < ts) return false;
+      const until = qs.dailyCooldown.get(quest.questId);
+      if (until && Date.now() < until) return false;
     }
 
     if (quest.type === "weekly") {
-      const ts = qs.weeklyCooldown.get(quest.questId);
-      if (ts && Date.now() < ts) return false;
+      const until = qs.weeklyCooldown.get(quest.questId);
+      if (until && Date.now() < until) return false;
     }
 
     return true;
   }
 
   /* ===========================================================
-     6) Acceptation d'une quête
+     ACCEPTATION
      =========================================================== */
   acceptQuest(client: Client, player: PlayerState, questId: string): boolean {
     const quest = this.getQuest(questId);
@@ -178,22 +170,25 @@ export class QuestManager {
 
     if (quest.type === "main") qs.activeMain = questId;
     else if (quest.type === "secondary") qs.activeSecondary = questId;
-    else if (!qs.activeRepeatables.includes(questId)) qs.activeRepeatables.push(questId);
+    else if (!qs.activeRepeatables.includes(questId))
+      qs.activeRepeatables.push(questId);
 
+    // Initialisation : step 0
     qs.questStep.set(questId, 0);
     qs.questStartedAt.set(questId, Date.now());
+
+    // 🚀 IMPORTANT : MapSchema<MapSchema<number>>
     qs.questObjectives.set(questId, new MapSchema<number>());
 
-    client.send("quest_accepted", { questId });
-
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
+    client.send("quest_accepted", { questId });
 
     this.onSavePlayer?.(player);
     return true;
   }
 
   /* ===========================================================
-     7) Tournée de quête (turn in)
+     RENDRE LA QUÊTE
      =========================================================== */
   turnInQuest(client: Client, player: PlayerState, questId: string): void {
     const quest = this.getQuest(questId);
@@ -206,11 +201,9 @@ export class QuestManager {
     const step = qs.questStep.get(questId) || 0;
 
     if (!this.isQuestFullyCompleted(quest, step)) {
-      client.send("error", { message: "This quest is not ready to be turned in." });
+      client.send("error", { message: "Not ready" });
       return;
     }
-
-    console.log(`🏁 [QuestManager] ${player.characterName} rend ${questId}`);
 
     if (!qs.completed.includes(questId)) qs.completed.push(questId);
 
@@ -231,7 +224,7 @@ export class QuestManager {
   }
 
   /* ===========================================================
-     8) Récompenses
+     RÉCOMPENSES
      =========================================================== */
   private applyRewards(client: Client, player: PlayerState, quest: IQuest): void {
     const r = quest.rewards;
@@ -239,7 +232,8 @@ export class QuestManager {
     if (r.xp) client.send("xp_gained", { amount: r.xp });
     if (r.gold) client.send("gold_gained", { amount: r.gold });
     if (r.items?.length) client.send("items_gained", { items: r.items });
-    if (r.reputation?.length) client.send("reputation_gained", { rep: r.reputation });
+    if (r.reputation?.length)
+      client.send("reputation_gained", { rep: r.reputation });
   }
 
   /* ===========================================================
