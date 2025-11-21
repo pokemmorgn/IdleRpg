@@ -1,12 +1,13 @@
+// server/src/colyseus/managers/DialogueManager.ts
 import { Client } from "colyseus";
-import { GameState } from "../schema/GameState"; // AJOUT: Import pour le typage
-import { PlayerState } from "../schema/PlayerState"; // AJOUT: Import pour le typage
+import { GameState } from "../schema/GameState";
+import { PlayerState } from "../schema/PlayerState";
 import Dialogue, { IDialogue, IDialogueCondition, IDialogueAction, IDialogueChoice } from "../../models/Dialogue";
 import DialogueInteraction from "../../models/DialogueInteraction";
 import ServerProfile from "../../models/ServerProfile";
 import { GameplayTagManager } from "../../managers/GameplayTagManager";
 import { QuestObjectiveManager } from "./QuestObjectiveManager";
-import { QuestManager } from "./QuestManager"; // AJOUT: Import pour le typage
+import { QuestManager } from "./QuestManager";
 
 /**
  * DialogueManager - Gère toute la logique des dialogues
@@ -14,10 +15,12 @@ import { QuestManager } from "./QuestManager"; // AJOUT: Import pour le typage
 export class DialogueManager {
   private serverId: string;
   private questObjectiveManager?: QuestObjectiveManager;
-  private questManager?: QuestManager; // AJOUT: Dépendance pour démarrer une quête
-  private gameState?: GameState; // AJOUT: Dépendance pour récupérer le PlayerState
+  private questManager?: QuestManager;
+  private gameState?: GameState;
 
-  // MODIFIÉ: Le constructeur accepte maintenant les dépendances nécessaires
+  // AJOUT: Une petite map pour stocker les dialogues de test
+  private testDialogues: Map<string, any> = new Map();
+
   constructor(
     serverId: string,
     questObjectiveManager?: QuestObjectiveManager,
@@ -28,6 +31,13 @@ export class DialogueManager {
     this.questObjectiveManager = questObjectiveManager;
     this.questManager = questManager;
     this.gameState = gameState;
+  }
+
+  /**
+   * AJOUT: Permet d'ajouter un dialogue de test en mémoire
+   */
+  public addTestDialogue(dialogueId: string, dialogueData: any): void {
+    this.testDialogues.set(dialogueId, dialogueData);
   }
 
   /**
@@ -42,7 +52,14 @@ export class DialogueManager {
     try {
       console.log(`💬 [DialogueManager] ${playerState.characterName} démarre dialogue ${dialogueId} avec ${npcId}`);
 
-      const dialogue = await Dialogue.findOne({ dialogueId });
+      // MODIFIÉ: On regarde d'abord dans notre cache de test
+      let dialogue = this.testDialogues.get(dialogueId);
+
+      // Si on ne trouve pas en test, on cherche dans la BDD normale
+      if (!dialogue) {
+        dialogue = await Dialogue.findOne({ dialogueId });
+      }
+
       if (!dialogue) {
         client.send("error", { message: `Dialogue ${dialogueId} not found` });
         return;
@@ -110,7 +127,13 @@ export class DialogueManager {
     npcId?: string
   ): Promise<void> {
     try {
-      const dialogue = await Dialogue.findOne({ dialogueId });
+      // MODIFIÉ: On regarde d'abord dans notre cache de test
+      let dialogue = this.testDialogues.get(dialogueId);
+
+      if (!dialogue) {
+        dialogue = await Dialogue.findOne({ dialogueId });
+      }
+      
       if (!dialogue) return;
 
       const currentNode = dialogue.nodes.find(n => n.nodeId === currentNodeId);
@@ -163,7 +186,7 @@ export class DialogueManager {
   }
 
   /**
-   * AJOUT: Méthode utilitaire pour retrouver le PlayerState depuis le profileId
+   * Méthode utilitaire pour retrouver le PlayerState depuis le profileId
    */
   private getPlayerStateByProfileId(profileId: string): PlayerState | undefined {
     if (!this.gameState) return undefined;
@@ -289,14 +312,13 @@ export class DialogueManager {
         console.warn("⚠ has_item non implémenté");
         return true;
 
-      // CORRIGÉ: Implémentation de la condition quest_completed
       case "quest_completed":
         if (!condition.questId) return false;
         const playerStateForCondition = this.getPlayerStateByProfileId(profileId);
         if (playerStateForCondition) {
           return playerStateForCondition.quests.completed.includes(condition.questId);
         }
-        return false; // Si on ne trouve pas le joueur, la condition n'est pas remplie
+        return false;
 
       default:
         console.warn("⚠ Condition inconnue:", condition.type);
@@ -375,7 +397,6 @@ export class DialogueManager {
         console.warn("⚠ learn_skill non implémenté");
         break;
 
-      // CORRIGÉ: Implémentation de l'action start_quest
       case "start_quest":
         if (action.questId && this.questManager && this.gameState) {
           const playerStateForAction = this.getPlayerStateByProfileId(profileId);
