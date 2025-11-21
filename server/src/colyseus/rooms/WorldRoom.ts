@@ -68,7 +68,7 @@ export class WorldRoom extends Room<GameState> {
 
     // Tick
     this.setSimulationInterval((dt) => {
-      console.log(`🕒 TICK dt=${dt}ms | players=${this.state.players.size} | monsters=${this.state.monsters.size}`);
+     // console.log(`🕒 TICK dt=${dt}ms | players=${this.state.players.size} | monsters=${this.state.monsters.size}`);
       this.combatManager.update(dt);
     }, 33);
 
