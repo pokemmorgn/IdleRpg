@@ -175,11 +175,11 @@ export class NPCManager {
           requiredLevel: q.requiredLevel,
           rewards: q.rewards
         })),
-        completableQuests: completableQuests.map(q => ({ // NOUVEAU
-          questId: q.questId,
-          name: q.name,
-          rewards: q.rewards
-        }))
+      completableQuests: completableQuests.map((q: IQuest) => ({ // On ajoute le type IQuest
+        questId: q.questId,
+        name: q.name,
+        rewards: q.rewards
+      }))
       });
 
       return;
