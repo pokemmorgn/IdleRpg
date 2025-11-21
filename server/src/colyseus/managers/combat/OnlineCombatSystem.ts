@@ -46,12 +46,19 @@ export class OnlineCombatSystem {
             );
         }
 
+        // --- Nouveau : changement de cible → notifier le manager ---
+        const oldTarget = player.targetMonsterId;
+        const newTarget = target ? target.monsterId : "";
+
+        if (oldTarget !== newTarget) {
+            player.targetMonsterId = newTarget;
+            this.cb.onCastCancel(player, "target_change");
+        }
+
         if (target) {
             player.inCombat = true;
-            player.targetMonsterId = target.monsterId;
         } else {
             player.inCombat = false;
-            player.targetMonsterId = "";
         }
 
         return target;
@@ -80,6 +87,8 @@ export class OnlineCombatSystem {
 
         // Recalcul ciblage
         if (!player.inCombat || !monster || !monster.isAlive) {
+
+            // Si le joueur bouge → pas d'acquisition
             if (isMoving) {
                 player.inCombat = false;
                 player.targetMonsterId = "";
@@ -88,6 +97,9 @@ export class OnlineCombatSystem {
 
             monster = this.acquireTarget(player);
             if (!monster) return;
+
+            // Nouveau combat → event
+            this.cb.onCastCancel(player, "combat_start");
         }
 
         if (isMoving) return;
@@ -115,13 +127,14 @@ export class OnlineCombatSystem {
                 this.cb
             );
 
-            return; // 💡 SkillExecutor déclenche déjà les logs → pas besoin de onPlayerHit
+            return; // SkillExecutor déclenche déjà les logs
         }
 
         // ====================
         // 3) AUTO-ATTAQUE
         // ====================
         if (this.getDistance(player, monster) <= this.ATTACK_RANGE) {
+
             if (AutoAttackController.shouldTrigger(player)) {
 
                 const damage = AutoAttackController.trigger(player, monster, this.cb);
@@ -129,11 +142,12 @@ export class OnlineCombatSystem {
                 // Mort du monstre ?
                 if (monster.hp <= 0 && monster.isAlive) {
                     monster.isAlive = false;
-
                     this.cb.onMonsterDeath(monster, player);
 
                     player.inCombat = false;
                     player.targetMonsterId = "";
+
+                    this.cb.onCastCancel(player, "combat_end");
                 }
             }
         }
