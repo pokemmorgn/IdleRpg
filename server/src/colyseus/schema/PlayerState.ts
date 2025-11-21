@@ -1,4 +1,6 @@
 import { Schema, type } from "@colyseus/schema";
+import { QuestProgress } from "./QuestProgress";
+import { ArraySchema, MapSchema } from "@colyseus/schema";
 
 /**
  * État d'un joueur connecté (visible par tous dans le serveur)
@@ -99,6 +101,37 @@ export class PlayerState extends Schema {
   
   // ===== AFK / Combat auto =====
   @type("number") lastAFKCombatCheck: number = 0;  // anti-spam check AFK
+
+  // ===== QUETES =====
+
+// Quête principale
+@type("string") activeMainQuest: string = "";
+
+// Quête secondaire
+@type("string") activeSecondaryQuest: string = "";
+
+// Quêtes répétables/daily/weekly
+@type([ "string" ])
+activeRepeatableQuests = new ArraySchema<string>();
+
+// Quêtes terminées
+@type([ "string" ])
+completedQuests = new ArraySchema<string>();
+
+// Progression (questId → QuestProgress)
+@type({ map: QuestProgress })
+questProgress = new MapSchema<QuestProgress>();
+
+// Cooldowns
+@type({ map: "number" })
+lastDailyQuestCompletion = new MapSchema<number>();
+
+@type({ map: "number" })
+lastWeeklyQuestCompletion = new MapSchema<number>();
+
+@type({ map: "number" })
+lastRepeatableQuestCompletion = new MapSchema<number>();
+
   
   // ===== CONSOMMABLES (temporaire - placeholder) =====
   @type("number") potionHP: number = 10;  // Nombre de potions HP
