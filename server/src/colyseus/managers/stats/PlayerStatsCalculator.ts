@@ -8,13 +8,14 @@ import {
   IPlayerPrimaryStats,
   IPlayerComputedStats
 } from "../../../models/ServerProfile";
+import { SkinManagerInstance } from "../SkinManager";
 
 // =======================================================================
 // BONUS RACIAUX — APPLICATION DES %
 // =======================================================================
 
 /**
- * Applique un bonus en pourcentage sur les stats primaires
+ * Applique un bonus en pourcentage sur les stats primaires (race)
  */
 function applyPrimaryRaceBonuses(
   primary: IPlayerPrimaryStats,
@@ -37,7 +38,7 @@ function applyPrimaryRaceBonuses(
 }
 
 /**
- * Applique un bonus % sur les stats computed
+ * Applique un bonus % sur les stats computed (race)
  */
 function applyComputedRaceBonuses(
   computed: IPlayerComputedStats,
@@ -63,6 +64,64 @@ function applyComputedRaceBonuses(
 }
 
 // =======================================================================
+// BONUS SKINS — APPLICATION DES %
+// (même format que races: primaryPercent / computedPercent)
+// =======================================================================
+
+type SkinBonus = {
+  primaryPercent?: Record<string, number>;
+  computedPercent?: Record<string, number>;
+};
+
+/**
+ * Applique un bonus % sur les stats primaires venant des skins
+ */
+function applyPrimarySkinBonuses(
+  primary: IPlayerPrimaryStats,
+  skinBonus?: SkinBonus
+): IPlayerPrimaryStats {
+  if (!skinBonus?.primaryPercent) return primary;
+
+  const result: IPlayerPrimaryStats = { ...primary };
+
+  for (const [stat, percent] of Object.entries(skinBonus.primaryPercent)) {
+    if (percent === undefined || percent === null) continue;
+
+    const key = stat as keyof IPlayerPrimaryStats;
+    const multiplier = 1 + percent / 100;
+
+    result[key] = Math.floor(result[key] * multiplier);
+  }
+
+  return result;
+}
+
+/**
+ * Applique un bonus % sur les stats computed venant des skins
+ */
+function applyComputedSkinBonuses(
+  computed: IPlayerComputedStats,
+  skinBonus?: SkinBonus
+): IPlayerComputedStats {
+  if (!skinBonus?.computedPercent) return computed;
+
+  const result: IPlayerComputedStats = { ...computed };
+
+  for (const [stat, percent] of Object.entries(skinBonus.computedPercent)) {
+    if (percent === undefined || percent === null) continue;
+
+    const key = stat as keyof IPlayerComputedStats;
+    const multiplier = 1 + percent / 100;
+
+    if (typeof result[key] === "number") {
+      result[key] = Math.floor(result[key] * multiplier);
+    }
+  }
+
+  return result;
+}
+
+// =======================================================================
 // CALCULATEUR COMPLET
 // =======================================================================
 
@@ -74,7 +133,7 @@ export class PlayerStatsCalculator {
     const race = getRaceById(player.race);
 
     // ============================
-    // 1) STATS PRIMAIRES
+    // 1) STATS PRIMAIRES DE BASE
     // ============================
 
     let primaryStats: IPlayerPrimaryStats = {
@@ -87,6 +146,12 @@ export class PlayerStatsCalculator {
 
     // ===== BONUS PRIMAIRES RACIAUX =====
     primaryStats = applyPrimaryRaceBonuses(primaryStats, race);
+
+    // ===== BONUS PRIMAIRES SKINS =====
+    const skinBonus: SkinBonus | undefined =
+      SkinManagerInstance?.getSkinStatBonus(player);
+
+    primaryStats = applyPrimarySkinBonuses(primaryStats, skinBonus);
 
     const STR = primaryStats.strength;
     const AGI = primaryStats.agility;
@@ -156,7 +221,13 @@ export class PlayerStatsCalculator {
     computed = applyComputedRaceBonuses(computed, race);
 
     // ============================
-    // 5) FINAL
+    // 5) BONUS COMPUTED SKINS
+    // ============================
+
+    computed = applyComputedSkinBonuses(computed, skinBonus);
+
+    // ============================
+    // 6) FINAL
     // ============================
 
     computed.hp = computed.maxHp;
