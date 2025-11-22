@@ -104,7 +104,7 @@ export class WorldRoom extends Room<GameState> {
     );
 
     // --- INVENTORY MANAGER ---
-    this.inventoryManager = new InventoryManager(             // 🔥 AJOUT
+    this.inventoryManager = new InventoryManager(
       this.state,
       (sessionId, type, payload) => {
         const c = this.clients.find(cl => cl.sessionId === sessionId);
@@ -187,7 +187,7 @@ export class WorldRoom extends Room<GameState> {
       characterSlot: p.characterSlot,
       stats: p.stats,
       questData: p.questData,
-      inventory: p.inventory          // 🔥 PAS OBLIGATOIRE SI GÉRÉ EN Manager
+      inventory: p.inventory
     };
   }
 
@@ -212,7 +212,7 @@ export class WorldRoom extends Room<GameState> {
 
     // LOAD INVENTORY
     if (auth.inventory) {
-      player.inventory.loadFromProfile(auth.inventory);   // 🔥 AJOUT
+      player.inventory.loadFromProfile(auth.inventory);
     }
 
     // STATS
@@ -233,9 +233,9 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // HANDLE MESSAGES
+  // HANDLE MESSAGES  (🔥 async ajouté)
   // ===========================================================
-  private handleMessage(client: Client, type: string, msg: any) {
+  private async handleMessage(client: Client, type: string, msg: any) {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
@@ -247,8 +247,8 @@ export class WorldRoom extends Room<GameState> {
 
     // ---- INVENTORY ----
     if (type.startsWith("inv_")) {
-        await this.inventoryManager.handleMessage(type, client, player, msg);
-        return;
+      await this.inventoryManager.handleMessage(type, client, player, msg);
+      return;
     }
 
     // ---- RESPAWN ----
@@ -300,7 +300,7 @@ export class WorldRoom extends Room<GameState> {
           lastOnline: new Date(),
           stats: computed,
           questData: player.saveQuestsToProfile(),
-          inventory: player.inventory.saveToProfile()      // 🔥 AJOUT
+          inventory: player.inventory.saveToProfile()
         }
       });
 
