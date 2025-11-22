@@ -1,8 +1,8 @@
 import { PlayerState } from "../schema/PlayerState";
+import { InventoryState } from "../schema/InventoryState"; // On importe l'inventaire
 
 /**
  * Types de consommables disponibles
- * Tous les 10 levels, un nouveau tier débloqué avec plus de soin
  */
 interface ConsumableType {
   itemId: string;
@@ -12,7 +12,7 @@ interface ConsumableType {
 }
 
 /**
- * Configuration des potions HP (tous les 10 levels)
+ * Configuration des potions HP
  */
 const POTION_TIERS: ConsumableType[] = [
   { itemId: "potion_hp_t1", name: "Minor Health Potion", healAmount: 200, minLevel: 1 },
@@ -24,7 +24,7 @@ const POTION_TIERS: ConsumableType[] = [
 ];
 
 /**
- * Configuration de la nourriture (tous les 10 levels)
+ * Configuration de la nourriture
  */
 const FOOD_TIERS: ConsumableType[] = [
   { itemId: "food_t1", name: "Bread", healAmount: 100, minLevel: 1 },
@@ -36,27 +36,14 @@ const FOOD_TIERS: ConsumableType[] = [
 ];
 
 /**
- * ConsumableManager - Gère la consommation automatique de potions/nourriture
- * 
- * Responsabilités :
- * - Détecter quand le joueur a besoin de soins (HP < 50%)
- * - Chercher le meilleur consommable disponible selon le level
- * - Consommer automatiquement (priorité : Potions HP > Nourriture)
- * - Retourner false si plus de consommables (le joueur peut mourir)
- * 
- * NOTE : Version placeholder pour l'instant (inventaire pas encore implémenté)
- * Les consommables sont stockés directement dans PlayerState temporairement
+ * ConsumableManager - Gère la consommation via l'inventaire du joueur
  */
 export class ConsumableManager {
   
   /**
    * Tente de soigner un joueur si nécessaire
-   * 
-   * @param player - État du joueur
-   * @returns true si soigné ou pas besoin, false si plus de consommables
    */
   tryHealPlayer(player: PlayerState): boolean {
-    // Vérifier si le joueur a besoin de soins (HP < 50%)
     const needsHealing = player.hp < player.maxHp * 0.5;
     
     if (!needsHealing) {
@@ -66,151 +53,147 @@ export class ConsumableManager {
     console.log(`🩹 [ConsumableManager] ${player.characterName} a besoin de soins (HP: ${player.hp}/${player.maxHp})`);
     
     // Priorité 1 : Potions HP
-    if (player.potionHP > 0) {
-      return this.usePotionHP(player);
+    const potionToUse = this.getBestConsumableForLevel(POTION_TIERS, player.level);
+    if (this.getItemCount(player, potionToUse.itemId) > 0) {
+      return this.useConsumable(player, potionToUse);
     }
     
     // Priorité 2 : Nourriture
-    if (player.food > 0) {
-      return this.useFood(player);
+    const foodToUse = this.getBestConsumableForLevel(FOOD_TIERS, player.level);
+    if (this.getItemCount(player, foodToUse.itemId) > 0) {
+      return this.useConsumable(player, foodToUse);
     }
     
-    // Plus de consommables
     console.log(`❌ [ConsumableManager] ${player.characterName} n'a plus de consommables !`);
     return false;
   }
   
   /**
-   * Utilise une potion HP (meilleure disponible selon le level)
+   * Utilise un consommable de l'inventaire
    */
-  private usePotionHP(player: PlayerState): boolean {
-    // Trouver le meilleur tier disponible pour le level du joueur
-    const bestPotion = this.getBestConsumableForLevel(POTION_TIERS, player.level);
-    
-    // Consommer la potion
-    player.potionHP--;
-    
-    // Soigner le joueur
+  private useConsumable(player: PlayerState, consumable: ConsumableType): boolean {
+    // 1. Retirer l'objet de l'inventaire
+    if (!this.removeItemFromInventory(player, consumable.itemId, 1)) {
+        console.error(`Erreur: Impossible de retirer 1x ${consumable.itemId} de l'inventaire de ${player.characterName}`);
+        return false;
+    }
+
+    // 2. Soigner le joueur
     const hpBefore = player.hp;
-    player.hp = Math.min(player.maxHp, player.hp + bestPotion.healAmount);
+    player.hp = Math.min(player.maxHp, player.hp + consumable.healAmount);
     const actualHeal = player.hp - hpBefore;
     
-    console.log(`💊 [ConsumableManager] ${player.characterName} utilise ${bestPotion.name}`);
+    console.log(`💊 [ConsumableManager] ${player.characterName} utilise ${consumable.name}`);
     console.log(`   +${actualHeal} HP (${hpBefore} → ${player.hp}/${player.maxHp})`);
-    console.log(`   Potions restantes: ${player.potionHP}`);
     
+    return true;
+  }
+
+  // --- Méthodes utilitaires pour l'inventaire ---
+
+  /**
+   * Récupère le nombre d'un certain item dans l'inventaire personnel.
+   */
+  private getItemCount(player: PlayerState, itemId: string): number {
+    return player.inventory.personalItems.get(itemId) || 0;
+  }
+
+  /**
+   * Retire un certain nombre d'items de l'inventaire.
+   * @returns true si succès, false si l'item n'existe pas ou pas assez.
+   */
+  private removeItemFromInventory(player: PlayerState, itemId: string, quantity: number): boolean {
+    const currentCount = this.getItemCount(player, itemId);
+    if (currentCount < quantity) {
+      return false;
+    }
+
+    const newCount = currentCount - quantity;
+    if (newCount <= 0) {
+      player.inventory.personalItems.delete(itemId);
+    } else {
+      player.inventory.personalItems.set(itemId, newCount);
+    }
+    
+    // NOTE: Il faudra appeler la sauvegarde de l'inventaire après cette opération.
+    // Le système qui appelle `tryHealPlayer` devrait s'en charger.
     return true;
   }
   
   /**
-   * Utilise de la nourriture (meilleure disponible selon le level)
+   * Ajoute un item à l'inventaire (pour les tests / récompenses).
    */
-  private useFood(player: PlayerState): boolean {
-    // Trouver le meilleur tier disponible pour le level du joueur
-    const bestFood = this.getBestConsumableForLevel(FOOD_TIERS, player.level);
-    
-    // Consommer la nourriture
-    player.food--;
-    
-    // Soigner le joueur
-    const hpBefore = player.hp;
-    player.hp = Math.min(player.maxHp, player.hp + bestFood.healAmount);
-    const actualHeal = player.hp - hpBefore;
-    
-    console.log(`🍖 [ConsumableManager] ${player.characterName} utilise ${bestFood.name}`);
-    console.log(`   +${actualHeal} HP (${hpBefore} → ${player.hp}/${player.maxHp})`);
-    console.log(`   Nourriture restante: ${player.food}`);
-    
-    return true;
+  private addItemToInventory(player: PlayerState, itemId: string, quantity: number): void {
+    const currentCount = this.getItemCount(player, itemId);
+    player.inventory.personalItems.set(itemId, currentCount + quantity);
   }
-  
-  /**
-   * Trouve le meilleur consommable disponible pour le level du joueur
-   */
+
+  // --- Méthodes publiques (adaptées pour l'inventaire) ---
+
   private getBestConsumableForLevel(tiers: ConsumableType[], playerLevel: number): ConsumableType {
-    // Trouver le tier le plus élevé accessible
-    let bestTier = tiers[0]; // Par défaut, le tier 1
-    
+    let bestTier = tiers[0];
     for (const tier of tiers) {
       if (playerLevel >= tier.minLevel) {
         bestTier = tier;
       } else {
-        break; // On a trouvé le meilleur tier accessible
+        break;
       }
     }
-    
     return bestTier;
   }
   
-  /**
-   * Récupère les infos du consommable actuel pour le level
-   */
   getCurrentPotionInfo(playerLevel: number): ConsumableType {
     return this.getBestConsumableForLevel(POTION_TIERS, playerLevel);
   }
   
-  /**
-   * Récupère les infos de la nourriture actuelle pour le level
-   */
   getCurrentFoodInfo(playerLevel: number): ConsumableType {
     return this.getBestConsumableForLevel(FOOD_TIERS, playerLevel);
   }
   
-  /**
-   * Vérifie si le joueur a encore des consommables
-   */
   hasConsumables(player: PlayerState): boolean {
-    return player.potionHP > 0 || player.food > 0;
+    const potionToCheck = this.getBestConsumableForLevel(POTION_TIERS, player.level);
+    const foodToCheck = this.getBestConsumableForLevel(FOOD_TIERS, player.level);
+    return this.getItemCount(player, potionToCheck.itemId) > 0 || this.getItemCount(player, foodToCheck.itemId) > 0;
   }
   
-  /**
-   * Compte le nombre total de consommables
-   */
   getTotalConsumables(player: PlayerState): number {
-    return player.potionHP + player.food;
+    let total = 0;
+    POTION_TIERS.forEach(p => total += this.getItemCount(player, p.itemId));
+    FOOD_TIERS.forEach(f => total += this.getItemCount(player, f.itemId));
+    return total;
   }
   
   /**
    * Donne des consommables à un joueur (pour les tests)
    */
   giveConsumables(player: PlayerState, potions: number, food: number): void {
-    player.potionHP += potions;
-    player.food += food;
-    
     const potionInfo = this.getCurrentPotionInfo(player.level);
     const foodInfo = this.getCurrentFoodInfo(player.level);
+    
+    this.addItemToInventory(player, potionInfo.itemId, potions);
+    this.addItemToInventory(player, foodInfo.itemId, food);
     
     console.log(`🎁 [ConsumableManager] ${player.characterName} reçoit:`);
     console.log(`   ${potions}x ${potionInfo.name} (${potionInfo.healAmount} HP chacune)`);
     console.log(`   ${food}x ${foodInfo.name} (${foodInfo.healAmount} HP chacune)`);
-    console.log(`   Total: ${player.potionHP} potions, ${player.food} nourriture`);
   }
   
   /**
    * Réinitialise les consommables d'un joueur (pour les tests)
    */
   resetConsumables(player: PlayerState, potions: number = 10, food: number = 20): void {
-    player.potionHP = potions;
-    player.food = food;
-    
-    const potionInfo = this.getCurrentPotionInfo(player.level);
-    const foodInfo = this.getCurrentFoodInfo(player.level);
-    
-    console.log(`🔄 [ConsumableManager] Consommables réinitialisés pour ${player.characterName} (Lv${player.level})`);
-    console.log(`   ${potions}x ${potionInfo.name} (${potionInfo.healAmount} HP)`);
-    console.log(`   ${food}x ${foodInfo.name} (${foodInfo.healAmount} HP)`);
+    // On vide d'abord les anciens
+    POTION_TIERS.forEach(p => player.inventory.personalItems.delete(p.itemId));
+    FOOD_TIERS.forEach(f => player.inventory.personalItems.delete(f.itemId));
+
+    // On ajoute les nouveaux
+    this.giveConsumables(player, potions, food);
   }
   
-  /**
-   * Liste tous les tiers de potions disponibles
-   */
   static getAllPotionTiers(): ConsumableType[] {
     return POTION_TIERS;
   }
   
-  /**
-   * Liste tous les tiers de nourriture disponibles
-   */
   static getAllFoodTiers(): ConsumableType[] {
     return FOOD_TIERS;
   }
