@@ -65,17 +65,14 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
 
     // ==========================================================
     // 3) PRIMARY BONUS FROM EQUIPMENT
-    // ==========================================================
     for (const eq of player.inventory.equipment.values()) {
         if (!eq.itemId) continue;
-
-        const model = await ItemModel.findOne({ itemId: eq.itemId });
-        if (!model?.stats) continue;
-
+    
+        // ✅ CORRECTION : Utiliser les stats déjà stockées dans le slot
         for (const key of ["strength", "agility", "intelligence", "endurance", "spirit"]) {
-            if (typeof model.stats[key] === "number") {
+            if (eq.stats.has(key)) {
                 const k = key as keyof IPlayerPrimaryStats;
-                primary[k] += model.stats[key]!;
+                primary[k] += eq.stats.get(key)!;
             }
         }
     }
@@ -144,19 +141,14 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     // ==========================================================
     for (const eq of player.inventory.equipment.values()) {
         if (!eq.itemId) continue;
-
-        const model = await ItemModel.findOne({ itemId: eq.itemId });
-        if (!model?.stats) continue;
-
-        for (const [key, raw] of Object.entries(model.stats)) {
-
+    
+        // ✅ CORRECTION : Utiliser les stats déjà stockées dans le slot
+        for (const [key, value] of eq.stats.entries()) {
             if (["strength", "agility", "intelligence", "endurance", "spirit", "attackSpeed"].includes(key)) {
                 continue;
             }
-
+    
             const k = key as keyof IPlayerComputedStats;
-            const value = Number(raw);
-
             if (typeof computed[k] === "number") {
                 computed[k] += value;
             }
