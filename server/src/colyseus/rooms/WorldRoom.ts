@@ -19,9 +19,10 @@ import { TestManager } from "../test/TestManager";
 import { SkinManager } from "../managers/SkinManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 
-import { InventoryManager } from "../managers/InventoryManager";    // 🔥 AJOUT
+import { InventoryManager } from "../managers/InventoryManager";
 
 import ServerProfile from "../../models/ServerProfile";
+import ItemModel from "../../models/Item";      // ✅ pour itemCache
 
 export class WorldRoom extends Room<GameState> {
   maxClients = 1000;
@@ -37,7 +38,7 @@ export class WorldRoom extends Room<GameState> {
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
 
-  private inventoryManager!: InventoryManager;        // 🔥 AJOUT
+  private inventoryManager!: InventoryManager;
 
   private testManager?: TestManager;
 
@@ -52,7 +53,7 @@ export class WorldRoom extends Room<GameState> {
     console.log("🧬 GameState initialisé");
 
     // --- SKIN MANAGER ---
-    new SkinManager(); // instance globale
+    new SkinManager();
 
     // --- QUEST SYSTEM ---
     this.questManager = new QuestManager(
@@ -93,7 +94,7 @@ export class WorldRoom extends Room<GameState> {
       this.state
     );
 
-    // --- COMBAT MANAGER ---
+    // --- COMBAT ---
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
@@ -103,7 +104,7 @@ export class WorldRoom extends Room<GameState> {
       this.questObjectiveManager
     );
 
-    // --- INVENTORY MANAGER ---
+    // --- INVENTORY ---
     this.inventoryManager = new InventoryManager(
       this.state,
       (sessionId, type, payload) => {
@@ -117,7 +118,7 @@ export class WorldRoom extends Room<GameState> {
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // --- TEST ENV ---
+    // --- TEST ---
     if (this.serverId === "test") {
       this.testManager = new TestManager(
         this.state,
@@ -128,23 +129,18 @@ export class WorldRoom extends Room<GameState> {
       this.testManager.loadAll();
     }
 
-    console.log("📥 WORLD ROOM READY (message handlers setup)");
+    console.log("📥 WORLD ROOM READY");
 
-    // ===========================================================
     // MESSAGE HANDLING
-    // ===========================================================
     this.onMessage("*", (client, type, msg) => {
       this.handleMessage(client, String(type), msg);
     });
 
-    // ===========================================================
-    // SIMULATION LOOP
-    // ===========================================================
+    // SIMULATION
     this.setSimulationInterval((dt) => {
       this.combatManager.update(dt);
     }, 33);
 
-    // Time loop
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
@@ -208,20 +204,46 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
+    // ---- LOAD QUESTS ----
     if (auth.questData) player.loadQuestsFromProfile(auth.questData);
 
-    // LOAD INVENTORY
+    // ---- LOAD INVENTORY ----
     if (auth.inventory) {
       player.inventory.loadFromProfile(auth.inventory);
     }
 
-    // STATS
+    // ===========================================================
+    // LOAD ITEM CACHE (équipement + items personnels)
+    // ===========================================================
+    player.itemCache = {};
+
+    // équipement
+    for (const [slot, invSlot] of player.inventory.equipment.entries()) {
+      if (!invSlot.itemId) continue;
+      const model = await ItemModel.findOne({ itemId: invSlot.itemId });
+      if (model) {
+        player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
+      }
+    }
+
+    // items personnels
+    for (const [itemId, slot] of Object.entries(player.inventory.personalItems)) {
+      const model = await ItemModel.findOne({ itemId });
+      if (model) {
+        player.itemCache[itemId] = { stats: model.stats || {} };
+      }
+    }
+
+    // ===========================================================
+    // APPLY STATS
+    // ===========================================================
     const computed = computeFullStats(player);
     player.loadStatsFromProfile(computed);
-    // 🔥 FORCE TEST ZONE
+
     if (this.serverId === "test") {
-        player.zoneId = "start_zone";
+      player.zoneId = "start_zone";
     }
+
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
   }
@@ -236,7 +258,7 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // HANDLE MESSAGES  (🔥 async ajouté)
+  // HANDLE MESSAGES
   // ===========================================================
   private async handleMessage(client: Client, type: string, msg: any) {
     const player = this.state.players.get(client.sessionId);
@@ -253,12 +275,14 @@ export class WorldRoom extends Room<GameState> {
       await this.inventoryManager.handleMessage(type, client, player, msg);
       return;
     }
-    // ---- STATS REQUEST ----
+
+    // ---- STATS ----
     if (type === "stats_request") {
       const stats = computeFullStats(player);
       client.send("stats_update", stats);
       return;
     }
+
     // ---- RESPAWN ----
     if (type === "respawn") {
       if (!player.isDead) return;
@@ -270,7 +294,7 @@ export class WorldRoom extends Room<GameState> {
     if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
     if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
     if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
-    if (type === "dialogue_choice") return this.npcManager.handleDialogueChoice(client, player, msg);
+    if (type === "dialogue_choice") return this.dialogueManager.handleDialogueChoice(client, player, msg);
 
     // ---- QUEST OBJECTIVES ----
     if (type === "quest_talk") return this.questObjectiveManager.onTalk(player, msg);
