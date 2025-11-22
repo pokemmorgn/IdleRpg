@@ -253,7 +253,12 @@ export class WorldRoom extends Room<GameState> {
       await this.inventoryManager.handleMessage(type, client, player, msg);
       return;
     }
-
+    // ---- STATS REQUEST ----
+    if (type === "stats_request") {
+      const stats = computeFullStats(player);
+      client.send("stats_update", stats);
+      return;
+    }
     // ---- RESPAWN ----
     if (type === "respawn") {
       if (!player.isDead) return;
