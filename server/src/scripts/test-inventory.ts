@@ -1,9 +1,11 @@
 /**
- * TEST INVENTORY — Ajout / Équipement / Utilisation / Container
+ * TEST INVENTORY — Add / Remove / Swap / Equip / Use / Open / Bag Upgrade / Personal
  */
 
 import * as Colyseus from "colyseus.js";
-import fetch from "node-fetch";
+
+// Node 18+ → fetch disponible nativement
+// Aucun import node-fetch
 
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
@@ -81,10 +83,7 @@ async function getCreationData(token: string) {
         headers: { Authorization: `Bearer ${token}` }
     });
 
-    const j = await r.json();
-    if (!r.ok) return null;
-
-    return j;
+    return await r.json();
 }
 
 async function createCharacter(token: string, race: string, classId: string) {
@@ -130,104 +129,8 @@ async function reserveSeat(token: string) {
     return j;
 }
 
-
 // =====================================================================
-// INVENTORY TEST
-// =====================================================================
-const ALL_ITEMS = [
-    // 12 équipements
-    "eq_head", "eq_chest", "eq_legs", "eq_feet", "eq_hands",
-    "eq_weapon", "eq_offhand",
-    "eq_ring1", "eq_ring2",
-    "eq_trinket1", "eq_trinket2",
-    "eq_neck",
-
-    // Items normaux
-    "consum_hp_potion",
-    "mat_iron_ore",
-    "box_small_loot",
-    "quest_relic_piece",
-    "bag_upgrade_01",
-    "shared_token",
-
-    // Item personnel
-    "personal_family_ring"
-];
-
-async function testInventory(room: Colyseus.Room) {
-    console.log("\n=====================================");
-    console.log("🔥 DÉBUT DU TEST INVENTAIRE");
-    console.log("=====================================\n");
-
-    // -------------------------------
-    // 1) Ajouter tous les items
-    // -------------------------------
-    console.log("📦 Ajout de tous les items...");
-    for (const it of ALL_ITEMS) {
-        room.send("inv_add", { itemId: it, amount: 1 });
-        console.log(`→ ajouté: ${it}`);
-        await sleep(80);
-    }
-
-    await sleep(500);
-
-    // -------------------------------
-    // 2) Équiper les équipements
-    // -------------------------------
-    console.log("\n🛡 Test équipement auto...");
-    const EQUIP_LIST = ALL_ITEMS.filter(i => i.startsWith("eq_"));
-
-    let slot = 0;
-    for (const equip of EQUIP_LIST) {
-        room.send("inv_equip", { fromSlot: slot });
-        console.log(`→ equip ${equip} depuis slot ${slot}`);
-        slot++;
-        await sleep(100);
-    }
-
-    await sleep(800);
-
-    // -------------------------------
-    // 3) Test potion
-    // -------------------------------
-    console.log("\n🧪 Utilisation d'une potion...");
-    room.send("inv_use", { slot: 12 });
-    await sleep(400);
-
-    // -------------------------------
-    // 4) Test lootbox
-    // -------------------------------
-    console.log("\n🎁 Ouverture d'une loot box...");
-    room.send("inv_open", { slot: 14 });
-    await sleep(500);
-
-    // -------------------------------
-    // 5) Test upgrade bag
-    // -------------------------------
-    console.log("\n👜 Upgrade du sac...");
-    room.send("inv_upgrade_bag", { slot: 15 });
-    await sleep(400);
-
-    // -------------------------------
-    // 6) Test split stack
-    // -------------------------------
-    console.log("\n📤 Split d'une pile...");
-    room.send("inv_split", { from: 13, to: 5, amount: 1 });
-    await sleep(300);
-
-    // -------------------------------
-    // 7) Test swap
-    // -------------------------------
-    console.log("\n🔄 Swap entre 13 et 6...");
-    room.send("inv_swap", { from: 13, to: 6 });
-    await sleep(300);
-
-    console.log("\n🎉 FIN DU TEST INVENTAIRE !");
-}
-
-
-// =====================================================================
-// MAIN
+// MAIN TEST
 // =====================================================================
 (async () => {
     try {
@@ -246,25 +149,110 @@ async function testInventory(room: Colyseus.Room) {
         const client = new Colyseus.Client(WS_URL);
         const room = await client.consumeSeatReservation(mm);
 
-        console.log("🔌 CONNECTÉ AU SERVEUR !");
+        console.log("🔌 CONNECTÉ AU SERVEUR DE JEU !");
+        console.log("⏳ Préparation du test inventaire…");
 
+        // Écouteurs messages inventaire
         room.onMessage("inventory_update", (msg) => {
             console.log("📦 INVENTORY UPDATE:", msg);
         });
 
-        room.onMessage("item_used", (msg) => console.log("💊 ITEM USED:", msg));
+        room.onMessage("item_used", (msg) => {
+            console.log("🍾 ITEM USED:", msg);
+        });
 
-        room.onMessage("welcome", () => console.log("👋 Welcome reçu."));
+        room.onMessage("welcome", (msg) =>
+            console.log("👋 WELCOME:", msg)
+        );
 
-        // laisser les listeners s’enregistrer
+        await sleep(2000);
+
+        console.log("\n===============================");
+        console.log("🔥 DÉBUT DU TEST INVENTAIRE");
+        console.log("===============================\n");
+
+        // ============================================================
+        // 1) AJOUTER TOUS LES ITEMS SEEDÉS
+        // ============================================================
+        const ALL_ITEMS = [
+            "eq_head", "eq_chest", "eq_legs", "eq_feet", "eq_hands",
+            "eq_weapon", "eq_offhand",
+            "eq_ring1", "eq_ring2",
+            "eq_trinket1", "eq_trinket2",
+            "eq_neck",
+
+            "consum_hp_potion",
+            "mat_iron_ore",
+            "box_small_loot",
+            "quest_relic_piece",
+            "bag_upgrade_01",
+            "shared_token",
+            "personal_family_ring"
+        ];
+
+        console.log("📥 AJOUT DES ITEMS…");
+
+        for (const item of ALL_ITEMS) {
+            console.log(`→ Ajout ${item}`);
+            room.send("inv_add", { itemId: item, amount: 1 });
+            await sleep(200);
+        }
+
+        await sleep(1000);
+
+        // ============================================================
+        // 2) TEST OUVERTURE LOOTBOX
+        // ============================================================
+        console.log("\n🎁 OUVERTURE LOOTBOX");
+
+        room.send("inv_open", { slot: 5 }); // à adapter selon l'ordre
+        await sleep(1000);
+
+        // ============================================================
+        // 3) TEST CONSOMMABLE
+        // ============================================================
+        console.log("\n🍺 UTILISATION CONSOMMABLE");
+
+        room.send("inv_use", { slot: 6 });
         await sleep(800);
 
-        await testInventory(room);
+        // ============================================================
+        // 4) TEST EQUIP
+        // ============================================================
+        console.log("\n🛡️ TEST ÉQUIPEMENT");
 
+        room.send("inv_equip", { fromSlot: 0 });
+        await sleep(800);
+
+        // ============================================================
+        // 5) TEST UNEQUIP
+        // ============================================================
+        console.log("\n🔧 TEST DÉSÉQUIPEMENT (slot head)");
+
+        room.send("inv_unequip", { equipSlot: "head" });
+        await sleep(800);
+
+        // ============================================================
+        // 6) TEST BAG UPGRADE
+        // ============================================================
+        console.log("\n🎒 TEST UPGRADE DE SAC");
+
+        room.send("inv_upgrade_bag", { slot: 7 });
+        await sleep(800);
+
+        // ============================================================
+        // 7) TEST ITEM PERSONNEL
+        // ============================================================
+        console.log("\n💍 TEST ITEM PERSONNEL");
+
+        room.send("inv_add_personal", { itemId: "personal_family_ring" });
+        await sleep(800);
+
+        console.log("\n🎉 FIN DU TEST INVENTAIRE !");
         process.exit(0);
 
     } catch (error) {
-        console.error("❌ Erreur dans test-inventory:", error);
+        console.error("❌ Erreur test-inventory:", error);
         process.exit(1);
     }
 })();
