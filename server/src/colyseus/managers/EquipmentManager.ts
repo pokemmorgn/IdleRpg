@@ -25,7 +25,9 @@ export class EquipmentManager {
         if (!model || model.type !== "equipment") return;
 
         const equipSlot = String(model.equipSlot);
-        const currently = inv.equipment.get(equipSlot);
+
+        // 🟩 CORRECT : accéder avec []
+        const currently = inv.equipment[equipSlot];
 
         // ---------------------------------------------------------
         // 🟥 RETIRER ancien item du itemCache
@@ -46,7 +48,9 @@ export class EquipmentManager {
         // ---------------------------------------------------------
         const newSlot = new InventorySlot();
         newSlot.setItem(s.itemId, 1);
-        inv.equipment.set(equipSlot, newSlot);
+
+        // 🟩 CORRECT : assigner via propriété
+        inv.equipment[equipSlot] = newSlot;
 
         // 🔥 Ajouter à itemCache
         player.itemCache[s.itemId] = {
@@ -76,7 +80,8 @@ export class EquipmentManager {
         const inv = player.inventory;
         const key = String(equipSlot);
 
-        const eq = inv.equipment.get(key);
+        // 🟩 CORRECT
+        const eq = inv.equipment[key];
         if (!eq || !eq.itemId) return;
 
         const free = this.findFreeBagSlot(inv);
@@ -91,8 +96,7 @@ export class EquipmentManager {
         delete player.itemCache[eq.itemId];
 
         // vider le slot d’équipement
-        const empty = new InventorySlot();
-        inv.equipment.set(key, empty);
+        inv.equipment[key] = new InventorySlot();
 
         // ---------------------------------------------------------
         // 🔥 RECALCUL
