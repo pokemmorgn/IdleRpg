@@ -22,7 +22,7 @@ import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 import { InventoryManager } from "../managers/InventoryManager";
 
 import ServerProfile from "../../models/ServerProfile";
-import ItemModel from "../../models/Item";      // ✅ pour itemCache
+import ItemModel from "../../models/Item";
 
 export class WorldRoom extends Room<GameState> {
   maxClients = 1000;
@@ -52,21 +52,18 @@ export class WorldRoom extends Room<GameState> {
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
 
-    // --- SKIN MANAGER ---
     new SkinManager();
 
-    // --- QUEST SYSTEM ---
     this.questManager = new QuestManager(
       this.serverId,
       this.state,
       this.savePlayerData.bind(this)
     );
-
     await this.questManager.loadAllQuestsFromDB();
 
     this.questObjectiveManager = new QuestObjectiveManager(
       this.state,
-      (sessionId: string, type: string, payload: any) => {
+      (sessionId, type, payload) => {
         const client = this.clients.find(c => c.sessionId === sessionId);
         if (client) client.send(type, payload);
       },
@@ -80,7 +77,6 @@ export class WorldRoom extends Room<GameState> {
       this.state
     );
 
-    // --- NPC + MONSTERS ---
     this.npcManager = new NPCManager(
       this.serverId,
       this.state,
@@ -89,12 +85,8 @@ export class WorldRoom extends Room<GameState> {
       this.dialogueManager
     );
 
-    this.monsterManager = new MonsterManager(
-      this.serverId,
-      this.state
-    );
+    this.monsterManager = new MonsterManager(this.serverId, this.state);
 
-    // --- COMBAT ---
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
@@ -104,7 +96,6 @@ export class WorldRoom extends Room<GameState> {
       this.questObjectiveManager
     );
 
-    // --- INVENTORY ---
     this.inventoryManager = new InventoryManager(
       this.state,
       (sessionId, type, payload) => {
@@ -114,11 +105,9 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
 
-    // --- LOAD WORLD ENTITIES ---
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // --- TEST ---
     if (this.serverId === "test") {
       this.testManager = new TestManager(
         this.state,
@@ -131,15 +120,11 @@ export class WorldRoom extends Room<GameState> {
 
     console.log("📥 WORLD ROOM READY");
 
-    // MESSAGE HANDLING
     this.onMessage("*", (client, type, msg) => {
       this.handleMessage(client, String(type), msg);
     });
 
-    // SIMULATION
-    this.setSimulationInterval((dt) => {
-      this.combatManager.update(dt);
-    }, 33);
+    this.setSimulationInterval(dt => this.combatManager.update(dt), 33);
 
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
@@ -204,45 +189,33 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
-    // ---- LOAD QUESTS ----
     if (auth.questData) player.loadQuestsFromProfile(auth.questData);
 
-    // ---- LOAD INVENTORY ----
-    if (auth.inventory) {
-      player.inventory.loadFromProfile(auth.inventory);
-    }
+    if (auth.inventory) player.inventory.loadFromProfile(auth.inventory);
 
     // ===========================================================
-    // LOAD ITEM CACHE (équipement + items personnels)
+    // BUILD itemCache
     // ===========================================================
     player.itemCache = {};
 
-    // équipement
     for (const [slot, invSlot] of player.inventory.equipment.entries()) {
       if (!invSlot.itemId) continue;
       const model = await ItemModel.findOne({ itemId: invSlot.itemId });
-      if (model) {
-        player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
-      }
+      if (model) player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
     }
 
-    // items personnels
-    for (const [itemId, slot] of Object.entries(player.inventory.personalItems)) {
+    for (const [itemId] of Object.entries(player.inventory.personalItems)) {
       const model = await ItemModel.findOne({ itemId });
-      if (model) {
-        player.itemCache[itemId] = { stats: model.stats || {} };
-      }
+      if (model) player.itemCache[itemId] = { stats: model.stats || {} };
     }
 
     // ===========================================================
-    // APPLY STATS
+    // APPLY STATS  (fix: await)
     // ===========================================================
-    const computed = computeFullStats(player);
+    const computed = await computeFullStats(player);
     player.loadStatsFromProfile(computed);
 
-    if (this.serverId === "test") {
-      player.zoneId = "start_zone";
-    }
+    if (this.serverId === "test") player.zoneId = "start_zone";
 
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
@@ -264,52 +237,46 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
-    // ---- SKINS ----
     const handledBySkin = require("../managers/SkinManager")
       .SkinManagerInstance
       ?.handleMessage(type, client, player, msg);
     if (handledBySkin) return;
 
-    // ---- INVENTORY ----
     if (type.startsWith("inv_")) {
       await this.inventoryManager.handleMessage(type, client, player, msg);
       return;
     }
 
-    // ---- STATS ----
     if (type === "stats_request") {
-      const stats = computeFullStats(player);
+      const stats = await computeFullStats(player);   // ✔ fix
       client.send("stats_update", stats);
       return;
     }
 
-    // ---- RESPAWN ----
     if (type === "respawn") {
       if (!player.isDead) return;
       this.combatManager.respawnPlayer(player);
       return;
     }
 
-    // ---- NPC ----
     if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
     if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
     if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
+
     if (type === "dialogue_choice") {
-        return this.dialogueManager.handleDialogueChoice(
-            client,
-            player,
-            msg.npcId,
-            msg.currentNodeId,
-            msg.choiceId
-        );
+      return this.dialogueManager.handleDialogueChoice(
+        client,
+        player,
+        msg.npcId,
+        msg.currentNodeId,
+        msg.choiceId
+      );
     }
 
-    // ---- QUEST OBJECTIVES ----
     if (type === "quest_talk") return this.questObjectiveManager.onTalk(player, msg);
     if (type === "quest_collect") return this.questObjectiveManager.onCollect(player, msg);
     if (type === "quest_explore") return this.questObjectiveManager.onExplore(player, msg);
 
-    // ---- TEST ----
     if (type === "test_trigger_quest_objective") {
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
@@ -333,7 +300,7 @@ export class WorldRoom extends Room<GameState> {
     try {
       console.log(`💾 Saving data for ${player.characterName}...`);
 
-      const computed = computeFullStats(player);
+      const computed = await computeFullStats(player);   // ✔ fix
 
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
@@ -368,7 +335,9 @@ export class WorldRoom extends Room<GameState> {
       1,
       "test_zone",
       msg.x, msg.y, msg.z,
-      0, 0, 0,
+      0,
+      0,
+      0,
       "aggressive",
       12,
       20,
