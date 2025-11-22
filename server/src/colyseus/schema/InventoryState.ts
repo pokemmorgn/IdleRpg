@@ -5,26 +5,30 @@ import { InventorySlot } from "./InventorySlot";
 
 export class InventoryState extends Schema {
 
-    // Nombre de slots dans l’inventaire
+    // Taille totale du sac
     @type("number") maxSlots: number = 20;
 
-    // Slots de l’inventaire
+    // Slots d’inventaire (indexés : 0 → maxSlots)
     @type([InventorySlot])
     slots = new ArraySchema<InventorySlot>();
 
-    // Emplacements d’équipement (head, chest, ring1, ring2, etc.)
+    // Équipement (clé string obligatoire)
     @type({ map: InventorySlot })
     equipment = new MapSchema<InventorySlot>();
 
     constructor() {
         super();
 
-        // Initialiser les slots vides
+        /* ===============================
+           INIT INVENTORY SLOTS
+        ================================ */
         for (let i = 0; i < this.maxSlots; i++) {
             this.slots.push(new InventorySlot());
         }
 
-        // Initialiser les équipements
+        /* ===============================
+           INIT EQUIPMENT SLOTS
+        ================================ */
         const equipSlots = [
             "head", "chest", "legs", "feet", "hands",
             "weapon", "offhand",
@@ -33,47 +37,51 @@ export class InventoryState extends Schema {
             "neck"
         ];
 
-        for (const slot of equipSlots) {
-            this.equipment.set(slot, new InventorySlot());
+        for (const slotName of equipSlots) {
+            this.equipment.set(slotName, new InventorySlot());
         }
     }
 
-    /* ==============================================
+    /* ============================================================
        LOAD FROM PROFILE (Mongo → Serveur)
-       ============================================== */
+    ============================================================ */
     loadFromProfile(data: any) {
         if (!data || typeof data !== "object") return;
 
-        // maxSlots
+        // Charger taille sac
         this.maxSlots = data.maxSlots || 20;
 
-        // Rebuild inventory slots
-        this.slots = new ArraySchema<InventorySlot>();
+        // Rebuilding slots
+        const newSlots = new ArraySchema<InventorySlot>();
         for (let i = 0; i < this.maxSlots; i++) {
-            const slot = new InventorySlot();
+            const s = new InventorySlot();
             const raw = data.slots?.[i];
-            if (raw && typeof raw === "object") {
-                slot.itemId = raw.itemId ?? "";
-                slot.amount = raw.amount ?? 0;
-            }
-            this.slots.push(slot);
-        }
 
-        // Rebuild equipment
-        this.equipment = new MapSchema<InventorySlot>();
-        for (const [slotName, raw] of Object.entries<any>(data.equipment || {})) {
-            const slot = new InventorySlot();
             if (raw && typeof raw === "object") {
-                slot.itemId = raw.itemId ?? "";
-                slot.amount = raw.amount ?? 0;
+                s.itemId = raw.itemId ?? "";
+                s.amount = raw.amount ?? 0;
             }
-            this.equipment.set(slotName, slot);
+            newSlots.push(s);
         }
+        this.slots = newSlots;
+
+        // Rebuilding equipment
+        const newEquip = new MapSchema<InventorySlot>();
+        for (const [slotName, raw] of Object.entries<any>(data.equipment || {})) {
+            const s = new InventorySlot();
+
+            if (raw && typeof raw === "object") {
+                s.itemId = raw.itemId ?? "";
+                s.amount = raw.amount ?? 0;
+            }
+            newEquip.set(slotName, s);
+        }
+        this.equipment = newEquip;
     }
 
-    /* ==============================================
+    /* ============================================================
        SAVE TO PROFILE (Serveur → Mongo)
-       ============================================== */
+    ============================================================ */
     saveToProfile() {
         return {
             maxSlots: this.maxSlots,
@@ -82,14 +90,50 @@ export class InventoryState extends Schema {
                 amount: s.amount
             })),
             equipment: Object.fromEntries(
-                [...this.equipment.entries()].map(([k, v]) => [
-                    k,
+                [...this.equipment.entries()].map(([slotName, s]) => [
+                    slotName,
                     {
-                        itemId: v.itemId,
-                        amount: v.amount
+                        itemId: s.itemId,
+                        amount: s.amount
                     }
                 ])
             )
         };
+    }
+
+    /* ============================================================
+       EXPORT (vers client)
+    ============================================================ */
+    exportSlots() {
+        return this.slots.map(s => ({
+            itemId: s.itemId,
+            amount: s.amount
+        }));
+    }
+
+    exportEquipment() {
+        const obj: Record<string, any> = {};
+        for (const [slotName, slot] of this.equipment.entries()) {
+            obj[slotName] = {
+                itemId: slot.itemId,
+                amount: slot.amount
+            };
+        }
+        return obj;
+    }
+
+    /* ============================================================
+       UTILITAIRE : vider inventaire
+    ============================================================ */
+    clearAll() {
+        for (const s of this.slots) {
+            s.itemId = "";
+            s.amount = 0;
+        }
+        for (const [k, s] of this.equipment.entries()) {
+            s.itemId = "";
+            s.amount = 0;
+            this.equipment.set(k, s);
+        }
     }
 }
