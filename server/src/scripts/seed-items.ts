@@ -29,7 +29,7 @@ const EQUIPMENT_BASE_STATS: Record<string, Record<string, number>> = {
   legs:      { endurance: 3, armor: 3 },
   feet:      { agility:  1, moveSpeed: 0.1 },
   hands:     { strength: 2, attackPower: 2 },
-  weapon:    { strength: 4, attackPower: 4 },
+  weapon: { strength: 4, attackPower: 4, attackSpeed: 2.4 },
   offhand:   { magicResistance: 1.5, endurance: 1 },
   ring1:     { spirit: 2 },
   ring2:     { spirit: 2 },
