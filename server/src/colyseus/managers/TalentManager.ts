@@ -6,16 +6,16 @@ import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
 /**
  * TalentManager - Gère toute la logique liée aux talents des joueurs.
+ * Version OPTIMUM : toutes les actions envoient un paquet complet "player_update".
  */
 export class TalentManager {
+
     private talentCache: Map<string, ITalent> = new Map();
-    private onSavePlayer?: (player: PlayerState) => Promise<void>;
 
     constructor(
-        onSavePlayer?: (player: PlayerState) => Promise<void>
-    ) {
-        this.onSavePlayer = onSavePlayer;
-    }
+        private readonly onSavePlayer?: (player: PlayerState) => Promise<void>,
+        private readonly send?: (sessionId: string, type: string, data: any) => void
+    ) {}
 
     /* ===========================================================
        CHARGEMENT DB
@@ -29,58 +29,48 @@ export class TalentManager {
             for (const talent of talents) {
                 this.talentCache.set(talent.talentId, talent.toObject());
             }
-            console.log(`✅ [TalentManager] ${this.talentCache.size} définitions de talent chargées.`);
+
+            console.log(`✅ [TalentManager] ${this.talentCache.size} talents chargés.`);
         } catch (error) {
-            console.error("❌ [TalentManager] Erreur lors du chargement des talents:", error);
+            console.error("❌ [TalentManager] Erreur chargement talents:", error);
         }
     }
 
     /* ===========================================================
-       GESTION DES POINTS
+       DONNER UN POINT DE TALENT
        =========================================================== */
-    /**
-     * Donne un point de talent au joueur. Appelé lors d'une montée de niveau.
-     */
     giveSkillPoint(player: PlayerState): void {
         player.availableSkillPoints++;
         console.log(`🌟 [TalentManager] ${player.characterName} gagne 1 point de talent (Total: ${player.availableSkillPoints})`);
-        // TODO: Notifier le client
     }
 
     /* ===========================================================
        VALIDATION
        =========================================================== */
-    /**
-     * Vérifie si un joueur peut apprendre un rang de ce talent.
-     */
-    canLearnTalent(player: PlayerState, talentId: string): { canLearn: boolean; reason?: string } {
+    canLearnTalent(player: PlayerState, talentId: string) {
         const talent = this.talentCache.get(talentId);
         if (!talent) return { canLearn: false, reason: "Talent not found" };
 
         const currentRank = player.talents.get(talentId) || 0;
 
-        // 1. Vérifier le niveau du joueur
-        if (player.level < talent.requiredLevel) {
+        if (player.level < talent.requiredLevel)
             return { canLearn: false, reason: `Requires level ${talent.requiredLevel}` };
-        }
 
-        // 2. Vérifier les points disponibles
-        if (player.availableSkillPoints <= 0) {
+        if (player.availableSkillPoints <= 0)
             return { canLearn: false, reason: "Not enough skill points" };
-        }
 
-        // 3. Vérifier le rang maximum
-        if (currentRank >= talent.maxRank) {
+        if (currentRank >= talent.maxRank)
             return { canLearn: false, reason: "Max rank reached" };
-        }
 
-        // 4. Vérifier les prérequis
         for (const prereq of talent.prerequisites) {
-            if (prereq.type === 'talent' && prereq.talentId && prereq.rank) {
+            if (prereq.type === "talent" && prereq.talentId && prereq.rank) {
                 const prereqRank = player.talents.get(prereq.talentId) || 0;
                 if (prereqRank < prereq.rank) {
-                    const prereqTalent = this.talentCache.get(prereq.talentId);
-                    return { canLearn: false, reason: `Requires ${prereqRank} ranks in ${prereqTalent?.name || prereq.talentId}` };
+                    const t = this.talentCache.get(prereq.talentId);
+                    return {
+                        canLearn: false,
+                        reason: `Requires ${prereq.rank} ranks in ${t?.name || prereq.talentId}`
+                    };
                 }
             }
         }
@@ -89,13 +79,10 @@ export class TalentManager {
     }
 
     /* ===========================================================
-       APPRENTISSAGE / RESPEC
+       APPRENDRE UN TALENT
        =========================================================== */
-    /**
-     * Tente d'apprendre un rang de talent.
-     * @returns true si succès, false sinon.
-     */
     async learnTalent(player: PlayerState, talentId: string): Promise<boolean> {
+
         const validation = this.canLearnTalent(player, talentId);
         if (!validation.canLearn) {
             console.log(`❌ [TalentManager] ${player.characterName} ne peut pas apprendre ${talentId}: ${validation.reason}`);
@@ -105,68 +92,83 @@ export class TalentManager {
         const talent = this.talentCache.get(talentId)!;
         const newRank = (player.talents.get(talentId) || 0) + 1;
 
-        // 1. Dépenser le point
+        // Dépenser le point
         player.availableSkillPoints--;
 
-        // 2. Mettre à jour le rang
+        // Apprendre le rang
         player.talents.set(talentId, newRank);
 
-        // 3. Exécuter le script du talent (onLearn)
+        // Exécuter script talent
         const script = talentScriptRegistry.get(talent.scriptName);
-        if (script?.onLearn) {
-            script.onLearn(player, newRank);
-        }
+        if (script?.onLearn) script.onLearn(player, newRank);
 
         console.log(`📚 [TalentManager] ${player.characterName} apprend ${talent.name} (Rang ${newRank})`);
 
-        // 4. Recalculer les stats du joueur
-        const newStats = await computeFullStats(player);
-        player.loadStatsFromProfile(newStats);
+        // Recompute stats
+        const stats = await computeFullStats(player);
+        player.loadStatsFromProfile(stats);
 
-        // 5. Sauvegarder
-        this.onSavePlayer?.(player);
+        // Sauvegarder
+        await this.onSavePlayer?.(player);
 
-        // TODO: Notifier le client du succès et du changement de stats
+        // 🔥 ENVOYER player_update COMPLET
+        this.sendPlayerUpdate(player, stats);
+
         return true;
     }
 
-    /**
-     * Réinitialise tous les talents du joueur.
-     */
+    /* ===========================================================
+       RESET DES TALENTS
+       =========================================================== */
     async resetTalents(player: PlayerState): Promise<void> {
-        console.log(`🔄 [TalentManager] ${player.characterName} réinitialise ses talents.`);
-        let pointsToRefund = 0;
 
-        // 1. Parcourir tous les talents appris pour les désapprendre
+        console.log(`🔄 [TalentManager] ${player.characterName} reset ses talents.`);
+        let refund = 0;
+
         for (const [talentId, rank] of player.talents.entries()) {
+
             const talent = this.talentCache.get(talentId);
             if (!talent) continue;
 
-            pointsToRefund += rank;
+            refund += rank;
 
-            // Exécuter le script (onUnlearn) pour chaque rang
             const script = talentScriptRegistry.get(talent.scriptName);
             if (script?.onUnlearn) {
-                // On appelle onUnlearn pour chaque rang, du plus haut au plus bas
                 for (let i = rank; i > 0; i--) {
                     script.onUnlearn(player, i);
                 }
             }
         }
 
-        // 2. Vider les talents et rembourser les points
         player.talents.clear();
-        player.availableSkillPoints += pointsToRefund;
+        player.availableSkillPoints += refund;
 
-        console.log(`💰 [TalentManager] ${player.characterName} a récupé ${pointsToRefund} points de talent.`);
+        console.log(`💰 [TalentManager] ${player.characterName} récupère ${refund} points.`);
 
-        // 3. Recalculer les stats
-        const newStats = await computeFullStats(player);
-        player.loadStatsFromProfile(newStats);
+        // Recompute stats
+        const stats = await computeFullStats(player);
+        player.loadStatsFromProfile(stats);
 
-        // 4. Sauvegarder
-        this.onSavePlayer?.(player);
+        // Sauvegarde
+        await this.onSavePlayer?.(player);
 
-        // TODO: Notifier le client du respec
+        // 🔥 ENVOYER player_update COMPLET
+        this.sendPlayerUpdate(player, stats);
+    }
+
+    /* ===========================================================
+       SEND PLAYER UPDATE (NOUVEAU PACKET OPTIMUM)
+       =========================================================== */
+    private sendPlayerUpdate(player: PlayerState, stats: any) {
+        if (!this.send) return;
+
+        this.send(player.sessionId, "player_update", {
+            level: player.level,
+            xp: player.xp,
+            nextLevelXp: player.nextLevelXp,
+            stats,
+            availableSkillPoints: player.availableSkillPoints,
+            talents: player.saveTalentsToProfile()
+        });
     }
 }
