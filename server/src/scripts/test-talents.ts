@@ -18,9 +18,9 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TalentTester";
 
-// CORRIGÉ: On force la classe pour qu'elle corresponde à notre talent de test
+// CORRIGÉ: On force la classe pour qu'elle corresponde à notre talent de prêtre
 const FORCED_CHARACTER_CLASS = "priest";
-const FORCED_CHARACTER_RACE = "human_elion"; // On suppose que c'est une race valide pour le guerrier
+const FORCED_CHARACTER_RACE = "human_elion";
 
 const TALENT_TO_LEARN_ID = "priest_holy_smite";
 const XP_AMOUNT_TO_LEVEL_UP = 1000;
@@ -122,37 +122,39 @@ async function waitForMessage(room: Colyseus.Room, messageType: string, timeoutM
 async function testTalentSystem(room: Colyseus.Room) {
     console.log("\n🔥 DÉBUT DU TEST SYSTÈME DE TALENTS\n");
 
-    // --- ÉTAPE 1 : Demander les stats initiales ---
+    // --- ÉTAPE 1 : Attendre le message "welcome" pour être sûr que onJoin est terminé ---
+    console.log("⏳ En attente du message de bienvenue...");
+    await waitForMessage(room, "welcome");
+    console.log("✅ Serveur prêt.");
+
+    // --- ÉTAPE 2 : Demander les stats initiales ---
     console.log("⏳ Demande des stats initiales au serveur...");
     const initialStats = await waitForMessage(room, "stats_update");
     console.log("📊 Stats initiales:", initialStats);
     console.log(`👉 Points de talent disponibles: ${initialStats.availableSkillPoints}`);
 
-    // --- ÉTAPE 2 : Donner de l'XP pour monter d'un niveau ---
-    console.log(`\n--- ÉTAPE 2 : Donner ${XP_AMOUNT_TO_LEVEL_UP} XP ---`);
+    // --- ÉTAPE 3 : Donner de l'XP pour monter d'un niveau ---
+    console.log(`\n--- ÉTAPE 3 : Donner ${XP_AMOUNT_TO_LEVEL_UP} XP ---`);
     room.send("debug_give_xp", { amount: XP_AMOUNT_TO_LEVEL_UP });
 
     const levelUpMessage = await waitForMessage(room, "level_up");
     console.log("✅ Message de level-up reçu:", levelUpMessage);
-
-    // CORRIGÉ: On utilise les stats incluses dans le message level_up
     const statsAfterLevelUp = levelUpMessage.stats;
     console.log("📊 Stats après level-up:", statsAfterLevelUp);
     console.log(`👉 Points de talent disponibles: ${statsAfterLevelUp.availableSkillPoints}`);
     console.log("📊 DIFF →", diff(initialStats, statsAfterLevelUp));
 
-    // --- ÉTAPE 3 : Apprendre un talent ---
-    console.log(`\n--- ÉTAPE 3 : Apprendre le talent ${TALENT_TO_LEARN_ID} ---`);
+    // --- ÉTAPE 4 : Apprendre un talent ---
+    console.log(`\n--- ÉTAPE 4 : Apprendre le talent ${TALENT_TO_LEARN_ID} ---`);
     room.send("talent_learn", { talentId: TALENT_TO_LEARN_ID });
     
-    // Ici, on attend bien un stats_update, car l'apprentissage de talent ne renvoie pas de message dédié
     const statsAfterLearn = await waitForMessage(room, "stats_update");
     console.log("📊 Stats après apprentissage du talent:", statsAfterLearn);
     console.log(`👉 Points de talent disponibles: ${statsAfterLearn.availableSkillPoints}`);
     console.log("📊 DIFF →", diff(statsAfterLevelUp, statsAfterLearn));
 
-    // --- ÉTAPE 4 : Reset des talents ---
-    console.log(`\n--- ÉTAPE 4 : Reset des talents ---`);
+    // --- ÉTAPE 5 : Reset des talents ---
+    console.log(`\n--- ÉTAPE 5 : Reset des talents ---`);
     room.send("talent_reset");
 
     const statsAfterReset = await waitForMessage(room, "stats_update");
@@ -173,13 +175,12 @@ async function testTalentSystem(room: Colyseus.Room) {
         let profile = await getProfile(token);
 
         if (!profile) {
-            // CORRIGÉ: On force la race et la classe pour notre test
+            // CORRIGÉ: On force la race et la classe pour notre test de prêtre
             const race = FORCED_CHARACTER_RACE;
             const classId = FORCED_CHARACTER_CLASS;
             profile = await createCharacter(token, race, classId);
         } else {
-            // Si le personnage existe déjà mais n'est pas un guerrier, le test échouera.
-            // On peut choisir de le recréer ou d'arrêter le test. Pour l'instant, on continue.
+            // Si le personnage existe mais n'est pas un prêtre, le test échouera.
             console.warn(`⚠️ Le personnage existant est un ${profile.class}. Le test pourrait échouer si ce n'est pas un ${FORCED_CHARACTER_CLASS}.`);
         }
 
@@ -188,6 +189,13 @@ async function testTalentSystem(room: Colyseus.Room) {
         const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTÉ AU SERVEUR !");
+        
+        // AJOUT: Enregistrer les écouteurs de messages pour le débogage
+        console.log("📡 Enregistrement des écouteurs de messages...");
+        room.onMessage("stats_update", (msg) => console.log("📈 STATS UPDATE REÇU:", msg));
+        room.onMessage("level_up", (msg) => console.log("⬆️ LEVEL UP REÇU:", msg));
+        room.onMessage("welcome", (msg) => console.log("👋 WELCOME:", msg));
+
         await sleep(1000); // Petite pause pour être sûr que tout est prêt
 
         await testTalentSystem(room);
