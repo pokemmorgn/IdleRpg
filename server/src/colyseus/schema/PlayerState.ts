@@ -249,7 +249,12 @@ export class PlayerState extends Schema {
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
     };
   }
-
+  // ===========================================================
+  // CALCUL XP NIVEAU SUIVANT
+  // ===========================================================
+  computeNextLevelXp(level: number): number {
+    return Math.floor(100 * Math.pow(level, 1.5)); // Style MMORPG
+  }
   // ===========================================================
   // SAVE STATS
   // ===========================================================
