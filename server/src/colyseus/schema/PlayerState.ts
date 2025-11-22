@@ -3,44 +3,50 @@ import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
 import { QuestObjectiveMap } from "./QuestObjectiveMap";
-import { InventoryState } from "./InventoryState";   // ✅ AJOUT
+import { InventoryState } from "./InventoryState";
 
 export class PlayerState extends Schema {
 
-  // ===== IDENTITÉ =====
+  // ======== IDENTITÉ ========
   @type("string") sessionId: string = "";
   @type("string") playerId: string = "";
   @type("string") profileId: string = "";
   @type("number") characterSlot: number = 1;
 
-  // ===== INFO =====
+  // ======== INFO ========
   @type("string") characterName: string = "";
   @type("number") level: number = 1;
   @type("string") class: string = "";
   @type("string") race: string = "";
-  @type(SkinState)
-  skins: SkinState = new SkinState();
+  @type(SkinState) skins: SkinState = new SkinState();
 
-  // ===== INVENTAIRE =====
+  // ======== INVENTAIRE ========
   @type(InventoryState)
-  inventory: InventoryState = new InventoryState();    // ✅ AJOUT
+  inventory: InventoryState = new InventoryState();
 
-  // ===== CONNEXION =====
+  // ======== CACHE LOCAL (NON SYNC COLYSEUS) ========
+  /** 
+   * Cache interne des items portés & possédés
+   * Non synchronisé avec Colyseus
+   */
+  itemCache: Record<string, { stats?: Record<string, number> }> = {};   // 🔥 AJOUT
+
+  // ======== CONNEXION ========
   @type("number") connectedAt: number = 0;
   @type("number") lastActivity: number = 0;
 
-  // ===== VIE =====
+  // ======== VIE ========
   @type("number") hp: number = 100;
   @type("number") maxHp: number = 100;
 
-  // ===== RESSOURCE =====
+  // ======== RESSOURCES ========
   @type("number") resource: number = 100;
   @type("number") maxResource: number = 100;
   @type("number") manaRegen: number = 0;
   @type("number") rageRegen: number = 0;
   @type("number") energyRegen: number = 0;
 
-  // ===== COMBAT BASE =====
+  // ======== COMBAT ========
   @type("number") attackPower: number = 10;
   @type("number") spellPower: number = 10;
   @type("number") attackSpeed: number = 2.5;
@@ -58,7 +64,6 @@ export class PlayerState extends Schema {
   @type("number") tenacity: number = 0;
   @type("number") lifesteal: number = 0;
 
-  // ===== COMBAT =====
   @type("boolean") inCombat: boolean = false;
   @type("string") targetMonsterId: string = "";
   @type("string") lastAttackerId: string = "";
@@ -79,7 +84,7 @@ export class PlayerState extends Schema {
   @type({ map: "json" }) skills = new MapSchema<any>();
   @type("string") queuedSkill: string = "";
 
-  // ===== MOUVEMENT =====
+  // ======== POSITION ========
   @type("string") zoneId: string = "default";
   @type("number") posX: number = 0;
   @type("number") posY: number = 0;
@@ -87,7 +92,7 @@ export class PlayerState extends Schema {
 
   @type("number") lastMovementTime: number = 0;
 
-  // ===== AFK =====
+  // ======== AFK ========
   @type("number") afkRefX: number = 0;
   @type("number") afkRefY: number = 0;
   @type("number") afkRefZ: number = 0;
@@ -95,13 +100,12 @@ export class PlayerState extends Schema {
   @type("boolean") isAFK: boolean = false;
   @type("boolean") isDead: boolean = false;
   @type("number") deathTimer: number = 0;
-
   @type("number") lastAFKCombatCheck: number = 0;
 
-  // ===== QUÊTES =====
+  // ======== QUÊTES ========
   @type(QuestState) quests: QuestState = new QuestState();
 
-  // ===== CONSOMMABLES =====
+  // ======== CONSOMMABLES ========
   @type("number") potionHP: number = 10;
   @type("number") food: number = 20;
 
@@ -129,54 +133,52 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // INVENTORY LOAD
+  // INVENTORY
   // ===========================================================
   loadInventoryFromProfile(data: any) {
-    if (data) {
-      this.inventory.loadFromProfile(data);
-    }
+    if (data) this.inventory.loadFromProfile(data);
   }
 
-  // ===========================================================
-  // INVENTORY SAVE
-  // ===========================================================
   saveInventoryToProfile() {
     return this.inventory.saveToProfile();
   }
 
   // ===========================================================
-  // COMBAT UPDATE
-  // ===========================================================
-  updateCombatTimers(dt: number) {
-    if (this.isDead || this.isAFK) return;
-
-    if (this.gcdRemaining > 0)
-      this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
-
-    if (this.castLockRemaining > 0) {
-      this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
-      if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
-    }
-
-    if (this.animationLockRemaining > 0) {
-      this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
-      if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
-    }
-
-    if (this.autoAttackTimer < this.attackSpeed * 1000)
-      this.autoAttackTimer += dt;
-  }
-
-  // ===========================================================
-  // LOAD STATS
+  // STATS
   // ===========================================================
   loadStatsFromProfile(stats: any) {
     if (!stats) return;
     Object.assign(this, stats);
   }
 
+  saveStatsToProfile() {
+    return {
+      hp: this.hp,
+      maxHp: this.maxHp,
+      resource: this.resource,
+      maxResource: this.maxResource,
+      manaRegen: this.manaRegen,
+      rageRegen: this.rageRegen,
+      energyRegen: this.energyRegen,
+      attackPower: this.attackPower,
+      spellPower: this.spellPower,
+      attackSpeed: this.attackSpeed,
+      criticalChance: this.criticalChance,
+      criticalDamage: this.criticalDamage,
+      damageReduction: this.damageReduction,
+      armor: this.armor,
+      magicResistance: this.magicResistance,
+      precision: this.precision,
+      evasion: this.evasion,
+      penetration: this.penetration,
+      tenacity: this.tenacity,
+      lifesteal: this.lifesteal,
+      spellPenetration: this.spellPenetration
+    };
+  }
+
   // ===========================================================
-  // LOAD QUESTS
+  // QUÊTES
   // ===========================================================
   loadQuestsFromProfile(data: any) {
     if (!data) {
@@ -190,7 +192,6 @@ export class PlayerState extends Schema {
 
     this.quests.activeMain = data.activeMain || "";
     this.quests.activeSecondary = data.activeSecondary || "";
-
     data.activeRepeatables?.forEach((id: string) =>
       this.quests.activeRepeatables.push(id)
     );
@@ -220,9 +221,6 @@ export class PlayerState extends Schema {
     });
   }
 
-  // ===========================================================
-  // SAVE QUESTS
-  // ===========================================================
   saveQuestsToProfile() {
     return {
       completed: [...this.quests.completed],
@@ -239,35 +237,6 @@ export class PlayerState extends Schema {
       ),
       dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
-    };
-  }
-
-  // ===========================================================
-  // SAVE STATS
-  // ===========================================================
-  saveStatsToProfile() {
-    return {
-      hp: this.hp,
-      maxHp: this.maxHp,
-      resource: this.resource,
-      maxResource: this.maxResource,
-      manaRegen: this.manaRegen,
-      rageRegen: this.rageRegen,
-      energyRegen: this.energyRegen,
-      attackPower: this.attackPower,
-      spellPower: this.spellPower,
-      attackSpeed: this.attackSpeed,
-      criticalChance: this.criticalChance,
-      criticalDamage: this.criticalDamage,
-      damageReduction: this.damageReduction,
-      armor: this.armor,
-      magicResistance: this.magicResistance,
-      precision: this.precision,
-      evasion: this.evasion,
-      penetration: this.penetration,
-      tenacity: this.tenacity,
-      lifesteal: this.lifesteal,
-      spellPenetration: this.spellPenetration
     };
   }
 }
