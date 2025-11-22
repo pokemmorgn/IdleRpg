@@ -47,10 +47,14 @@ export class WorldRoom extends Room<GameState> {
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
 
-    // --- SKIN MANAGER ---
-    new SkinManager(); // instancie globalement
+    // --------------------------------
+    // SKIN MANAGER
+    // --------------------------------
+    new SkinManager();
 
-    // --- QUEST SYSTEM ---
+    // --------------------------------
+    // QUEST SYSTEM
+    // --------------------------------
     this.questManager = new QuestManager(
       this.serverId,
       this.state,
@@ -75,7 +79,9 @@ export class WorldRoom extends Room<GameState> {
       this.state
     );
 
-    // --- NPC + MONSTER ---
+    // --------------------------------
+    // NPC + MONSTER MANAGERS
+    // --------------------------------
     this.npcManager = new NPCManager(
       this.serverId,
       this.state,
@@ -86,7 +92,9 @@ export class WorldRoom extends Room<GameState> {
 
     this.monsterManager = new MonsterManager(this.serverId, this.state);
 
-    // --- COMBAT MANAGER ---
+    // --------------------------------
+    // COMBAT MANAGER
+    // --------------------------------
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
@@ -96,13 +104,21 @@ export class WorldRoom extends Room<GameState> {
       this.questObjectiveManager
     );
 
-    // --- LOAD WORLD ENTITIES ---
+    // LOAD WORLD ENTITIES
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
-    // --- TEST ENVIRONMENT ---
+    // --------------------------------
+    // TEST MODE (serverId === "test")
+    // --------------------------------
     if (this.serverId === "test") {
-      this.testManager = new TestManager(this.state, this.questManager, this.dialogueManager);
+      this.testManager = new TestManager(
+        this.state,
+        this.questManager,
+        this.dialogueManager,
+        this.questObjectiveManager   // ✅ ARGUMENT MANQUANT FIXÉ
+      );
+
       this.testManager.loadAll();
     }
 
@@ -120,13 +136,12 @@ export class WorldRoom extends Room<GameState> {
     });
 
     // ===========================================================
-    // SIMULATION LOOP (combat)
+    // SIMULATION LOOP
     // ===========================================================
     this.setSimulationInterval((dt) => {
       this.combatManager.update(dt);
     }, 33);
 
-    // update world time
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
@@ -175,48 +190,50 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   // JOIN
   // ===========================================================
-async onJoin(client: Client, options: any, auth: any) {
-  console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
+  async onJoin(client: Client, options: any, auth: any) {
+    console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
 
-  const player = new PlayerState(
-    client.sessionId,
-    auth.playerId,
-    auth.profileId,
-    auth.characterSlot,
-    auth.characterName,
-    auth.level,
-    auth.characterClass,
-    auth.characterRace
-  );
+    const player = new PlayerState(
+      client.sessionId,
+      auth.playerId,
+      auth.profileId,
+      auth.characterSlot,
+      auth.characterName,
+      auth.level,
+      auth.characterClass,
+      auth.characterRace
+    );
 
-  if (auth.questData) player.loadQuestsFromProfile(auth.questData);
+    if (auth.questData) {
+      player.loadQuestsFromProfile(auth.questData);
+    }
 
-  // ALWAYS compute stats freshly using skins + race + class
-  const computed = computeFullStats(player);
-  player.loadStatsFromProfile(computed);
+    // CALCUL DES STATS
+    const computed = computeFullStats(player);
+    player.loadStatsFromProfile(computed);
 
-  // ➤ Patch indispensable : envoyer les stats initiales
-  client.send("stats_update", {
-    hp: player.hp,
-    maxHp: player.maxHp,
-    resource: player.resource,
-    maxResource: player.maxResource,
-    manaRegen: player.manaRegen,
-    attackPower: player.attackPower,
-    spellPower: player.spellPower,
-    armor: player.armor,
-    magicResistance: player.magicResistance,
-    criticalChance: player.criticalChance,
-    attackSpeed: player.attackSpeed,
-    damageReduction: player.damageReduction
-  });
+    client.send("stats_update", {
+      hp: player.hp,
+      maxHp: player.maxHp,
+      resource: player.resource,
+      maxResource: player.maxResource,
+      manaRegen: player.manaRegen,
+      attackPower: player.attackPower,
+      spellPower: player.spellPower,
+      armor: player.armor,
+      magicResistance: player.magicResistance,
+      criticalChance: player.criticalChance,
+      attackSpeed: player.attackSpeed,
+      damageReduction: player.damageReduction
+    });
 
-  if (this.serverId === "test") player.zoneId = "start_zone";
+    if (this.serverId === "test") {
+      player.zoneId = "start_zone"; // important !
+    }
 
-  this.state.addPlayer(player);
-  client.send("welcome", { ok: true });
-}
-
+    this.state.addPlayer(player);
+    client.send("welcome", { ok: true });
+  }
 
   // ===========================================================
   // LEAVE
@@ -232,27 +249,26 @@ async onJoin(client: Client, options: any, auth: any) {
   }
 
   // ===========================================================
-  // HANDLE MESSAGES
+  // HANDLE MESSAGE
   // ===========================================================
   private handleMessage(client: Client, type: string, msg: any) {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
-    // ---- SKINS ----
+    // SKINS
     const handledBySkin = require("../managers/SkinManager")
       .SkinManagerInstance
       ?.handleMessage(type, client, player, msg);
 
     if (handledBySkin) return;
 
-    // ---- RESPAWN ----
+    // RESPAWN
     if (type === "respawn") {
-      if (!player.isDead) return;
-      this.combatManager.respawnPlayer(player);
+      if (player.isDead) this.combatManager.respawnPlayer(player);
       return;
     }
 
-    // ---- NPC ----
+    // NPC
     if (type === "npc_interact") {
       this.npcManager.handleInteraction(client, player, msg);
       return;
@@ -273,7 +289,7 @@ async onJoin(client: Client, options: any, auth: any) {
       return;
     }
 
-    // ---- TEST ----
+    // TEST: simulate kills
     if (type === "test_trigger_quest_objective") {
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
@@ -291,7 +307,7 @@ async onJoin(client: Client, options: any, auth: any) {
   }
 
   // ===========================================================
-  // SAVE PLAYER DATA
+  // SAVE PLAYER
   // ===========================================================
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
@@ -314,7 +330,7 @@ async onJoin(client: Client, options: any, auth: any) {
   }
 
   // ===========================================================
-  // TEST MONSTER
+  // TEST MONSTER SPAWNER
   // ===========================================================
   private spawnTestMonster(msg: any) {
     const MonsterState = require("../schema/MonsterState").MonsterState;
