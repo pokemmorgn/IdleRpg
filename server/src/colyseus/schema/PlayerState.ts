@@ -251,6 +251,25 @@ export class PlayerState extends Schema {
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
     };
   }
+
+  // ===========================================================
+  // LOAD TALENTS
+  // ===========================================================
+  loadTalentsFromProfile(data: any) {
+    if (!data) return;
+    // La MapSchema de Colyseus peut être remplie avec un objet simple
+    Object.entries(data).forEach(([talentId, rank]) => {
+      this.talents.set(talentId, rank as number);
+    });
+  }
+  
+  // ===========================================================
+  // SAVE TALENTS
+  // ===========================================================
+  saveTalentsToProfile() {
+    // La MapSchema de Colyseus peut être convertie en objet simple
+    return Object.fromEntries(this.talents);
+  }
   // ===========================================================
   // CALCUL XP NIVEAU SUIVANT
   // ===========================================================
