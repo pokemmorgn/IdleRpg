@@ -86,7 +86,7 @@ async function reserveSeat(token: string) {
 }
 
 // =====================================================================
-// UTILS (inchangé)
+// UTILS
 // =====================================================================
 function diff(a: any, b: any) {
     if (!a || !b) return "Pas de données.";
@@ -95,26 +95,34 @@ function diff(a: any, b: any) {
     return changes;
 }
 
+// =====================================================================
+// WAIT FOR SPECIFIC MESSAGE (VERSION SIMPLE ET ROBUSTE)
+// =====================================================================
+/**
+ * Attend un message spécifique de la part du serveur.
+ * NOTE: Cette version ne retire pas l'écouteur pour éviter les problèmes d'API client.
+ * Elle utilise un flag pour s'assurer que la promesse n'est résolue qu'une seule fois.
+ * C'est suffisant pour un script de test.
+ */
 async function waitForMessage(room: Colyseus.Room, messageType: string, timeoutMs: number = 5000): Promise<any> {
     return new Promise((resolve, reject) => {
-        let hasResolved = false;
+        let resolved = false;
 
-        const messageListener = (type: string, payload: any) => {
-            if (type === messageType && !hasResolved) {
-                hasResolved = true;
-                clearTimeout(timeout); // Annuler le timeout
-                room.off("message", messageListener); // Retirer l'écouteur correctement
+        // L'API de onMessage est stricte, le type du premier paramètre doit être `string | number`
+        const messageListener = (type: string | number, payload: any) => {
+            if (type === messageType && !resolved) {
+                resolved = true;
+                clearTimeout(timeout);
                 resolve(payload);
             }
         };
 
-        // S'inscrire pour écouter TOUS les messages
+        // On écoute TOUS les messages en utilisant le wildcard "*"
         room.onMessage("*", messageListener);
         
         const timeout = setTimeout(() => {
-            if (!hasResolved) {
-                hasResolved = true;
-                room.off("message", messageListener); // Retirer l'écouteur en cas de timeout
+            if (!resolved) {
+                resolved = true;
                 reject(new Error(`Timeout en attente de ${messageType}`));
             }
         }, timeoutMs);
@@ -149,7 +157,7 @@ async function testTalentSystem(room: Colyseus.Room) {
     console.log(`\n--- ÉTAPE 3 : Apprendre le talent ${TALENT_TO_LEARN_ID} ---`);
     room.send("talent_learn", { talentId: TALENT_TO_LEARN_ID });
     
-    // Note: Le serveur n'envoie pas encore de message "talent_learned", on attend donc juste le changement de stats
+    // On attend la mise à jour des stats qui suit l'apprentissage
     const statsAfterLearn = await waitForMessage(room, "stats_update");
     console.log("📊 Stats après apprentissage du talent:", statsAfterLearn);
     console.log(`👉 Points de talent disponibles: ${statsAfterLearn.availableSkillPoints}`);
