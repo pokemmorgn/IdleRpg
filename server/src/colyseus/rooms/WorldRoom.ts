@@ -15,6 +15,8 @@ import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
 import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
 
+import { SkinManager } from "../managers/SkinManager"; // ← AJOUT IMPORTANT
+
 import ServerProfile from "../../models/ServerProfile";
 
 export class WorldRoom extends Room<GameState> {
@@ -30,6 +32,8 @@ export class WorldRoom extends Room<GameState> {
   private questManager!: QuestManager;
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
+
+  private skinManager!: SkinManager; // ← AJOUT
 
   private testManager?: TestManager;
 
@@ -90,6 +94,9 @@ export class WorldRoom extends Room<GameState> {
       this.questObjectiveManager
     );
 
+    // --- SKIN MANAGER ---
+    this.skinManager = new SkinManager(); // ← AJOUT
+
     // --- LOAD WORLD ENTITIES ---
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
@@ -97,7 +104,7 @@ export class WorldRoom extends Room<GameState> {
     // --- TEST ENVIRONMENT ---
     if (this.serverId === "test") {
       this.testManager = new TestManager(this.state, this.questManager, this.dialogueManager);
-      this.testManager.loadAll(); // NE CRÉE PLUS DE QUÊTES (elles sont dans la DB)
+      this.testManager.loadAll();
     }
 
     console.log("📥 WORLD ROOM READY (messages setup)");
@@ -243,7 +250,7 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // TEST → Trigger objective
+    // TEST → trigger objective
     if (type === "test_trigger_quest_objective") {
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
