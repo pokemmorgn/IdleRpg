@@ -20,7 +20,7 @@ function sleep(ms: number) {
 }
 
 /* ======================================================================
-   QUEUE DE MESSAGES — Évite tout écrasement de listeners
+   QUEUE + EXPOSITION DES QUEUES
 ======================================================================== */
 function setupMessageQueue(room: Colyseus.Room) {
     const queues: Record<string, any[]> = {};
@@ -46,7 +46,7 @@ function setupMessageQueue(room: Colyseus.Room) {
         });
     }
 
-    return { on, waitFor };
+    return { on, waitFor, queues };
 }
 
 /* ======================================================================
@@ -132,9 +132,14 @@ async function reserveSeat(token: string) {
 }
 
 /* ======================================================================
-   PRINT STATS — version queue-safe
+   PRINT STATS — version queue-safe améliorée
 ======================================================================== */
-async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
+async function printStats(queues: any, waitFor: any, room: Colyseus.Room, label: string) {
+
+    // 🧹 CLEAR DES VIEUX stats_update pour éviter les infos périmées
+    if (queues["stats_update"]) {
+        queues["stats_update"] = [];
+    }
 
     room.send("stats_request");
     const msg = await waitFor("stats_update");
@@ -163,7 +168,7 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 
     console.log("🔌 CONNECTÉ AU SERVEUR !");
 
-    const { on, waitFor } = setupMessageQueue(room);
+    const { on, waitFor, queues } = setupMessageQueue(room);
 
     // listeners permanents
     on("welcome", () => console.log("👋 WELCOME!"));
@@ -175,7 +180,7 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
     await waitFor("welcome");
 
     await sleep(200);
-    await printStats(waitFor, room, "Stats au login");
+    await printStats(queues, waitFor, room, "Stats au login");
 
     console.log("\n🔥 AJOUT ITEMS…");
 
@@ -194,26 +199,13 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
         "personal_family_ring"
     ];
 
-    // ======================================================================
-    // 🔥 AUTO-ÉQUIPEMENT DIRECT APRÈS ADD SI item = équipement
-    // ======================================================================
-    const EQUIP_PREFIX = "eq_";
-
-    for (let i = 0; i < ALL_ITEMS.length; i++) {
-        const item = ALL_ITEMS[i];
-
+    for (const item of ALL_ITEMS) {
         console.log(`→ add ${item}`);
         room.send("inv_add", { itemId: item, amount: 1 });
-        await sleep(120);
-
-        if (item.startsWith(EQUIP_PREFIX)) {
-            console.log(`⚔ auto-equip: ${item}`);
-            room.send("inv_equip", { fromSlot: i });
-            await sleep(150);
-        }
+        await sleep(100);
     }
 
-    await printStats(waitFor, room, "Stats après ajout objets");
+    await printStats(queues, waitFor, room, "Stats après ajout objets");
 
     console.log("\n🎁 TEST LOOTBOX");
     room.send("inv_open", { slot: 5 });
@@ -225,11 +217,11 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 
     console.log("\n🛡️ TEST ÉQUIPEMENT");
     room.send("inv_equip", { fromSlot: 0 });
-    await printStats(waitFor, room, "Stats après équipement tête");
+    await printStats(queues, waitFor, room, "Stats après équipement tête");
 
     console.log("\n🔧 TEST DÉSÉQUIPEMENT");
     room.send("inv_unequip", { equipSlot: "head" });
-    await printStats(waitFor, room, "Stats après déséquipement tête");
+    await printStats(queues, waitFor, room, "Stats après déséquipement tête");
 
     console.log("\n🎒 TEST BAG UPGRADE");
     room.send("inv_upgrade_bag", { slot: 7 });
@@ -237,7 +229,7 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 
     console.log("\n💍 TEST ITEM PERSONNEL");
     room.send("inv_add_personal", { itemId: "personal_family_ring" });
-    await printStats(waitFor, room, "Stats après item perso");
+    await printStats(queues, waitFor, room, "Stats après item perso");
 
     console.log("\n🎉 TEST INVENTAIRE TERMINÉ !");
     process.exit(0);
