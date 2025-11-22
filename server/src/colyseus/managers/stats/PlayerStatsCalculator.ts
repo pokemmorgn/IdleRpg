@@ -91,37 +91,39 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
   // ==========================================================
   // 5) COMPUTED BASE (avant ajout équipement)
   // ==========================================================
-  let computed: IPlayerComputedStats = {
-    maxHp: 100 + primary.endurance * 5,
-    hp: 0,
+let computed: IPlayerComputedStats = {
+  maxHp: 100 + primary.endurance * 5,
+  hp: 0,
 
-    maxResource: 0,
-    resource: 0,
-    manaRegen: 0,
-    rageRegen: 0,
-    energyRegen: 0,
+  maxResource: 0,
+  resource: 0,
+  manaRegen: 0,
+  rageRegen: 0,
+  energyRegen: 0,
 
-    attackPower: primary.strength * 2,
-    spellPower: primary.intelligence * 2,
+  attackPower: primary.strength * 2,
+  spellPower: primary.intelligence * 2,
 
-    attackSpeed: Math.max(0.3, (player.attackSpeed || 2.5) - primary.agility * 0.02),
+  // ✔ FIX : utiliser baseAttackSpeed de la classe
+  attackSpeed: Math.max(0.3, classStats.baseAttackSpeed - primary.agility * 0.02),
 
-    criticalChance: primary.agility * 0.1,
-    criticalDamage: 150,
+  criticalChance: primary.agility * 0.1,
+  criticalDamage: 150,
 
-    damageReduction: primary.endurance * 0.5,
-    armor: primary.endurance,
-    magicResistance: primary.intelligence * 0.2,
+  damageReduction: primary.endurance * 0.5,
+  armor: primary.endurance,
+  magicResistance: primary.intelligence * 0.2,
 
-    moveSpeed: classStats.baseMoveSpeed,
+  moveSpeed: classStats.baseMoveSpeed,
 
-    precision: 0,
-    evasion: primary.agility * 0.5,
-    penetration: 0,
-    tenacity: 0,
-    lifesteal: 0,
-    spellPenetration: 0
-  };
+  precision: 0,
+  evasion: primary.agility * 0.5,
+  penetration: 0,
+  tenacity: 0,
+  lifesteal: 0,
+  spellPenetration: 0
+};
+
 
   // ==========================================================
   // 6) COMPUTED BONUS DES ÉQUIPEMENTS
