@@ -6,239 +6,291 @@ import { InventorySlot } from "../schema/InventorySlot";
 import { InventoryState } from "../schema/InventoryState";
 
 import ItemModel from "../../models/Item";
-import EquipModel from "../../models/Equipment";
 
-export type InventoryNotify = (sessionId: string, type: string, payload: any) => void;
-
+/**
+ * InventoryManager
+ * ----------------
+ * Gère :
+ * - ajouter item dans sac
+ * - retirer
+ * - déplacer slots
+ * - split
+ * - équipement
+ * - utiliser consommables
+ */
 export class InventoryManager {
 
     constructor(
-        private readonly gameState: GameState,
-        private readonly notify: InventoryNotify,
-        private readonly savePlayerData: (player: PlayerState) => Promise<void>
+        private state: GameState,
+        private sendToClient: (sessionId: string, type: string, data: any) => void,
+        private savePlayer: (player: PlayerState) => Promise<void>
     ) {}
 
-    // =========================================================================
-    // INITIALISATION
-    // =========================================================================
-    public initializePlayerInventory(player: PlayerState) {
+    // =====================================================================
+    // INIT PLAYER INVENTORY
+    // =====================================================================
+    ensureInventory(player: PlayerState) {
         if (!player.inventory) {
             player.inventory = new InventoryState();
         }
     }
 
-    // =========================================================================
-    // MESSAGE HANDLER (appelé depuis WorldRoom)
-    // =========================================================================
-    public handleMessage(
-        type: string,
-        client: any,
-        player: PlayerState,
-        msg: any
-    ): boolean {
-
-        switch (type) {
-
-            case "inventory_move":
-                this.moveItem(player, msg.from, msg.to);
-                return true;
-
-            case "inventory_split":
-                this.splitStack(player, msg.from, msg.to, msg.amount);
-                return true;
-
-            case "inventory_drop":
-                this.removeItem(player, msg.slot);
-                return true;
-
-            case "inventory_equip":
-                this.equipItem(player, msg.slot);
-                return true;
-
-            case "inventory_unequip":
-                this.unequipItem(player, msg.slot);
-                return true;
-
-            case "inventory_use":
-                this.useItem(player, msg.slot);
-                return true;
-
-            default:
-                return false;
-        }
-    }
-
-    // =========================================================================
-    // AJOUTER UN ITEM
-    // =========================================================================
-    public async addItem(player: PlayerState, itemId: string, amount = 1): Promise<boolean> {
-
-        const model =
-            (await ItemModel.findOne({ itemId })) ||
-            (await EquipModel.findOne({ itemId }));
-
-        if (!model) return false;
-
-        // Trouver un slot libre
+    // =====================================================================
+    // AJOUTER ITEM
+    // =====================================================================
+    async addItem(player: PlayerState, itemId: string, amount: number) {
+        this.ensureInventory(player);
         const inv = player.inventory;
-        for (const slot of inv.slots) {
-            if (!slot.itemId) {
-                slot.setItem(model.itemId, amount);
-                this.sync(player);
-                await this.savePlayerData(player);
-                return true;
+
+        // Charger modèle d'item depuis DB
+        const model = await ItemModel.findOne({ itemId });
+        if (!model) return;
+
+        const isStack = model.stackable !== false;
+
+        // 1) Essayer de stacker dans un slot existant
+        if (isStack) {
+            for (const [, slot] of inv.slots) {
+                if (slot.itemId === itemId) {
+                    slot.amount += amount;
+                    this.syncInventory(player);
+                    return;
+                }
             }
         }
 
-        // Pas de place
-        this.notify(player.sessionId, "error", { message: "Inventory full" });
-        return false;
+        // 2) Chercher un slot vide
+        for (const [, slot] of inv.slots) {
+            if (slot.isEmpty()) {
+                slot.setItem(itemId, amount);
+                this.syncInventory(player);
+                return;
+            }
+        }
+
+        // Pas de place → TODO: envoyer un message "sac plein"
+        this.sendToClient(player.sessionId, "inventory_full", {});
     }
 
-    // =========================================================================
-    // DÉPLACER / SWAP ITEM
-    // =========================================================================
-    private async moveItem(player: PlayerState, from: number, to: number) {
+    // =====================================================================
+    // DÉPLACER SLOT
+    // =====================================================================
+    moveItem(player: PlayerState, from: string, to: string) {
+        this.ensureInventory(player);
         const inv = player.inventory;
-        if (!inv.slots[from] || !inv.slots[to]) return;
 
-        const a = inv.slots[from];
-        const b = inv.slots[to];
+        const sFrom = inv.slots.get(from);
+        const sTo = inv.slots.get(to);
 
-        // Swap complet
+        if (!sFrom || !sTo) return;
+
+        // swap
         const tmp = new InventorySlot();
-        tmp.copyFrom(a);
+        tmp.copyFrom(sFrom);
 
-        a.copyFrom(b);
-        b.copyFrom(tmp);
+        sFrom.copyFrom(sTo);
+        sTo.copyFrom(tmp);
 
-        this.sync(player);
-        await this.savePlayerData(player);
+        this.syncInventory(player);
     }
 
-    // =========================================================================
-    // SPLIT STACKS
-    // =========================================================================
-    private async splitStack(player: PlayerState, from: number, to: number, amount: number) {
+    // =====================================================================
+    // SPLIT STACK
+    // =====================================================================
+    splitItem(player: PlayerState, from: string, to: string, amount: number) {
+        this.ensureInventory(player);
         const inv = player.inventory;
-        const sFrom = inv.slots[from];
-        const sTo = inv.slots[to];
 
-        if (!sFrom.itemId || sTo.itemId) return;
+        const sFrom = inv.slots.get(from);
+        const sTo = inv.slots.get(to);
 
+        if (!sFrom || !sTo) return;
         if (sFrom.amount < amount) return;
 
+        if (!sTo.isEmpty() && sTo.itemId !== sFrom.itemId) return;
+
+        // Move amount
         sFrom.amount -= amount;
-        sTo.setItem(sFrom.itemId, amount);
 
-        this.sync(player);
-        await this.savePlayerData(player);
-    }
-
-    // =========================================================================
-    // RETIRER UN ITEM
-    // =========================================================================
-    private async removeItem(player: PlayerState, slot: number) {
-        const inv = player.inventory;
-        const s = inv.slots[slot];
-        if (!s) return;
-
-        s.clear();
-
-        this.sync(player);
-        await this.savePlayerData(player);
-    }
-
-    // =========================================================================
-    // EQUIPER UN ITEM
-    // =========================================================================
-    private async equipItem(player: PlayerState, slot: number) {
-        const inv = player.inventory;
-        const s = inv.slots[slot];
-        if (!s?.itemId) return;
-
-        const model = await EquipModel.findOne({ itemId: s.itemId });
-        if (!model) {
-            this.notify(player.sessionId, "error", { message: "Not equipment" });
-            return;
+        if (sTo.isEmpty()) {
+            sTo.setItem(sFrom.itemId, amount);
+        } else {
+            sTo.amount += amount;
         }
 
-        // Repère l’emplacement d’équipement
-        const equipSlot = model.slot;
-        if (!equipSlot) {
-            this.notify(player.sessionId, "error", { message: "Invalid equipment slot" });
-            return;
-        }
+        if (sFrom.amount <= 0) sFrom.clear();
 
-        // Déplace l'ancien équipement dans l'inventaire
-        const currently = player.inventory.equipment[equipSlot];
-        if (currently?.itemId) {
-            this.addItem(player, currently.itemId, currently.amount);
-        }
-
-        // Équipe
-        player.inventory.equipment[equipSlot] = new InventorySlot();
-        player.inventory.equipment[equipSlot].setItem(s.itemId, 1);
-
-        // Retire de l'inventaire
-        s.clear();
-
-        this.sync(player);
-        await this.savePlayerData(player);
+        this.syncInventory(player);
     }
 
-    // =========================================================================
-    // DESÉQUIPER
-    // =========================================================================
-    private async unequipItem(player: PlayerState, equipSlot: string) {
-        const inv = player.inventory;
+    // =====================================================================
+    // SUPPRIMER ITEM
+    // =====================================================================
+    removeItem(player: PlayerState, slotIndex: string, amount: number) {
+        this.ensureInventory(player);
 
-        const s = inv.equipment[equipSlot];
-        if (!s?.itemId) return;
+        const slot = player.inventory.slots.get(slotIndex);
+        if (!slot) return;
+        if (slot.amount < amount) return;
 
-        if (!(await this.addItem(player, s.itemId, 1))) {
-            this.notify(player.sessionId, "error", { message: "No space in inventory" });
-            return;
-        }
+        slot.amount -= amount;
+        if (slot.amount <= 0) slot.clear();
 
-        s.clear();
-
-        this.sync(player);
-        await this.savePlayerData(player);
+        this.syncInventory(player);
     }
 
-    // =========================================================================
-    // UTILISER ITEM
-    // =========================================================================
-    private async useItem(player: PlayerState, slot: number) {
+    // =====================================================================
+    // EQUIPER
+    // =====================================================================
+    async equipItem(player: PlayerState, slotIndex: string) {
+        this.ensureInventory(player);
         const inv = player.inventory;
-        const s = inv.slots[slot];
-        if (!s?.itemId) return;
+
+        const slot = inv.slots.get(slotIndex);
+        if (!slot || slot.isEmpty()) return;
+
+        const model = await ItemModel.findOne({ itemId: slot.itemId });
+        if (!model) return;
+
+        if (model.type !== "equipment") return;
+
+        const equipSlot = model.equipSlot;
+        if (!equipSlot) return;
+
+        const current = inv.equipment.get(equipSlot);
+
+        // Si déjà un équipement à cet endroit → swap
+        if (current && !current.isEmpty()) {
+            const tmp = new InventorySlot();
+            tmp.copyFrom(current);
+
+            current.copyFrom(slot);
+            slot.copyFrom(tmp);
+        } else {
+            // move
+            inv.equipment.set(equipSlot, new InventorySlot());
+            const equipSlotObj = inv.equipment.get(equipSlot);
+            if (equipSlotObj) equipSlotObj.setItem(slot.itemId, 1);
+
+            // retirer de l'inventaire
+            if (slot.amount > 1) {
+                slot.amount -= 1;
+            } else {
+                slot.clear();
+            }
+        }
+
+        this.syncInventory(player);
+        this.syncEquipment(player);
+    }
+
+    // =====================================================================
+    // DÉSÉQUIPER
+    // =====================================================================
+    unequipItem(player: PlayerState, equipSlot: string) {
+        this.ensureInventory(player);
+        const inv = player.inventory;
+
+        const s = inv.equipment.get(equipSlot);
+        if (!s || s.isEmpty()) return;
+
+        // chercher un slot vide
+        for (const [, slot] of inv.slots) {
+            if (slot.isEmpty()) {
+                slot.setItem(s.itemId, 1);
+                s.clear();
+                this.syncInventory(player);
+                this.syncEquipment(player);
+                return;
+            }
+        }
+
+        // pas de place
+        this.sendToClient(player.sessionId, "inventory_full", {});
+    }
+
+    // =====================================================================
+    // UTILISER CONSOMMABLE
+    // =====================================================================
+    async useItem(player: PlayerState, slotIndex: string) {
+        this.ensureInventory(player);
+
+        const inv = player.inventory;
+        const s = inv.slots.get(slotIndex);
+        if (!s || s.isEmpty()) return;
 
         const model = await ItemModel.findOne({ itemId: s.itemId });
         if (!model || model.type !== "consumable") return;
 
-        // Appliquer l'effet
-        this.notify(player.sessionId, "item_used", {
-            itemId: s.itemId,
-            effect: model.effect
-        });
+        // Appliquer effets (ex: heal)
+        if (model.effects?.heal) {
+            player.hp = Math.min(player.maxHp, player.hp + model.effects.heal);
 
-        // Consommer
+            this.sendToClient(player.sessionId, "hp_update", {
+                hp: player.hp,
+                maxHp: player.maxHp
+            });
+        }
+
+        // retirer 1
         s.amount -= 1;
         if (s.amount <= 0) s.clear();
 
-        this.sync(player);
-        await this.savePlayerData(player);
+        this.syncInventory(player);
     }
 
-    // =========================================================================
-    // SYNC CLIENT
-    // =========================================================================
-    private sync(player: PlayerState) {
-        this.notify(player.sessionId, "inventory_update", {
-            inventory: player.inventory.serialize()
+    // =====================================================================
+    // SYNC AVEC CLIENT
+    // =====================================================================
+    syncInventory(player: PlayerState) {
+        this.sendToClient(player.sessionId, "inventory_update", {
+            inventory: player.inventory.saveToProfile()
         });
     }
 
+    syncEquipment(player: PlayerState) {
+        this.sendToClient(player.sessionId, "equipment_update", {
+            equipment: player.inventory.saveToProfile().equipment
+        });
+    }
+
+    // =====================================================================
+    // MESSAGE ROUTER
+    // =====================================================================
+    async handleMessage(type: string, client: any, player: PlayerState, msg: any) {
+
+        switch (type) {
+
+            case "inv_add":
+                await this.addItem(player, msg.itemId, msg.amount || 1);
+                break;
+
+            case "inv_move":
+                this.moveItem(player, msg.from, msg.to);
+                break;
+
+            case "inv_split":
+                this.splitItem(player, msg.from, msg.to, msg.amount || 1);
+                break;
+
+            case "inv_remove":
+                this.removeItem(player, msg.slot, msg.amount || 1);
+                break;
+
+            case "inv_equip":
+                await this.equipItem(player, msg.slot);
+                break;
+
+            case "inv_unequip":
+                this.unequipItem(player, msg.slot);
+                break;
+
+            case "inv_use":
+                await this.useItem(player, msg.slot);
+                break;
+        }
+
+        // sauvegarde automatique
+        await this.savePlayer(player);
+    }
 }
