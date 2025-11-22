@@ -1,19 +1,16 @@
 // server/src/colyseus/managers/SkinManager.ts
 
 import { PlayerState } from "../schema/PlayerState";
-import { SkinState, SkinProgressState } from "../schema/SkinState";
+import { SkinProgressState } from "../schema/SkinState";
 import {
   ALL_SKINS,
   getSkinById,
   getSkinsByClass
 } from "../../config/skins/skins.config";
 import { Client } from "colyseus";
-import { PlayerStatsCalculator } from "./stats/PlayerStatsCalculator"; // ← pour recalcul
+import { PlayerStatsCalculator } from "./stats/PlayerStatsCalculator";
 import { IClassStats } from "../../models/ClassStats";
 
-// ===========================================================================
-// Instance globale
-// ===========================================================================
 export let SkinManagerInstance: SkinManager | null = null;
 
 export class SkinManager {
@@ -24,11 +21,8 @@ export class SkinManager {
   }
 
   // ===========================================================================
-  // Handlers Colyseus
+  // MESSAGE HANDLER ROUTER
   // ===========================================================================
-  /**
-   * Retourne true si le message a été géré
-   */
   handleMessage(
     type: string,
     client: Client,
@@ -37,26 +31,16 @@ export class SkinManager {
   ): boolean {
     try {
       switch (type) {
-
-        // ============================
-        // UNLOCK SKIN
-        // ============================
         case "skin_unlock":
           if (!msg?.skinId) return true;
           this.handleUnlock(player, client, msg.skinId);
           return true;
 
-        // ============================
-        // EQUIP SKIN
-        // ============================
         case "skin_equip":
           if (!msg?.skinId) return true;
           this.handleEquip(player, client, msg.skinId);
           return true;
 
-        // ============================
-        // LEVEL-UP SKIN
-        // ============================
         case "skin_level_up":
           if (!msg?.skinId) return true;
           this.handleLevelUp(player, client, msg.skinId);
@@ -65,12 +49,11 @@ export class SkinManager {
     } catch (e) {
       console.error("❌ Erreur SkinManager.handleMessage:", e);
     }
-
-    return false; // message non géré
+    return false;
   }
 
   // ===========================================================================
-  // Helper : recalcul + renvoi au client
+  // RE-CALCUL DES STATS DU JOUEUR
   // ===========================================================================
   private recalcStats(player: PlayerState, client: Client) {
     const classStats = require("../../config/classes.config").getStatsForClass(
@@ -78,7 +61,6 @@ export class SkinManager {
     ) as IClassStats;
 
     const computed = PlayerStatsCalculator.compute(player, classStats);
-
     player.loadStatsFromProfile(computed);
 
     client.send("stats_update", {
@@ -98,7 +80,7 @@ export class SkinManager {
   }
 
   // ===========================================================================
-  // HANDLER: UNLOCK
+  // UNLOCK
   // ===========================================================================
   private handleUnlock(player: PlayerState, client: Client, skinId: string) {
     const config = getSkinById(skinId);
@@ -113,25 +95,17 @@ export class SkinManager {
       return;
     }
 
-    const ok = this.unlockSkin(player, skinId);
-
-    if (!ok) {
+    if (!this.unlockSkin(player, skinId)) {
       client.send("skin_error", { error: "unlock_failed", skinId });
       return;
     }
 
-    // Réponse au client
-    client.send("skin_unlocked", {
-      skinId,
-      level: 1
-    });
-
-    // Recalcul stats
+    client.send("skin_unlocked", { skinId, level: 1 });
     this.recalcStats(player, client);
   }
 
   // ===========================================================================
-  // HANDLER: LEVEL-UP
+  // LEVEL UP
   // ===========================================================================
   private handleLevelUp(player: PlayerState, client: Client, skinId: string) {
     if (!this.hasSkin(player, skinId)) {
@@ -139,25 +113,26 @@ export class SkinManager {
       return;
     }
 
-    const ok = this.levelUpSkin(player, skinId);
+    const result = this.levelUpSkin(player, skinId);
 
-    if (!ok) {
-      client.send("skin_error", { error: "max_level", skinId });
+    if (!result.ok) {
+      client.send("skin_error", {
+        error: result.error || "levelup_failed",
+        skinId
+      });
       return;
     }
 
-    const progress = player.skins.unlockedSkins.get(skinId)!;
-
     client.send("skin_level_up", {
       skinId,
-      level: progress.level
+      level: result.level
     });
 
     this.recalcStats(player, client);
   }
 
   // ===========================================================================
-  // HANDLER: EQUIP
+  // EQUIP
   // ===========================================================================
   private handleEquip(player: PlayerState, client: Client, skinId: string) {
     if (!this.hasSkin(player, skinId)) {
@@ -165,20 +140,17 @@ export class SkinManager {
       return;
     }
 
-    const ok = this.equipSkin(player, skinId);
-
-    if (!ok) {
+    if (!this.equipSkin(player, skinId)) {
       client.send("skin_error", { error: "equip_failed", skinId });
       return;
     }
 
     client.send("skin_equipped", { skinId });
-
     this.recalcStats(player, client);
   }
 
   // ===========================================================================
-  // API (comme avant)
+  // API UTILITAIRES
   // ===========================================================================
   hasSkin(player: PlayerState, skinId: string): boolean {
     return player.skins.unlockedSkins.has(skinId);
@@ -204,22 +176,26 @@ export class SkinManager {
     return true;
   }
 
-  levelUpSkin(player: PlayerState, skinId: string): boolean {
+  levelUpSkin(player: PlayerState, skinId: string): { ok: boolean; error?: string; level?: number } {
     const config = getSkinById(skinId);
-    if (!config) return false;
+    if (!config) return { ok: false, error: "invalid_skin" };
 
     const progress = player.skins.unlockedSkins.get(skinId);
-    if (!progress) return false;
+    if (!progress) return { ok: false, error: "not_unlocked" };
 
-    if (progress.level >= config.maxLevel) return false;
+    if (progress.level >= config.maxLevel) {
+      return { ok: false, error: "max_level_reached" };
+    }
 
     progress.level += 1;
-    return true;
+
+    return {
+      ok: true,
+      level: progress.level
+    };
   }
 
   equipSkin(player: PlayerState, skinId: string): boolean {
-    if (!this.hasSkin(player, skinId)) return false;
-
     const config = getSkinById(skinId);
     if (!config) return false;
 
@@ -230,7 +206,7 @@ export class SkinManager {
   }
 
   // ===========================================================================
-  // Bonus pour stats
+  // BONUS STATS
   // ===========================================================================
   getSkinStatBonus(player: PlayerState) {
     const result = {
@@ -242,7 +218,7 @@ export class SkinManager {
       const config = getSkinById(skinId);
       if (!config) continue;
 
-      const levelMultiplier = progress.level / config.maxLevel;
+      const levelMultiplier = progress.level; // ✔ 5% × level
 
       if (config.statsModifiers.primaryPercent) {
         for (const [stat, value] of Object.entries(config.statsModifiers.primaryPercent)) {
@@ -263,7 +239,7 @@ export class SkinManager {
   }
 
   // ===========================================================================
-  // Liste pour la classe
+  // LISTE DES SKINS POUR UNE CLASSE
   // ===========================================================================
   getAvailableSkinsForPlayer(player: PlayerState) {
     return getSkinsByClass(player.class);
