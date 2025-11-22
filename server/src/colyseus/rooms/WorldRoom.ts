@@ -54,8 +54,8 @@ export class WorldRoom extends Room<GameState> {
     this.questManager = new QuestManager(
       this.serverId,
       this.state,
-      this.savePlayerData.bind(this),
-      this.levelManager // MODIFIÉ: Passer l'instance du LevelManager
+      this.levelManager, // Maintenant en 3ème position
+      this.savePlayerData.bind(this) // Maintenant en 4ème position
     );
     await this.questManager.loadAllQuestsFromDB();
 
