@@ -16,14 +16,14 @@ export class InventoryState extends Schema {
     @type({ map: InventorySlot })
     equipment = new MapSchema<InventorySlot>();
 
-    // 🔥 NOUVEAU : Items personnels / liés au personnage
+    // 🔥 Items personnels / liés au personnage
     @type({ map: InventorySlot })
     personalItems = new MapSchema<InventorySlot>();
 
     constructor() {
         super();
 
-        // Initialiser les slots d’inventaire
+        // Initialiser les slots de l’inventaire
         for (let i = 0; i < this.maxSlots; i++) {
             this.slots.push(new InventorySlot());
         }
@@ -41,20 +41,20 @@ export class InventoryState extends Schema {
             this.equipment.set(slot, new InventorySlot());
         }
 
-        // Initialiser les items personnels
+        // Items personnels : vide au départ
         this.personalItems = new MapSchema<InventorySlot>();
     }
 
     /* ==============================================
        LOAD FROM PROFILE (Mongo → Serveur)
-       ============================================== */
+    ============================================== */
     loadFromProfile(data: any) {
         if (!data || typeof data !== "object") return;
 
         // maxSlots
         this.maxSlots = data.maxSlots || 20;
 
-        // -------- INVENTORY SLOTS --------
+        // ----- INVENTORY SLOTS -----
         this.slots = new ArraySchema<InventorySlot>();
         for (let i = 0; i < this.maxSlots; i++) {
             const slot = new InventorySlot();
@@ -66,7 +66,7 @@ export class InventoryState extends Schema {
             this.slots.push(slot);
         }
 
-        // -------- EQUIPMENT --------
+        // ----- EQUIPMENT -----
         this.equipment = new MapSchema<InventorySlot>();
         for (const [slotName, raw] of Object.entries<any>(data.equipment || {})) {
             const slot = new InventorySlot();
@@ -77,21 +77,21 @@ export class InventoryState extends Schema {
             this.equipment.set(slotName, slot);
         }
 
-        // -------- PERSONAL ITEMS (NEW) --------
+        // ----- PERSONAL ITEMS -----
         this.personalItems = new MapSchema<InventorySlot>();
-        for (const [slotName, raw] of Object.entries<any>(data.personalItems || {})) {
+        for (const [key, raw] of Object.entries<any>(data.personalItems || {})) {
             const slot = new InventorySlot();
             if (raw && typeof raw === "object") {
                 slot.itemId = raw.itemId ?? "";
                 slot.amount = raw.amount ?? 0;
             }
-            this.personalItems.set(slotName, slot);
+            this.personalItems.set(key, slot);
         }
     }
 
     /* ==============================================
        SAVE TO PROFILE (Serveur → Mongo)
-       ============================================== */
+    ============================================== */
     saveToProfile() {
         return {
             maxSlots: this.maxSlots,
@@ -111,7 +111,6 @@ export class InventoryState extends Schema {
                 ])
             ),
 
-            // 🔥 EXPORT PERSONAL ITEMS
             personalItems: Object.fromEntries(
                 [...this.personalItems.entries()].map(([k, v]) => [
                     k,
@@ -122,5 +121,34 @@ export class InventoryState extends Schema {
                 ])
             )
         };
+    }
+
+    /* ==============================================
+       EXPORTERS (client sync)
+    ============================================== */
+    exportSlots() {
+        return this.slots.map(s => ({
+            itemId: s.itemId,
+            amount: s.amount
+        }));
+    }
+
+    exportEquipment() {
+        return Object.fromEntries(
+            [...this.equipment.entries()].map(([k, v]) => [
+                k,
+                { itemId: v.itemId, amount: v.amount }
+            ])
+        );
+    }
+
+    // 🔥 Nouveau : exporter les items personnels
+    exportPersonal() {
+        return Object.fromEntries(
+            [...this.personalItems.entries()].map(([k, v]) => [
+                k,
+                { itemId: v.itemId, amount: v.amount }
+            ])
+        );
     }
 }
