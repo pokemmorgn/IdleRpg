@@ -1,5 +1,5 @@
 import { PlayerState } from "../schema/PlayerState";
-import { InventoryState } from "../schema/InventoryState"; // On importe l'inventaire
+import { InventorySlot } from "../schema/InventorySlot"; // On importe InventorySlot
 
 /**
  * Types de consommables disponibles
@@ -11,9 +11,7 @@ interface ConsumableType {
   minLevel: number;
 }
 
-/**
- * Configuration des potions HP
- */
+// ... (POTION_TIERS et FOOD_TIERS restent inchangés)
 const POTION_TIERS: ConsumableType[] = [
   { itemId: "potion_hp_t1", name: "Minor Health Potion", healAmount: 200, minLevel: 1 },
   { itemId: "potion_hp_t2", name: "Health Potion", healAmount: 500, minLevel: 10 },
@@ -23,9 +21,6 @@ const POTION_TIERS: ConsumableType[] = [
   { itemId: "potion_hp_t6", name: "Legendary Health Potion", healAmount: 5000, minLevel: 50 },
 ];
 
-/**
- * Configuration de la nourriture
- */
 const FOOD_TIERS: ConsumableType[] = [
   { itemId: "food_t1", name: "Bread", healAmount: 100, minLevel: 1 },
   { itemId: "food_t2", name: "Cooked Meat", healAmount: 250, minLevel: 10 },
@@ -35,30 +30,19 @@ const FOOD_TIERS: ConsumableType[] = [
   { itemId: "food_t6", name: "Royal Banquet", healAmount: 2500, minLevel: 50 },
 ];
 
-/**
- * ConsumableManager - Gère la consommation via l'inventaire du joueur
- */
 export class ConsumableManager {
   
-  /**
-   * Tente de soigner un joueur si nécessaire
-   */
   tryHealPlayer(player: PlayerState): boolean {
     const needsHealing = player.hp < player.maxHp * 0.5;
-    
-    if (!needsHealing) {
-      return true; // Pas besoin de soins
-    }
+    if (!needsHealing) return true;
     
     console.log(`🩹 [ConsumableManager] ${player.characterName} a besoin de soins (HP: ${player.hp}/${player.maxHp})`);
     
-    // Priorité 1 : Potions HP
     const potionToUse = this.getBestConsumableForLevel(POTION_TIERS, player.level);
     if (this.getItemCount(player, potionToUse.itemId) > 0) {
       return this.useConsumable(player, potionToUse);
     }
     
-    // Priorité 2 : Nourriture
     const foodToUse = this.getBestConsumableForLevel(FOOD_TIERS, player.level);
     if (this.getItemCount(player, foodToUse.itemId) > 0) {
       return this.useConsumable(player, foodToUse);
@@ -68,17 +52,12 @@ export class ConsumableManager {
     return false;
   }
   
-  /**
-   * Utilise un consommable de l'inventaire
-   */
   private useConsumable(player: PlayerState, consumable: ConsumableType): boolean {
-    // 1. Retirer l'objet de l'inventaire
     if (!this.removeItemFromInventory(player, consumable.itemId, 1)) {
         console.error(`Erreur: Impossible de retirer 1x ${consumable.itemId} de l'inventaire de ${player.characterName}`);
         return false;
     }
 
-    // 2. Soigner le joueur
     const hpBefore = player.hp;
     player.hp = Math.min(player.maxHp, player.hp + consumable.healAmount);
     const actualHeal = player.hp - hpBefore;
@@ -89,47 +68,54 @@ export class ConsumableManager {
     return true;
   }
 
-  // --- Méthodes utilitaires pour l'inventaire ---
+  // --- Méthodes utilitaires pour l'inventaire (CORRIGÉES) ---
 
   /**
    * Récupère le nombre d'un certain item dans l'inventaire personnel.
    */
   private getItemCount(player: PlayerState, itemId: string): number {
-    return player.inventory.personalItems.get(itemId) || 0;
+    const slot = player.inventory.personalItems.get(itemId);
+    return slot ? slot.amount : 0;
   }
 
   /**
    * Retire un certain nombre d'items de l'inventaire.
-   * @returns true si succès, false si l'item n'existe pas ou pas assez.
    */
   private removeItemFromInventory(player: PlayerState, itemId: string, quantity: number): boolean {
-    const currentCount = this.getItemCount(player, itemId);
-    if (currentCount < quantity) {
+    const slot = player.inventory.personalItems.get(itemId);
+
+    if (!slot || slot.amount < quantity) {
       return false;
     }
 
-    const newCount = currentCount - quantity;
-    if (newCount <= 0) {
+    slot.amount -= quantity;
+
+    if (slot.amount <= 0) {
+      slot.clear(); // Utilise la méthode clear() pour bien nettoyer
       player.inventory.personalItems.delete(itemId);
-    } else {
-      player.inventory.personalItems.set(itemId, newCount);
     }
     
-    // NOTE: Il faudra appeler la sauvegarde de l'inventaire après cette opération.
-    // Le système qui appelle `tryHealPlayer` devrait s'en charger.
     return true;
   }
-  
+
   /**
-   * Ajoute un item à l'inventaire (pour les tests / récompenses).
+   * Ajoute un item à l'inventaire.
    */
   private addItemToInventory(player: PlayerState, itemId: string, quantity: number): void {
-    const currentCount = this.getItemCount(player, itemId);
-    player.inventory.personalItems.set(itemId, currentCount + quantity);
+    let slot = player.inventory.personalItems.get(itemId);
+
+    if (slot) {
+      slot.amount += quantity;
+    } else {
+      // Crée un nouvel InventorySlot si l'item n'existe pas
+      slot = new InventorySlot();
+      slot.setItem(itemId, quantity);
+      player.inventory.personalItems.set(itemId, slot);
+    }
   }
 
-  // --- Méthodes publiques (adaptées pour l'inventaire) ---
-
+  // --- Le reste des méthodes est inchangé ---
+  
   private getBestConsumableForLevel(tiers: ConsumableType[], playerLevel: number): ConsumableType {
     let bestTier = tiers[0];
     for (const tier of tiers) {
@@ -163,9 +149,6 @@ export class ConsumableManager {
     return total;
   }
   
-  /**
-   * Donne des consommables à un joueur (pour les tests)
-   */
   giveConsumables(player: PlayerState, potions: number, food: number): void {
     const potionInfo = this.getCurrentPotionInfo(player.level);
     const foodInfo = this.getCurrentFoodInfo(player.level);
@@ -178,15 +161,9 @@ export class ConsumableManager {
     console.log(`   ${food}x ${foodInfo.name} (${foodInfo.healAmount} HP chacune)`);
   }
   
-  /**
-   * Réinitialise les consommables d'un joueur (pour les tests)
-   */
   resetConsumables(player: PlayerState, potions: number = 10, food: number = 20): void {
-    // On vide d'abord les anciens
     POTION_TIERS.forEach(p => player.inventory.personalItems.delete(p.itemId));
     FOOD_TIERS.forEach(f => player.inventory.personalItems.delete(f.itemId));
-
-    // On ajoute les nouveaux
     this.giveConsumables(player, potions, food);
   }
   
