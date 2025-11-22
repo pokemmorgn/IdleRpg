@@ -20,7 +20,7 @@ function sleep(ms: number) {
 }
 
 /* ======================================================================
-   QUEUE + EXPOSITION DES QUEUES
+   QUEUE DE MESSAGES — Évite tout écrasement de listeners
 ======================================================================== */
 function setupMessageQueue(room: Colyseus.Room) {
     const queues: Record<string, any[]> = {};
@@ -46,7 +46,7 @@ function setupMessageQueue(room: Colyseus.Room) {
         });
     }
 
-    return { on, waitFor, queues };
+    return { on, waitFor };
 }
 
 /* ======================================================================
@@ -132,14 +132,9 @@ async function reserveSeat(token: string) {
 }
 
 /* ======================================================================
-   PRINT STATS — version queue-safe améliorée
+   PRINT STATS — version queue-safe
 ======================================================================== */
-async function printStats(queues: any, waitFor: any, room: Colyseus.Room, label: string) {
-
-    // 🧹 CLEAR DES VIEUX stats_update pour éviter les infos périmées
-    if (queues["stats_update"]) {
-        queues["stats_update"] = [];
-    }
+async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 
     room.send("stats_request");
     const msg = await waitFor("stats_update");
@@ -168,7 +163,7 @@ async function printStats(queues: any, waitFor: any, room: Colyseus.Room, label:
 
     console.log("🔌 CONNECTÉ AU SERVEUR !");
 
-    const { on, waitFor, queues } = setupMessageQueue(room);
+    const { on, waitFor } = setupMessageQueue(room);
 
     // listeners permanents
     on("welcome", () => console.log("👋 WELCOME!"));
@@ -180,57 +175,40 @@ async function printStats(queues: any, waitFor: any, room: Colyseus.Room, label:
     await waitFor("welcome");
 
     await sleep(200);
-    await printStats(queues, waitFor, room, "Stats au login");
+    await printStats(waitFor, room, "Stats au login");
 
-    console.log("\n🔥 AJOUT ITEMS…");
+    console.log("\n🔥 AJOUT + AUTO-ÉQUIPEMENT…");
 
-    const ALL_ITEMS = [
+    const EQUIP_ITEMS = [
         "eq_head", "eq_chest", "eq_legs", "eq_feet", "eq_hands",
         "eq_weapon", "eq_offhand",
         "eq_ring1", "eq_ring2",
         "eq_trinket1", "eq_trinket2",
         "eq_neck",
-        "consum_hp_potion",
-        "mat_iron_ore",
-        "box_small_loot",
-        "quest_relic_piece",
-        "bag_upgrade_01",
-        "shared_token",
-        "personal_family_ring"
     ];
 
-    for (const item of ALL_ITEMS) {
+    let previousStats = await waitFor("stats_update");
+
+    let slotIndex = 0;
+
+    for (const item of EQUIP_ITEMS) {
         console.log(`→ add ${item}`);
         room.send("inv_add", { itemId: item, amount: 1 });
         await sleep(100);
+
+        console.log(`   → equip ${item} depuis slot ${slotIndex}`);
+        room.send("inv_equip", { fromSlot: slotIndex });
+        await sleep(150);
+
+        const newStats = await waitFor("stats_update");
+
+        console.log(`📈 DIFF STATS (${item}) :`);
+        console.log(newStats);
+
+        previousStats = newStats;
+        slotIndex++;
     }
 
-    await printStats(queues, waitFor, room, "Stats après ajout objets");
-
-    console.log("\n🎁 TEST LOOTBOX");
-    room.send("inv_open", { slot: 5 });
-    await sleep(400);
-
-    console.log("\n🍺 TEST CONSOMMABLE");
-    room.send("inv_use", { slot: 6 });
-    await sleep(400);
-
-    console.log("\n🛡️ TEST ÉQUIPEMENT");
-    room.send("inv_equip", { fromSlot: 0 });
-    await printStats(queues, waitFor, room, "Stats après équipement tête");
-
-    console.log("\n🔧 TEST DÉSÉQUIPEMENT");
-    room.send("inv_unequip", { equipSlot: "head" });
-    await printStats(queues, waitFor, room, "Stats après déséquipement tête");
-
-    console.log("\n🎒 TEST BAG UPGRADE");
-    room.send("inv_upgrade_bag", { slot: 7 });
-    await sleep(300);
-
-    console.log("\n💍 TEST ITEM PERSONNEL");
-    room.send("inv_add_personal", { itemId: "personal_family_ring" });
-    await printStats(queues, waitFor, room, "Stats après item perso");
-
-    console.log("\n🎉 TEST INVENTAIRE TERMINÉ !");
+    console.log("\n🎉 TEST INVENTAIRE + AUTO-ÉQUIPEMENT TERMINÉ !");
     process.exit(0);
 })();
