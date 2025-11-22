@@ -22,343 +22,298 @@ import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 import ServerProfile from "../../models/ServerProfile";
 
 export class WorldRoom extends Room<GameState> {
-  maxClients = 1000;
+    maxClients = 1000;
 
-  private serverId = "";
-  private updateInterval: any;
+    private serverId = "";
+    private updateInterval: any;
 
-  private npcManager!: NPCManager;
-  private monsterManager!: MonsterManager;
-  private combatManager!: CombatManager;
+    private npcManager!: NPCManager;
+    private monsterManager!: MonsterManager;
+    private combatManager!: CombatManager;
 
-  private questManager!: QuestManager;
-  private questObjectiveManager!: QuestObjectiveManager;
-  private dialogueManager!: DialogueManager;
+    private questManager!: QuestManager;
+    private questObjectiveManager!: QuestObjectiveManager;
+    private dialogueManager!: DialogueManager;
 
-  private testManager?: TestManager;
+    private testManager?: TestManager;
 
-  // ===========================================================
-  // onCreate
-  // ===========================================================
-  async onCreate(options: { serverId: string }) {
-    this.serverId = options.serverId;
-    console.log(`🟢 onCreate(serverId=${this.serverId})`);
+    async onCreate(options: { serverId: string }) {
+        this.serverId = options.serverId;
+        console.log(`🟢 onCreate(serverId=${this.serverId})`);
 
-    this.setState(new GameState(this.serverId));
-    console.log("🧬 GameState initialisé");
+        this.setState(new GameState(this.serverId));
+        console.log("🧬 GameState initialisé");
 
-    // --------------------------------
-    // SKIN MANAGER
-    // --------------------------------
-    new SkinManager();
+        new SkinManager();
 
-    // --------------------------------
-    // QUEST SYSTEM
-    // --------------------------------
-    this.questManager = new QuestManager(
-      this.serverId,
-      this.state,
-      this.savePlayerData.bind(this)
-    );
+        this.questManager = new QuestManager(
+            this.serverId,
+            this.state,
+            this.savePlayerData.bind(this)
+        );
 
-    await this.questManager.loadAllQuestsFromDB();
+        await this.questManager.loadAllQuestsFromDB();
 
-    this.questObjectiveManager = new QuestObjectiveManager(
-      this.state,
-      (sessionId: string, type: string, payload: any) => {
-        const client = this.clients.find(c => c.sessionId === sessionId);
-        if (client) client.send(type, payload);
-      },
-      this.savePlayerData.bind(this)
-    );
+        this.questObjectiveManager = new QuestObjectiveManager(
+            this.state,
+            (sessionId: string, type: string, payload: any) => {
+                const client = this.clients.find(c => c.sessionId === sessionId);
+                if (client) client.send(type, payload);
+            },
+            this.savePlayerData.bind(this)
+        );
 
-    this.dialogueManager = new DialogueManager(
-      this.serverId,
-      this.questObjectiveManager,
-      this.questManager,
-      this.state
-    );
+        this.dialogueManager = new DialogueManager(
+            this.serverId,
+            this.questObjectiveManager,
+            this.questManager,
+            this.state
+        );
 
-    // --------------------------------
-    // NPC + MONSTER MANAGERS
-    // --------------------------------
-    this.npcManager = new NPCManager(
-      this.serverId,
-      this.state,
-      this.questManager,
-      this.questObjectiveManager,
-      this.dialogueManager
-    );
+        this.npcManager = new NPCManager(
+            this.serverId,
+            this.state,
+            this.questManager,
+            this.questObjectiveManager,
+            this.dialogueManager
+        );
 
-    this.monsterManager = new MonsterManager(this.serverId, this.state);
+        this.monsterManager = new MonsterManager(this.serverId, this.state);
 
-    // --------------------------------
-    // COMBAT MANAGER
-    // --------------------------------
-    this.combatManager = new CombatManager(
-      this.state,
-      (sessionId, type, data) => {
-        const client = this.clients.find(c => c.sessionId === sessionId);
-        if (client) client.send(type, data);
-      },
-      this.questObjectiveManager
-    );
+        this.combatManager = new CombatManager(
+            this.state,
+            (sessionId, type, data) => {
+                const client = this.clients.find(c => c.sessionId === sessionId);
+                if (client) client.send(type, data);
+            },
+            this.questObjectiveManager
+        );
 
-    // LOAD WORLD ENTITIES
-    await this.npcManager.loadNPCs();
-    await this.monsterManager.loadMonsters();
+        await this.npcManager.loadNPCs();
+        await this.monsterManager.loadMonsters();
 
-    // --------------------------------
-    // TEST MODE (serverId === "test")
-    // --------------------------------
-    if (this.serverId === "test") {
-      this.testManager = new TestManager(
-        this.state,
-        this.questManager,
-        this.dialogueManager,
-        this.questObjectiveManager   // ✅ ARGUMENT MANQUANT FIXÉ
-      );
-
-      this.testManager.loadAll();
-    }
-
-    console.log("📥 WORLD ROOM READY (messages setup)");
-
-    // ===========================================================
-    // MESSAGE HANDLING
-    // ===========================================================
-    this.onMessage("*", (client, type, msg) => {
-      this.handleMessage(client, String(type), msg);
-    });
-
-    this.onMessage("raw", (client, raw) => {
-      console.log("📩 RAW:", raw);
-    });
-
-    // ===========================================================
-    // SIMULATION LOOP
-    // ===========================================================
-    this.setSimulationInterval((dt) => {
-      this.combatManager.update(dt);
-    }, 33);
-
-    this.updateInterval = this.clock.setInterval(() => {
-      this.state.updateWorldTime();
-    }, 1000);
-  }
-
-  // ===========================================================
-  // AUTH
-  // ===========================================================
-  async onAuth(client: Client, options: any) {
-    console.log("🔐 onAuth options:", options);
-
-    if (!options.token) return false;
-    if (options.serverId !== this.serverId) return false;
-
-    const valid = await validateToken(options.token);
-    if (!valid.valid) return false;
-
-    const load = await loadPlayerCharacter(
-      valid.playerId!,
-      options.serverId,
-      options.characterSlot
-    );
-
-    if (!load.success || !load.profile) return false;
-
-    if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
-      console.log("❌ Player already connected");
-      return false;
-    }
-
-    const p = load.profile;
-
-    return {
-      playerId: p.playerId,
-      profileId: p.profileId,
-      characterName: p.characterName,
-      level: p.level,
-      characterClass: p.class,
-      characterRace: p.race,
-      characterSlot: p.characterSlot,
-      stats: p.stats,
-      questData: p.questData
-    };
-  }
-
-  // ===========================================================
-  // JOIN
-  // ===========================================================
-  async onJoin(client: Client, options: any, auth: any) {
-    console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
-
-    const player = new PlayerState(
-      client.sessionId,
-      auth.playerId,
-      auth.profileId,
-      auth.characterSlot,
-      auth.characterName,
-      auth.level,
-      auth.characterClass,
-      auth.characterRace
-    );
-
-    if (auth.questData) {
-      player.loadQuestsFromProfile(auth.questData);
-    }
-
-    // CALCUL DES STATS
-    const computed = computeFullStats(player);
-    player.loadStatsFromProfile(computed);
-
-    client.send("stats_update", {
-      hp: player.hp,
-      maxHp: player.maxHp,
-      resource: player.resource,
-      maxResource: player.maxResource,
-      manaRegen: player.manaRegen,
-      attackPower: player.attackPower,
-      spellPower: player.spellPower,
-      armor: player.armor,
-      magicResistance: player.magicResistance,
-      criticalChance: player.criticalChance,
-      attackSpeed: player.attackSpeed,
-      damageReduction: player.damageReduction
-    });
-
-    if (this.serverId === "test") {
-      player.zoneId = "start_zone"; // important !
-    }
-
-    this.state.addPlayer(player);
-    client.send("welcome", { ok: true });
-  }
-
-  // ===========================================================
-  // LEAVE
-  // ===========================================================
-  async onLeave(client: Client, consented: boolean) {
-    const player = this.state.players.get(client.sessionId);
-
-    if (player) {
-      await this.savePlayerData(player);
-    }
-
-    this.state.removePlayer(client.sessionId);
-  }
-
-  // ===========================================================
-  // HANDLE MESSAGE
-  // ===========================================================
-  private handleMessage(client: Client, type: string, msg: any) {
-    const player = this.state.players.get(client.sessionId);
-    if (!player) return;
-
-    // SKINS
-    const handledBySkin = require("../managers/SkinManager")
-      .SkinManagerInstance
-      ?.handleMessage(type, client, player, msg);
-
-    if (handledBySkin) return;
-
-    // RESPAWN
-    if (type === "respawn") {
-      if (player.isDead) this.combatManager.respawnPlayer(player);
-      return;
-    }
-
-    // NPC
-    if (type === "npc_interact") {
-      this.npcManager.handleInteraction(client, player, msg);
-      return;
-    }
-
-    if (type === "npc_accept_quest") {
-      this.npcManager.handleAcceptQuest(client, player, msg);
-      return;
-    }
-
-    if (type === "npc_turn_in_quest") {
-      this.npcManager.handleTurnInQuest(client, player, msg);
-      return;
-    }
-
-    if (type === "dialogue_choice") {
-      this.npcManager.handleDialogueChoice(client, player, msg);
-      return;
-    }
-
-    // TEST: simulate kills
-    if (type === "test_trigger_quest_objective") {
-      this.questObjectiveManager.onMonsterKilled(player, {
-        enemyType: msg.enemyType || "test_wolf",
-        enemyRarity: msg.enemyRarity,
-        isBoss: msg.isBoss || false,
-        zoneId: player.zoneId
-      });
-      return;
-    }
-
-    if (type === "spawn_test_monster") {
-      this.spawnTestMonster(msg);
-      return;
-    }
-  }
-
-  // ===========================================================
-  // SAVE PLAYER
-  // ===========================================================
-  private async savePlayerData(player: PlayerState): Promise<void> {
-    try {
-      console.log(`💾 Sauvegarde automatique pour ${player.characterName}...`);
-
-      const computed = computeFullStats(player);
-
-      await ServerProfile.findByIdAndUpdate(player.profileId, {
-        $set: {
-          lastOnline: new Date(),
-          stats: computed,
-          questData: player.saveQuestsToProfile()
+        if (this.serverId === "test") {
+            this.testManager = new TestManager(
+                this.state,
+                this.questManager,
+                this.dialogueManager,
+                this.questObjectiveManager
+            );
+            this.testManager.loadAll();
         }
-      });
 
-      console.log(`✅ Sauvegarde réussie pour ${player.characterName}`);
-    } catch (error) {
-      console.error("❌ Erreur sauvegarde:", error);
+        console.log("📥 WORLD ROOM READY");
+
+        this.onMessage("*", (client, type, msg) => {
+            this.handleMessage(client, String(type), msg);
+        });
+
+        this.setSimulationInterval((dt) => {
+            this.combatManager.update(dt);
+        }, 33);
+
+        this.updateInterval = this.clock.setInterval(() => {
+            this.state.updateWorldTime();
+        }, 1000);
     }
-  }
 
-  // ===========================================================
-  // TEST MONSTER SPAWNER
-  // ===========================================================
-  private spawnTestMonster(msg: any) {
-    const MonsterState = require("../schema/MonsterState").MonsterState;
+    async onAuth(client: Client, options: any) {
+        if (!options.token) return false;
+        if (options.serverId !== this.serverId) return false;
 
-    const m = new MonsterState(
-      msg.monsterId,
-      msg.name || "Dummy",
-      "test",
-      1,
-      30,
-      30,
-      5,
-      0,
-      1,
-      "test_zone",
-      msg.x, msg.y, msg.z,
-      0, 0, 0,
-      "aggressive",
-      12,
-      20,
-      2,
-      5,
-      3,
-      false,
-      "dummy",
-      true
-    );
+        const valid = await validateToken(options.token);
+        if (!valid.valid) return false;
 
-    this.state.addMonster(m);
-  }
+        const load = await loadPlayerCharacter(
+            valid.playerId!,
+            options.serverId,
+            options.characterSlot
+        );
+
+        if (!load.success || !load.profile) return false;
+
+        if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
+            return false;
+        }
+
+        const p = load.profile;
+
+        return {
+            playerId: p.playerId,
+            profileId: p.profileId,
+            characterName: p.characterName,
+            level: p.level,
+            characterClass: p.class,
+            characterRace: p.race,
+            characterSlot: p.characterSlot,
+            stats: p.stats,
+            questData: p.questData
+        };
+    }
+
+    async onJoin(client: Client, options: any, auth: any) {
+        console.log("🚪 onJoin:", { sessionId: client.sessionId });
+
+        const player = new PlayerState(
+            client.sessionId,
+            auth.playerId,
+            auth.profileId,
+            auth.characterSlot,
+            auth.characterName,
+            auth.level,
+            auth.characterClass,
+            auth.characterRace
+        );
+
+        if (auth.questData) player.loadQuestsFromProfile(auth.questData);
+
+        const computed = computeFullStats(player);
+        player.loadStatsFromProfile(computed);
+
+        client.send("stats_update", {
+            hp: player.hp,
+            maxHp: player.maxHp,
+            resource: player.resource,
+            maxResource: player.maxResource,
+            manaRegen: player.manaRegen,
+            attackPower: player.attackPower,
+            spellPower: player.spellPower,
+            armor: player.armor,
+            magicResistance: player.magicResistance,
+            criticalChance: player.criticalChance,
+            attackSpeed: player.attackSpeed,
+            damageReduction: player.damageReduction
+        });
+
+        if (this.serverId === "test") player.zoneId = "start_zone";
+
+        this.state.addPlayer(player);
+        client.send("welcome", { ok: true });
+    }
+
+    async onLeave(client: Client) {
+        const player = this.state.players.get(client.sessionId);
+
+        if (player) {
+            await this.savePlayerData(player);
+        }
+
+        this.state.removePlayer(client.sessionId);
+    }
+
+    private handleMessage(client: Client, type: string, msg: any) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+
+        const handledBySkin = require("../managers/SkinManager")
+            .SkinManagerInstance
+            ?.handleMessage(type, client, player, msg);
+
+        if (handledBySkin) return;
+
+        if (type === "respawn") {
+            if (!player.isDead) return;
+            this.combatManager.respawnPlayer(player);
+            return;
+        }
+
+        if (type === "npc_interact") {
+            this.npcManager.handleInteraction(client, player, msg);
+            return;
+        }
+
+        if (type === "npc_accept_quest") {
+            this.npcManager.handleAcceptQuest(client, player, msg);
+            return;
+        }
+
+        if (type === "npc_turn_in_quest") {
+            this.npcManager.handleTurnInQuest(client, player, msg);
+            return;
+        }
+
+        if (type === "dialogue_choice") {
+            this.npcManager.handleDialogueChoice(client, player, msg);
+            return;
+        }
+
+        if (type === "test_trigger_quest_objective") {
+            const payload = msg;
+
+            switch (payload.type) {
+                case "talk":
+                    this.questObjectiveManager.onTalkToNPC(player, payload);
+                    break;
+
+                case "collect":
+                    this.questObjectiveManager.onResourceCollected(player, payload);
+                    break;
+
+                case "explore":
+                    this.questObjectiveManager.onLocationExplored(player, payload);
+                    break;
+
+                case "kill":
+                default:
+                    this.questObjectiveManager.onMonsterKilled(player, {
+                        enemyType: payload.enemyType || "test_wolf",
+                        isBoss: payload.isBoss || false,
+                        zoneId: player.zoneId
+                    });
+            }
+            return;
+        }
+
+        if (type === "spawn_test_monster") {
+            this.spawnTestMonster(msg);
+            return;
+        }
+    }
+
+    private async savePlayerData(player: PlayerState): Promise<void> {
+        try {
+            const computed = computeFullStats(player);
+
+            await ServerProfile.findByIdAndUpdate(player.profileId, {
+                $set: {
+                    lastOnline: new Date(),
+                    stats: computed,
+                    questData: player.saveQuestsToProfile()
+                }
+            });
+
+        } catch (error) {
+            console.error("❌ Erreur sauvegarde:", error);
+        }
+    }
+
+    private spawnTestMonster(msg: any) {
+        const MonsterState = require("../schema/MonsterState").MonsterState;
+
+        const m = new MonsterState(
+            msg.monsterId,
+            msg.name || "Dummy",
+            "test",
+            1,
+            30,
+            30,
+            5,
+            0,
+            1,
+            "test_zone",
+            msg.x, msg.y, msg.z,
+            0, 0, 0,
+            "aggressive",
+            12,
+            20,
+            2,
+            5,
+            3,
+            false,
+            "dummy",
+            true
+        );
+
+        this.state.addMonster(m);
+    }
 }
