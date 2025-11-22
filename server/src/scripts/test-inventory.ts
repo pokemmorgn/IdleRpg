@@ -187,7 +187,8 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
         "eq_neck",
     ];
 
-    let previousStats = await waitFor("stats_update");
+// ⬇️ NE BLOQUE PLUS
+let previousStats = null;
 
     let slotIndex = 0;
 
