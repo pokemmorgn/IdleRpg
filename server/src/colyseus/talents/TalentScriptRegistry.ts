@@ -90,6 +90,5 @@ class TalentScriptRegistry {
   }
 }
 
-// Création et export de l'instance unique.
-const registry = new TalentScriptRegistry();
-export { registry as talentScriptRegistry };
+// Export de l'instance unique via la méthode getInstance()
+export const talentScriptRegistry = TalentScriptRegistry.getInstance();
