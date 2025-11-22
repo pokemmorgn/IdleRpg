@@ -14,7 +14,7 @@ import { QuestManager } from "../managers/QuestManager";
 import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
 import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
-
+import { PlayerStatsCalculator } from "../managers/stats/PlayerStatsCalculator";
 import { SkinManager } from "../managers/SkinManager"; // ← IMPORT SKINS
 
 import ServerProfile from "../../models/ServerProfile";
@@ -197,7 +197,7 @@ export class WorldRoom extends Room<GameState> {
     this.state.addPlayer(player);
     client.send("welcome", { ok: true });
 
-        // === ENVOI DES STATS INITIALES ===
+    // === ENVOI DES STATS INITIALES ===
     const classStats = require("../../config/classes.config").getStatsForClass(
       player.class
     );
