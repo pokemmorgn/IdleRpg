@@ -1,4 +1,5 @@
 // server/src/colyseus/rooms/WorldRoom.ts
+
 import { Room, Client } from "colyseus";
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
@@ -14,8 +15,9 @@ import { QuestManager } from "../managers/QuestManager";
 import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
 import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
-import { PlayerStatsCalculator } from "../managers/stats/PlayerStatsCalculator";
-import { SkinManager } from "../managers/SkinManager"; // ← IMPORT SKINS
+
+import { SkinManager } from "../managers/SkinManager";
+import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 
 import ServerProfile from "../../models/ServerProfile";
 
@@ -33,8 +35,6 @@ export class WorldRoom extends Room<GameState> {
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
 
-  private skinManager!: SkinManager; // ← AJOUT SKINS
-
   private testManager?: TestManager;
 
   // ===========================================================
@@ -46,6 +46,9 @@ export class WorldRoom extends Room<GameState> {
 
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
+
+    // --- SKIN MANAGER ---
+    new SkinManager(); // instancie globalement
 
     // --- QUEST SYSTEM ---
     this.questManager = new QuestManager(
@@ -93,9 +96,6 @@ export class WorldRoom extends Room<GameState> {
       this.questObjectiveManager
     );
 
-    // --- SKIN MANAGER ---
-    this.skinManager = new SkinManager(); // ← INSTANCIATION SKINS
-
     // --- LOAD WORLD ENTITIES ---
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
@@ -116,7 +116,7 @@ export class WorldRoom extends Room<GameState> {
     });
 
     this.onMessage("raw", (client, raw) => {
-      console.log("📩 RAW (exact WebSocket):", raw);
+      console.log("📩 RAW:", raw);
     });
 
     // ===========================================================
@@ -126,7 +126,7 @@ export class WorldRoom extends Room<GameState> {
       this.combatManager.update(dt);
     }, 33);
 
-    // World time update
+    // update world time
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
@@ -189,37 +189,16 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
-    if (auth.stats) player.loadStatsFromProfile(auth.stats);
     if (auth.questData) player.loadQuestsFromProfile(auth.questData);
+
+    // ALWAYS compute stats freshly using skins + race + class
+    const computed = computeFullStats(player);
+    player.loadStatsFromProfile(computed);
 
     if (this.serverId === "test") player.zoneId = "test_zone";
 
     this.state.addPlayer(player);
     client.send("welcome", { ok: true });
-
-    // === ENVOI DES STATS INITIALES ===
-    const classStats = require("../../config/classes.config").getStatsForClass(
-      player.class
-    );
-    const computed = PlayerStatsCalculator.compute(player, classStats);
-    
-    player.loadStatsFromProfile(computed);
-    
-    client.send("stats_update", {
-      hp: player.hp,
-      maxHp: player.maxHp,
-      resource: player.resource,
-      maxResource: player.maxResource,
-      manaRegen: player.manaRegen,
-      attackPower: player.attackPower,
-      spellPower: player.spellPower,
-      armor: player.armor,
-      magicResistance: player.magicResistance,
-      criticalChance: player.criticalChance,
-      attackSpeed: player.attackSpeed,
-      damageReduction: player.damageReduction
-    });
-
   }
 
   // ===========================================================
@@ -242,41 +221,42 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
-    // === SKIN MANAGER intercept ===
-    if (this.skinManager.handleMessage(type, client, player, msg)) return;
+    // ---- SKINS ----
+    const handledBySkin = require("../managers/SkinManager")
+      .SkinManagerInstance
+      ?.handleMessage(type, client, player, msg);
 
-    // RESPAWN
+    if (handledBySkin) return;
+
+    // ---- RESPAWN ----
     if (type === "respawn") {
       if (!player.isDead) return;
       this.combatManager.respawnPlayer(player);
       return;
     }
 
-    // NPC interaction
+    // ---- NPC ----
     if (type === "npc_interact") {
       this.npcManager.handleInteraction(client, player, msg);
       return;
     }
 
-    // Accept quest
     if (type === "npc_accept_quest") {
       this.npcManager.handleAcceptQuest(client, player, msg);
       return;
     }
 
-    // Turn in quest
     if (type === "npc_turn_in_quest") {
       this.npcManager.handleTurnInQuest(client, player, msg);
       return;
     }
 
-    // Dialogue choice
     if (type === "dialogue_choice") {
       this.npcManager.handleDialogueChoice(client, player, msg);
       return;
     }
 
-    // TEST → Trigger objective
+    // ---- TEST ----
     if (type === "test_trigger_quest_objective") {
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
@@ -287,7 +267,6 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // TEST → spawn monster
     if (type === "spawn_test_monster") {
       this.spawnTestMonster(msg);
       return;
@@ -300,16 +279,20 @@ export class WorldRoom extends Room<GameState> {
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
       console.log(`💾 Sauvegarde automatique pour ${player.characterName}...`);
+
+      const computed = computeFullStats(player);
+
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
           lastOnline: new Date(),
-          stats: player.saveStatsToProfile(),
+          stats: computed,
           questData: player.saveQuestsToProfile()
         }
       });
-      console.log(`✅ Sauvegarde automatique réussie pour ${player.characterName}`);
+
+      console.log(`✅ Sauvegarde réussie pour ${player.characterName}`);
     } catch (error) {
-      console.error(`❌ Erreur lors de la sauvegarde:`, error);
+      console.error("❌ Erreur sauvegarde:", error);
     }
   }
 
