@@ -1,62 +1,34 @@
 /**
- * ULTIMATE TEST — INVENTORY + STATS + EQUIP
- * Version Deluxe AAA pour Greg 😎🔥
+ * TEST INVENTORY + STATS — Version propre & robuste
  */
 
 import * as Colyseus from "colyseus.js";
-import colors from "colors/safe";
 
-// ========================================================
-// CONFIG
-// ========================================================
 const API_URL = "http://localhost:3000";
-const WS_URL = "ws://localhost:2567"; // 🔥 CORRECT
-const SERVER_ID = "test";
+const WS_URL = "ws://localhost:2567";   // ✔✔ CORRECTION ICI — PORT COLYSEUS
 
-const USERNAME = "inv_tester";
-const PASSWORD = "Test123!";
-const EMAIL = "inv_ultimate@example.com";
-const SLOT = 1;
-const NAME = "InvUltimate";
+const TEST_USERNAME = "inv_tester";
+const TEST_PASSWORD = "Test123!";
+const TEST_EMAIL = "inv_tester@example.com";
+
+const SERVER_ID = "test";
+const CHARACTER_SLOT = 1;
+const CHARACTER_NAME = "InvTester";
 
 function sleep(ms: number) {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ========================================================
-// 🔥 COLORS UTILS
-// ========================================================
-const ok = (t: string) => colors.green(`✔ ${t}`);
-const info = (t: string) => colors.cyan(`ℹ ${t}`);
-const warn = (t: string) => colors.yellow(`⚠ ${t}`);
-const err = (t: string) => colors.red(`❌ ${t}`);
-const step = (t: string) => colors.magenta(`\n=== ${t} ===`);
-
-// ========================================================
-// WRAPPER : SEND ASYNC
-// ========================================================
-function createSendAsync(room: Colyseus.Room, waitFor: any) {
-    return async (type: string, payload?: any) => {
-        room.send(type, payload || {});
-        try {
-            const msg = await waitFor(type + "_response");
-            return msg;
-        } catch {
-            return null;
-        }
-    };
-}
-
-// ========================================================
-// MESSAGE QUEUE
-// ========================================================
-function createMessageQueue(room: Colyseus.Room) {
-
+/* ======================================================================
+   QUEUE DE MESSAGES — Évite tout écrasement de listeners
+======================================================================== */
+function setupMessageQueue(room: Colyseus.Room) {
     const queues: Record<string, any[]> = {};
 
     function on(type: string, cb: (msg: any) => void) {
         if (!queues[type]) queues[type] = [];
-        room.onMessage(type, msg => {
+
+        room.onMessage(type, (msg: any) => {
             queues[type].push(msg);
             cb(msg);
         });
@@ -64,36 +36,36 @@ function createMessageQueue(room: Colyseus.Room) {
 
     function waitFor(type: string): Promise<any> {
         return new Promise(resolve => {
-            const check = setInterval(() => {
+            const interval = setInterval(() => {
                 if (queues[type] && queues[type].length > 0) {
-                    const m = queues[type].shift();
-                    clearInterval(check);
-                    resolve(m);
+                    const msg = queues[type].shift();
+                    clearInterval(interval);
+                    resolve(msg);
                 }
-            }, 30);
+            }, 50);
         });
     }
 
     return { on, waitFor };
 }
 
-// ========================================================
-// AUTH HELPERS
-// ========================================================
+/* ======================================================================
+   AUTH HELPERS
+======================================================================== */
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: USERNAME, email: EMAIL, password: PASSWORD })
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD
+        })
     });
 
     if (!r.ok) {
         const j = await r.json();
-        if (j.error !== "Username already taken") {
-            console.log(err("Échec register"), j);
-        }
-    } else {
-        console.log(ok("Compte créé"));
+        if (j.error === "Username already taken") return;
     }
 }
 
@@ -101,9 +73,11 @@ async function login(): Promise<string> {
     const r = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            password: TEST_PASSWORD
+        })
     });
-
     const j = await r.json();
     return j.token;
 }
@@ -113,19 +87,17 @@ async function getProfile(token: string) {
         headers: { Authorization: `Bearer ${token}` }
     });
     const j = await r.json();
-    return j.profiles.find((p: any) => p.characterSlot === SLOT) || null;
+    return j.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) ?? null;
 }
 
-async function createCharacter(token: string) {
-    console.log(info("Création personnage..."));
-
-    const creation = await (await fetch(`${API_URL}/game-data/creation`, {
+async function getCreationData(token: string) {
+    const r = await fetch(`${API_URL}/game-data/creation`, {
         headers: { Authorization: `Bearer ${token}` }
-    })).json();
+    });
+    return await r.json();
+}
 
-    const race = creation.races[0].raceId;
-    const classId = creation.byRace[race][0].classId;
-
+async function createCharacter(token: string, race: string, classId: string) {
     const r = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
         method: "POST",
         headers: {
@@ -133,15 +105,13 @@ async function createCharacter(token: string) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            characterSlot: SLOT,
-            characterName: NAME,
+            characterSlot: CHARACTER_SLOT,
+            characterName: CHARACTER_NAME,
             characterClass: classId,
             characterRace: race
         })
     });
-
     const j = await r.json();
-    console.log(ok("Personnage créé"));
     return j.profile;
 }
 
@@ -152,99 +122,66 @@ async function reserveSeat(token: string) {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ serverId: SERVER_ID, characterSlot: SLOT })
+        body: JSON.stringify({
+            serverId: SERVER_ID,
+            characterSlot: CHARACTER_SLOT
+        })
     });
 
     return await r.json();
 }
 
-// ========================================================
-// PRINT INVENTORY
-// ========================================================
-function printInventory(inv: any) {
-    console.log(colors.bold("\n👜 INVENTAIRE :"));
-    inv.slots.forEach((s: any, i: number) => {
-        const txt = s.itemId
-            ? `${colors.green(s.itemId)} x${s.amount}`
-            : colors.gray("vide");
-        console.log(`  [${i}] ${txt}`);
-    });
+/* ======================================================================
+   PRINT STATS — version queue-safe
+======================================================================== */
+async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
+
+    room.send("stats_request");
+    const msg = await waitFor("stats_update");
+
+    console.log(`\n📊 ${label}:`, msg);
 }
 
-// ========================================================
-// PRINT DIFF STATS
-// ========================================================
-function printStatDiff(before: any, after: any, title: string) {
-    console.log(colors.bold(`\n📊 ${title}`));
-
-    for (const key of Object.keys(after)) {
-        if (typeof after[key] !== "number") continue;
-
-        const oldVal = before[key] ?? 0;
-        const newVal = after[key];
-        const diff = newVal - oldVal;
-
-        const diffTxt =
-            diff > 0 ? colors.green(`(+${diff})`) :
-            diff < 0 ? colors.red(`(${diff})`) :
-            colors.gray("(=)");
-
-        console.log(
-            ` - ${key.padEnd(16)}: ${colors.yellow(String(oldVal))} → ${colors.cyan(String(newVal))} ${diffTxt}`
-        );
-    }
-}
-
-// ========================================================
-// MAIN
-// ========================================================
+/* ======================================================================
+   MAIN
+======================================================================== */
 (async () => {
-    console.log(step("AUTH"));
     await register();
     const token = await login();
 
     let profile = await getProfile(token);
-    if (!profile) profile = await createCharacter(token);
+    if (!profile) {
+        const creation = await getCreationData(token);
+        const race = creation.races[0].raceId;
+        const classId = creation.byRace[race][0].classId;
+        profile = await createCharacter(token, race, classId);
+    }
 
-    console.log(step("MATCHMAKING"));
     const mm = await reserveSeat(token);
 
-    console.log(step("CONNEXION COLYSEUS"));
+    // 🔥🔥🔥 Connexion Colyseus EXACTE — identique à la version qui marchait
     const client = new Colyseus.Client(WS_URL);
-
     const room = await client.consumeSeatReservation(mm);
-    console.log(ok("Connecté au serveur !"));
 
-    const { on, waitFor } = createMessageQueue(room);
-    const sendAsync = createSendAsync(room, waitFor);
+    console.log("🔌 CONNECTÉ AU SERVEUR !");
 
-    on("welcome", () => console.log(ok("WELCOME reçu")));
-    on("inventory_update", msg => {
-        console.log(info("inventory_update reçu"));
-        printInventory(msg);
-    });
-    on("stats_update", msg => console.log(info("stats_update reçu")));
+    const { on, waitFor } = setupMessageQueue(room);
 
+    // listeners permanents
+    on("welcome", () => console.log("👋 WELCOME!"));
+    on("inventory_update", msg => console.log("📦 INVENTORY:", msg));
+    on("item_used", msg => console.log("🍾 ITEM USED:", msg));
+    on("stats_update", msg => console.log("📈 STATS UPDATE:", msg));
+
+    // Attendre welcome
     await waitFor("welcome");
 
     await sleep(200);
+    await printStats(waitFor, room, "Stats au login");
 
-    // --------------------------------------------------------
-    // 1) STATS INITIALES
-    // --------------------------------------------------------
-    step("STATS — Login");
-    room.send("stats_request");
+    console.log("\n🔥 AJOUT ITEMS…");
 
-    const stats0 = await waitFor("stats_update");
-    console.log(colors.magenta("Stats initiales:"));
-    console.log(stats0);
-
-    // --------------------------------------------------------
-    // 2) AJOUT ITEMS
-    // --------------------------------------------------------
-    step("AJOUT ITEMS");
-
-    const ALL = [
+    const ALL_ITEMS = [
         "eq_head", "eq_chest", "eq_legs", "eq_feet", "eq_hands",
         "eq_weapon", "eq_offhand",
         "eq_ring1", "eq_ring2",
@@ -259,50 +196,38 @@ function printStatDiff(before: any, after: any, title: string) {
         "personal_family_ring"
     ];
 
-    for (const id of ALL) {
-        console.log(info(`→ add ${id}`));
-        room.send("inv_add", { itemId: id, amount: 1 });
-        await sleep(80);
+    for (const item of ALL_ITEMS) {
+        console.log(`→ add ${item}`);
+        room.send("inv_add", { itemId: item, amount: 1 });
+        await sleep(100);
     }
 
-    // Stats après items
-    room.send("stats_request");
-    const stats1 = await waitFor("stats_update");
+    await printStats(waitFor, room, "Stats après ajout objets");
 
-    printStatDiff(stats0, stats1, "Stats après ajout objets");
-
-    // --------------------------------------------------------
-    // 3) ÉQUIPER UN OBJET
-    // --------------------------------------------------------
-    step("ÉQUIPEMENT");
-
-    console.log(info("Équipement slot 0"));
-    room.send("inv_equip", { fromSlot: 0 });
-
-    const stats2 = await waitFor("stats_update");
-    printStatDiff(stats1, stats2, "Après équipement");
-
-    // --------------------------------------------------------
-    // 4) DÉSÉQUIPEMENT
-    // --------------------------------------------------------
-    step("DÉSÉQUIPEMENT");
-
-    room.send("inv_unequip", { equipSlot: "head" });
-    const stats3 = await waitFor("stats_update");
-    printStatDiff(stats2, stats3, "Après déséquipement");
-
-    // --------------------------------------------------------
-    // 5) LOOTBOX
-    // --------------------------------------------------------
-    step("LOOTBOX");
-
+    console.log("\n🎁 TEST LOOTBOX");
     room.send("inv_open", { slot: 5 });
+    await sleep(400);
+
+    console.log("\n🍺 TEST CONSOMMABLE");
+    room.send("inv_use", { slot: 6 });
+    await sleep(400);
+
+    console.log("\n🛡️ TEST ÉQUIPEMENT");
+    room.send("inv_equip", { fromSlot: 0 });
+    await printStats(waitFor, room, "Stats après équipement tête");
+
+    console.log("\n🔧 TEST DÉSÉQUIPEMENT");
+    room.send("inv_unequip", { equipSlot: "head" });
+    await printStats(waitFor, room, "Stats après déséquipement tête");
+
+    console.log("\n🎒 TEST BAG UPGRADE");
+    room.send("inv_upgrade_bag", { slot: 7 });
     await sleep(300);
 
-    // --------------------------------------------------------
-    // FIN
-    // --------------------------------------------------------
-    console.log(colors.green(colors.bold("\n🎉 FIN DU TEST ULTIMATE !")));
-    process.exit(0);
+    console.log("\n💍 TEST ITEM PERSONNEL");
+    room.send("inv_add_personal", { itemId: "personal_family_ring" });
+    await printStats(waitFor, room, "Stats après item perso");
 
+    console.log("\n🎉 TEST INVENTAIRE TERMINÉ !");
+    process.exit(0);
 })();
