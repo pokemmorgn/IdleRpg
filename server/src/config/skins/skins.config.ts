@@ -14,7 +14,7 @@ export interface SkinStatsModifiers {
 export interface SkinConfig {
   skinId: string;           // ID unique du skin
   classId: string;          // Classe associée
-  nameKey: string;          // Clé de traduction du nom
+  nameKey: string;          // Clé traduction nom
   descriptionKey: string;   // Clé traduction description
   maxLevel: number;         // Niveau max (5)
   statsModifiers: SkinStatsModifiers;
@@ -73,7 +73,7 @@ export const ALL_SKINS: SkinConfig[] = [
     maxLevel: 5,
     statsModifiers: {
       computedPercent: {
-        critChance: 5,
+        criticalChance: 5,
         manaRegen: 5
       }
     }
@@ -116,7 +116,7 @@ export const ALL_SKINS: SkinConfig[] = [
     maxLevel: 5,
     statsModifiers: {
       primaryPercent: { agility: 5 },
-      computedPercent: { critChance: 5 }
+      computedPercent: { criticalChance: 5 }
     }
   },
   {
@@ -126,10 +126,7 @@ export const ALL_SKINS: SkinConfig[] = [
     descriptionKey: "skin.rogue.basic02.description",
     maxLevel: 5,
     statsModifiers: {
-      computedPercent: {
-        attackSpeed: 5,
-        evasion: 5
-      }
+      computedPercent: { attackSpeed: 5, evasion: 5 }
     }
   },
 
@@ -189,7 +186,6 @@ export const ALL_SKINS: SkinConfig[] = [
 // ============================================================================
 // HELPERS
 // ============================================================================
-
 export const SKINS_BY_ID: Map<string, SkinConfig> =
   new Map(ALL_SKINS.map(s => [s.skinId, s]));
 
