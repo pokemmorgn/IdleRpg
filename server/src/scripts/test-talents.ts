@@ -124,7 +124,6 @@ async function testTalentSystem(room: Colyseus.Room) {
 
     // --- ÉTAPE 1 : Demander les stats initiales ---
     console.log("⏳ Demande des stats initiales au serveur...");
-    room.send("stats_request", {}); // CORRIGÉ: On demande explicitement les stats
     const initialStats = await waitForMessage(room, "stats_update");
     console.log("📊 Stats initiales:", initialStats);
     console.log(`👉 Points de talent disponibles: ${initialStats.availableSkillPoints}`);
@@ -136,7 +135,8 @@ async function testTalentSystem(room: Colyseus.Room) {
     const levelUpMessage = await waitForMessage(room, "level_up");
     console.log("✅ Message de level-up reçu:", levelUpMessage);
 
-    const statsAfterLevelUp = await waitForMessage(room, "stats_update");
+    // CORRIGÉ: On utilise les stats incluses dans le message level_up
+    const statsAfterLevelUp = levelUpMessage.stats;
     console.log("📊 Stats après level-up:", statsAfterLevelUp);
     console.log(`👉 Points de talent disponibles: ${statsAfterLevelUp.availableSkillPoints}`);
     console.log("📊 DIFF →", diff(initialStats, statsAfterLevelUp));
@@ -145,6 +145,7 @@ async function testTalentSystem(room: Colyseus.Room) {
     console.log(`\n--- ÉTAPE 3 : Apprendre le talent ${TALENT_TO_LEARN_ID} ---`);
     room.send("talent_learn", { talentId: TALENT_TO_LEARN_ID });
     
+    // Ici, on attend bien un stats_update, car l'apprentissage de talent ne renvoie pas de message dédié
     const statsAfterLearn = await waitForMessage(room, "stats_update");
     console.log("📊 Stats après apprentissage du talent:", statsAfterLearn);
     console.log(`👉 Points de talent disponibles: ${statsAfterLearn.availableSkillPoints}`);
