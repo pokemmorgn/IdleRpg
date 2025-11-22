@@ -2,7 +2,6 @@ import { PlayerState } from "../../schema/PlayerState";
 import { getRaceById } from "../../../config/races.config";
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../../../models/ServerProfile";
 import { SkinManagerInstance } from "../SkinManager";
-import { getStatsForClass } from "../../../config/classes.config"; // ← OK !
 
 // ==========================================================
 // TYPE BONUS SKIN
