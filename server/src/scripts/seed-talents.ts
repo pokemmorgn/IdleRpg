@@ -23,8 +23,8 @@ const TALENTS_TO_SEED: Partial<ITalent>[] = [
     treeId: "warrior_fury",
     maxRank: 5,
     requiredLevel: 5,
-    prerequisites: [], // Pas de prérequis pour ce premier talent
-    scriptName: "critical_strike" // Doit correspondre au nom du fichier critical_strike.ts
+    prerequisites: [],
+    scriptName: "critical_strike"
   },
   {
     // Exemple d'un second talent qui dépend du premier
@@ -38,7 +38,21 @@ const TALENTS_TO_SEED: Partial<ITalent>[] = [
     prerequisites: [
         { type: 'talent', talentId: 'warrior_fury_critical_strike', rank: 2 }
     ],
-    scriptName: "impale" // Vous auriez un fichier impale.ts pour gérer ça
+    scriptName: "impale"
+  },
+  // =========================================================
+  // 🆕 AJOUT : TALENT DE PRÊTRE
+  // =========================================================
+  {
+    talentId: "priest_holy_smite",
+    name: "Smite",
+    description: "Increases your spell power by 2 per rank.",
+    icon: "icons/talents/priest_smite.png",
+    treeId: "priest_holy",
+    maxRank: 5,
+    requiredLevel: 5,
+    prerequisites: [], // Pas de prérequis pour ce premier talent
+    scriptName: "smite" // Doit correspondre au nom du fichier smite.ts
   }
 ];
 
