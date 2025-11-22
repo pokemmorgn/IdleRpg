@@ -1,4 +1,5 @@
 // server/src/colyseus/schema/PlayerState.ts
+
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
@@ -16,6 +17,11 @@ export class PlayerState extends Schema {
   // ===== INFO =====
   @type("string") characterName: string = "";
   @type("number") level: number = 1;
+
+  // ===== XP / LEVEL =====
+  @type("number") xp: number = 0;
+  @type("number") nextLevelXp: number = 100;
+
   @type("string") class: string = "";
   @type("string") race: string = "";
   @type(SkinState)
@@ -105,9 +111,7 @@ export class PlayerState extends Schema {
   @type("number") potionHP: number = 10;
   @type("number") food: number = 20;
 
-  // --------------------------------------------------------------------
-  // 🔥 ITEM CACHE (SERVER ONLY, NON SYNCHRONISÉ)
-  // --------------------------------------------------------------------
+  // ===== SERVER ONLY =====
   itemCache: { [itemId: string]: { stats: any } } = {};
 
   constructor(
@@ -137,9 +141,7 @@ export class PlayerState extends Schema {
   // INVENTORY LOAD
   // ===========================================================
   loadInventoryFromProfile(data: any) {
-    if (data) {
-      this.inventory.loadFromProfile(data);
-    }
+    if (data) this.inventory.loadFromProfile(data);
   }
 
   // ===========================================================
@@ -173,11 +175,51 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // LOAD STATS
+  // LOAD STATS (Mongo → Serveur)
   // ===========================================================
   loadStatsFromProfile(stats: any) {
     if (!stats) return;
+
+    // Leveling
+    if (stats.xp !== undefined) this.xp = stats.xp;
+    if (stats.nextLevelXp !== undefined) this.nextLevelXp = stats.nextLevelXp;
+    if (stats.level !== undefined) this.level = stats.level;
+
     Object.assign(this, stats);
+  }
+
+  // ===========================================================
+  // SAVE STATS (Serveur → Mongo)
+  // ===========================================================
+  saveStatsToProfile() {
+    return {
+      hp: this.hp,
+      maxHp: this.maxHp,
+      resource: this.resource,
+      maxResource: this.maxResource,
+      manaRegen: this.manaRegen,
+      rageRegen: this.rageRegen,
+      energyRegen: this.energyRegen,
+      attackPower: this.attackPower,
+      spellPower: this.spellPower,
+      attackSpeed: this.attackSpeed,
+      criticalChance: this.criticalChance,
+      criticalDamage: this.criticalDamage,
+      damageReduction: this.damageReduction,
+      armor: this.armor,
+      magicResistance: this.magicResistance,
+      precision: this.precision,
+      evasion: this.evasion,
+      penetration: this.penetration,
+      tenacity: this.tenacity,
+      lifesteal: this.lifesteal,
+      spellPenetration: this.spellPenetration,
+
+      // 🔥 LEVELING
+      xp: this.xp,
+      nextLevelXp: this.nextLevelXp,
+      level: this.level
+    };
   }
 
   // ===========================================================
@@ -192,7 +234,6 @@ export class PlayerState extends Schema {
     this.quests = new QuestState();
 
     data.completed?.forEach((id: string) => this.quests.completed.push(id));
-
     this.quests.activeMain = data.activeMain || "";
     this.quests.activeSecondary = data.activeSecondary || "";
 
@@ -244,35 +285,6 @@ export class PlayerState extends Schema {
       ),
       dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
-    };
-  }
-
-  // ===========================================================
-  // SAVE STATS
-  // ===========================================================
-  saveStatsToProfile() {
-    return {
-      hp: this.hp,
-      maxHp: this.maxHp,
-      resource: this.resource,
-      maxResource: this.maxResource,
-      manaRegen: this.manaRegen,
-      rageRegen: this.rageRegen,
-      energyRegen: this.energyRegen,
-      attackPower: this.attackPower,
-      spellPower: this.spellPower,
-      attackSpeed: this.attackSpeed,
-      criticalChance: this.criticalChance,
-      criticalDamage: this.criticalDamage,
-      damageReduction: this.damageReduction,
-      armor: this.armor,
-      magicResistance: this.magicResistance,
-      precision: this.precision,
-      evasion: this.evasion,
-      penetration: this.penetration,
-      tenacity: this.tenacity,
-      lifesteal: this.lifesteal,
-      spellPenetration: this.spellPenetration
     };
   }
 }
