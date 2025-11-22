@@ -191,17 +191,32 @@ async onJoin(client: Client, options: any, auth: any) {
 
   if (auth.questData) player.loadQuestsFromProfile(auth.questData);
 
+  // ALWAYS compute stats freshly using skins + race + class
   const computed = computeFullStats(player);
   player.loadStatsFromProfile(computed);
 
-  // 🟩 ON ENVOIE LES STATS INITIALES
-  client.send("stats_update", computed);
+  // ➤ Patch indispensable : envoyer les stats initiales
+  client.send("stats_update", {
+    hp: player.hp,
+    maxHp: player.maxHp,
+    resource: player.resource,
+    maxResource: player.maxResource,
+    manaRegen: player.manaRegen,
+    attackPower: player.attackPower,
+    spellPower: player.spellPower,
+    armor: player.armor,
+    magicResistance: player.magicResistance,
+    criticalChance: player.criticalChance,
+    attackSpeed: player.attackSpeed,
+    damageReduction: player.damageReduction
+  });
 
   if (this.serverId === "test") player.zoneId = "test_zone";
 
   this.state.addPlayer(player);
   client.send("welcome", { ok: true });
 }
+
 
   // ===========================================================
   // LEAVE
