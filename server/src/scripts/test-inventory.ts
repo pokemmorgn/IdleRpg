@@ -126,18 +126,27 @@ async function reserveSeat(token: string) {
 }
 
 // =============================================================
-// PRINT STATS
+// PRINT STATS (corrigé sans onceMessage)
 // =============================================================
 async function printStats(room: Colyseus.Room, label: string) {
     return new Promise<void>(resolve => {
-        room.onceMessage("stats_update", (msg) => {
-            console.log(`\n📊 ${label}:`, msg);
-            resolve();
-        });
 
+        const handler = (msg: any) => {
+            console.log(`\n📊 ${label}:`, msg);
+
+            // On "désactive" le listener
+            room.onMessage("stats_update", () => {});
+            resolve();
+        };
+
+        // Ajoute le handler
+        room.onMessage("stats_update", handler);
+
+        // Demande de mise à jour des stats
         room.send("stats_request");
     });
 }
+
 
 // =============================================================
 // MAIN TEST
