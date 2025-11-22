@@ -246,8 +246,10 @@ export class WorldRoom extends Room<GameState> {
     if (handledBySkin) return;
 
     // ---- INVENTORY ----
-    const handledByInv = this.inventoryManager.handleMessage(type, client, player, msg);   // 🔥 AJOUT
-    if (handledByInv) return;
+    if (type.startsWith("inv_")) {
+        await this.inventoryManager.handleMessage(type, client, player, msg);
+        return;
+    }
 
     // ---- RESPAWN ----
     if (type === "respawn") {
