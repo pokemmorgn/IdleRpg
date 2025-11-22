@@ -28,6 +28,9 @@ export interface IItemModel extends Document {
     // Bag upgrade
     bagSizeIncrease?: number;
 
+    // 🔥 Nouveau : item lié au personnage (non transférable)
+    personal?: boolean;
+
     // Shared flag (si tu veux plus tard)
     shared?: boolean;
 }
@@ -54,6 +57,9 @@ const ItemSchema = new Schema<IItemModel>({
     }],
 
     bagSizeIncrease: Number,
+
+    // 🔥 Ajout
+    personal: { type: Boolean, default: false },
 
     shared: { type: Boolean, default: false }
 });
