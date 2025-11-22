@@ -53,7 +53,9 @@ export interface IServerProfile extends Document {
   characterName: string;
   level: number;
   xp: number;
-  nextLevelXp: number; // AJOUT: Le champ manquant
+  nextLevelXp: number; 
+  availableSkillPoints: number; 
+  talents: { [talentId: string]: number }; 
   gold: number;
   class: string;
   race: string;
@@ -124,7 +126,9 @@ const ServerProfileSchema = new Schema<IServerProfile>({
 
   level: { type: Number, default: 1, min: 1 },
   xp: { type: Number, default: 0, min: 0 },
-  nextLevelXp: { type: Number, default: 100, min: 1 }, // AJOUT: Le champ dans le schéma
+  nextLevelXp: { type: Number, default: 100, min: 1 },
+  availableSkillPoints: { type: Number, default: 0, min: 0 },
+  talents: { type: Map, of: Number, default: {} },
   gold: { type: Number, default: 0, min: 0 },
 
   class: {
