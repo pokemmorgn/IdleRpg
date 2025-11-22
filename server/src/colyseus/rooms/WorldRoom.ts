@@ -67,8 +67,10 @@ export class WorldRoom extends Room<GameState> {
       (sessionId, type, data) => {
         const c = this.clients.find(cl => cl.sessionId === sessionId);
         if (c) c.send(type, data);
-      }
+      },
+      this.talentManager   // ⭐ AJOUT
     );
+
 
     // MODIFIÉ: L'ordre est important. Le QuestManager a besoin du LevelManager.
     this.questManager = new QuestManager(
