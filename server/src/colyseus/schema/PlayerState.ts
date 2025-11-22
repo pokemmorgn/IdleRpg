@@ -2,6 +2,7 @@
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
+import { QuestObjectiveMap } from "./QuestObjectiveMap";
 
 /**
  * État d'un joueur connecté + stats synchronisées.
@@ -21,6 +22,7 @@ export class PlayerState extends Schema {
   @type("string") race: string = "";
   @type(SkinState)
   skins: SkinState = new SkinState();
+
   // ===== CONNEXION =====
   @type("number") connectedAt: number = 0;
   @type("number") lastActivity: number = 0;
@@ -206,41 +208,42 @@ export class PlayerState extends Schema {
       this.quests.activeRepeatables.push(id)
     );
 
-    // MAP: questStep / questStartedAt
+    // MAPS
     Object.entries(questData.questStep || {}).forEach(([k, v]) =>
       this.quests.questStep.set(k, v as number)
     );
+
     Object.entries(questData.questStartedAt || {}).forEach(([k, v]) =>
       this.quests.questStartedAt.set(k, v as number)
     );
 
-    // MAP: cooldowns
     Object.entries(questData.dailyCooldown || {}).forEach(([k, v]) =>
       this.quests.dailyCooldown.set(k, v as number)
     );
+
     Object.entries(questData.weeklyCooldown || {}).forEach(([k, v]) =>
       this.quests.weeklyCooldown.set(k, v as number)
     );
 
     // ===========================================================
-    // QUEST OBJECTIVES : JSON → MapSchema<MapSchema<number>>
+    // QUEST OBJECTIVES : JSON → QuestObjectiveMap
     // ===========================================================
     Object.entries(questData.questObjectives || {}).forEach(([questId, raw]) => {
-      const innerMap = new MapSchema<number>();
+      
+      const objMap = new QuestObjectiveMap();
 
       if (raw && typeof raw === "object") {
-        Object.entries(raw as Record<string, number>)
-          .forEach(([objectiveId, count]) => {
-            innerMap.set(objectiveId, count ?? 0);
-          });
+        Object.entries(raw as Record<string, number>).forEach(([objectiveId, count]) => {
+          objMap.objectives.set(objectiveId, count ?? 0);
+        });
       }
 
-      this.quests.questObjectives.set(questId, innerMap);
+      this.quests.questObjectives.set(questId, objMap);
     });
   }
 
   // ===========================================================
-  // SAVE QUESTS
+  // SAVE QUESTS (★★★ CORRIGÉ ★★★)
   // ===========================================================
   saveQuestsToProfile(): any {
     return {
@@ -253,9 +256,9 @@ export class PlayerState extends Schema {
       questStartedAt: Object.fromEntries(this.quests.questStartedAt),
 
       questObjectives: Object.fromEntries(
-        [...this.quests.questObjectives].map(([qid, map]) => [
+        [...this.quests.questObjectives].map(([qid, objMap]) => [
           qid,
-          Object.fromEntries(map)
+          Object.fromEntries(objMap.objectives)
         ])
       ),
 
