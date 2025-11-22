@@ -19,6 +19,10 @@ import { SkinManager } from "../managers/SkinManager";
 import { InventoryManager } from "../managers/InventoryManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 import { LevelManager } from "../managers/LevelManager";
+// AJOUT: Importer le TalentManager et le registre de scripts
+import { TalentManager } from "../managers/TalentManager";
+import { talentScriptRegistry } from "../talents/TalentScriptRegistry";
+
 import ServerProfile from "../../models/ServerProfile";
 import ItemModel from "../../models/Item";
 
@@ -36,6 +40,9 @@ export class WorldRoom extends Room<GameState> {
   private dialogueManager!: DialogueManager;
   private inventoryManager!: InventoryManager;
   private levelManager!: LevelManager;
+  // AJOUT: Déclarer le TalentManager
+  private talentManager!: TalentManager;
+
   private testManager?: TestManager;
 
   // ===========================================================
@@ -50,12 +57,25 @@ export class WorldRoom extends Room<GameState> {
 
     new SkinManager();
 
-    // Load managers
+    // AJOUT: Initialiser le registre de talents et le manager AVANT les autres
+    await talentScriptRegistry.initialize();
+    this.talentManager = new TalentManager(this.savePlayerData.bind(this));
+    await this.talentManager.loadAllTalentsFromDB();
+
+    // AJOUT: Initialiser le LevelManager ici pour le passer au QuestManager
+    this.levelManager = new LevelManager(
+      (sessionId, type, data) => {
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, data);
+      }
+    );
+
+    // MODIFIÉ: L'ordre est important. Le QuestManager a besoin du LevelManager.
     this.questManager = new QuestManager(
       this.serverId,
       this.state,
-      this.levelManager, // Maintenant en 3ème position
-      this.savePlayerData.bind(this) // Maintenant en 4ème position
+      this.levelManager,
+      this.savePlayerData.bind(this)
     );
     await this.questManager.loadAllQuestsFromDB();
 
@@ -102,12 +122,7 @@ export class WorldRoom extends Room<GameState> {
       },
       this.savePlayerData.bind(this)
     );
-    this.levelManager = new LevelManager(
-      (sessionId, type, data) => {
-        const c = this.clients.find(cl => cl.sessionId === sessionId);
-        if (c) c.send(type, data);
-      }
-    );
+
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
@@ -159,14 +174,16 @@ export class WorldRoom extends Room<GameState> {
 
     const p = load.profile;
 
-    // ❗❗ IMPORTANT : On NE retourne PAS p.stats ❗❗
     return {
       playerId: p.playerId,
       profileId: p.profileId,
       characterName: p.characterName,
       level: p.level,
-      xp: p.xp || 0, // Valeur par défaut si non trouvée
-      nextLevelXp: p.nextLevelXp || this.levelManager.computeNextLevelXp(p.level || 1), // Calculer si non trouvé
+      xp: p.xp || 0,
+      nextLevelXp: p.nextLevelXp || this.levelManager.computeNextLevelXp(p.level || 1),
+      // AJOUT: Charger les données de talents
+      availableSkillPoints: p.availableSkillPoints || 0,
+      talents: p.talents || {},
       characterClass: p.class,
       characterRace: p.race,
       characterSlot: p.characterSlot,
@@ -188,13 +205,18 @@ export class WorldRoom extends Room<GameState> {
       auth.level,
       auth.characterClass,
       auth.characterRace,
-      auth.xp, // AJOUT
-      auth.nextLevelXp // AJOUT
+      auth.xp,
+      auth.nextLevelXp
     );
 
     // Load profile data
     if (auth.questData) player.loadQuestsFromProfile(auth.questData);
     if (auth.inventory) player.inventory.loadFromProfile(auth.inventory);
+    // AJOUT: Charger les talents du joueur
+    if (auth.talents) player.loadTalentsFromProfile(auth.talents);
+    
+    // S'assurer que les points de talents sont bien chargés
+    player.availableSkillPoints = auth.availableSkillPoints || 0;
 
     // Build itemCache
     player.itemCache = {};
@@ -250,9 +272,22 @@ export class WorldRoom extends Room<GameState> {
       await this.inventoryManager.handleMessage(type, client, player, msg);
       return;
     }
+
+    // AJOUT: Gestion des messages de talents
+    if (type.startsWith("talent_")) {
+      if (type === "talent_learn") {
+        await this.talentManager.learnTalent(player, msg.talentId);
+      }
+      if (type === "talent_reset") {
+        await this.talentManager.resetTalents(player);
+      }
+      return;
+    }
+
     if (type === "debug_give_xp") {
       const amount = msg.amount || 100;
       console.log(`[DEBUG] Giving ${amount} XP to ${player.characterName}`);
+      // MODIFIÉ: On utilise le levelManager pour donner l'XP, qui lui-même va déclencher le gain de point de talent
       await this.levelManager.giveXP(player, amount);
       return;
     }
@@ -313,9 +348,12 @@ export class WorldRoom extends Room<GameState> {
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
           lastOnline: new Date(),
-          level: player.level, // AJOUT
-          xp: player.xp, // AJOUT
-          nextLevelXp: player.nextLevelXp, // AJOUT
+          level: player.level,
+          xp: player.xp,
+          nextLevelXp: player.nextLevelXp,
+          // AJOUT: Sauvegarder les données de talents
+          availableSkillPoints: player.availableSkillPoints,
+          talents: player.saveTalentsToProfile(),
           stats: computed,
           questData: player.saveQuestsToProfile(),
           inventory: player.inventory.saveToProfile()
