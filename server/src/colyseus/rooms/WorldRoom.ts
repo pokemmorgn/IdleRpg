@@ -306,7 +306,7 @@ export class WorldRoom extends Room<GameState> {
       console.log(`💾 Saving data for ${player.characterName}...`);
 
       const computed = await computeFullStats(player);   // ✔ fix
-
+      player.loadStatsFromProfile(computed);
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
           lastOnline: new Date(),
