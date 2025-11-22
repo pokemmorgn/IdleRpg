@@ -1,7 +1,7 @@
 /**
  * SCRIPT DE TEST COMPLET DES QUÊTES
  * Usage :
- *   npx ts-node client-test-quests.ts
+ *   npx ts-node src/scripts/test_quest.ts
  */
 
 import * as Colyseus from "colyseus.js";
@@ -19,6 +19,25 @@ const CHARACTER_NAME = "QuestTester";
 
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ============================================================
+// TYPES
+// ============================================================
+
+interface QuestListEntry {
+    questId: string;
+    name?: string;
+    description?: string;
+    rewards?: any;
+}
+
+interface QuestTestEntry {
+    id: string;
+    npc: string;
+    type: string;
+    payload: any;
+    count?: number;
 }
 
 // ============================================================
@@ -132,16 +151,16 @@ async function reserveSeat(token: string) {
 }
 
 // ============================================================
-// CHAÎNES DE QUÊTES À TESTER
+// CHAÎNES DE QUÊTES
 // ============================================================
 
-const QUESTS_MAIN = [
+const QUESTS_MAIN: QuestTestEntry[] = [
     { id: "main_01", npc: "npc_instructor", type: "talk", payload: { npcId: "npc_instructor" } },
     { id: "main_02", npc: "npc_instructor", type: "kill", payload: { enemyType: "wolf_basic" } },
     { id: "main_03", npc: "npc_instructor", type: "explore", payload: { locationId: "camp_east" } },
 ];
 
-const QUESTS_SIDE = [
+const QUESTS_SIDE: QuestTestEntry[] = [
     { id: "side_01", npc: "npc_gatherer", type: "collect", payload: { resourceId: "berry" }, count: 5 },
     { id: "side_02", npc: "npc_gatherer", type: "talk", payload: { npcId: "npc_old_lady" } },
     { id: "side_03", npc: "npc_farmer", type: "kill", payload: { enemyType: "rat" }, count: 3 },
@@ -151,14 +170,14 @@ const QUESTS_SIDE = [
 // TEST COMPLET D'UNE CHAÎNE DE QUÊTES
 // ============================================================
 
-async function testQuestChain(room: Colyseus.Room, quests: any[]) {
+async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
 
     console.log("\n=====================================");
     console.log("🔥 DÉBUT DU TEST DE CHAÎNE DE QUÊTES");
     console.log("=====================================\n");
 
-    let available = [];
-    let completable = [];
+    let available: QuestListEntry[] = [];
+    let completable: QuestListEntry[] = [];
 
     room.onMessage("npc_quests", msg => {
         available = msg.availableQuests;
@@ -192,13 +211,13 @@ async function testQuestChain(room: Colyseus.Room, quests: any[]) {
 
         // 2) ACCEPT QUEST
         room.send("npc_accept_quest", { npcId: q.npc, questId: q.id });
-        await sleep(500);
+        await sleep(300);
 
         // 3) PROGRESS OBJECTIVE
         const count = q.count || 1;
         for (let i = 0; i < count; i++) {
             room.send("test_trigger_quest_objective", q.payload);
-            await sleep(300);
+            await sleep(250);
         }
 
         // 4) CHECK READY TO TURN IN
@@ -214,7 +233,7 @@ async function testQuestChain(room: Colyseus.Room, quests: any[]) {
 
         // 5) TURN IN
         room.send("npc_turn_in_quest", { npcId: q.npc, questId: q.id });
-        await sleep(500);
+        await sleep(400);
 
         console.log(`🎉 ${q.id} validée !`);
     }
