@@ -276,6 +276,7 @@ export class InventoryManager {
     // SYNC CLIENT
     // ============================================================
     public sync(player: PlayerState) {
+        console.log("🔄 Synchronisation de l'inventaire");
         this.emit(player.sessionId, "inventory_update", {
             slots: player.inventory.exportSlots(),
             equipment: player.inventory.exportEquipment(),
