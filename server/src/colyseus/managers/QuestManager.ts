@@ -103,21 +103,30 @@ export class QuestManager {
     ].filter(Boolean);
 
     for (const questId of active) {
+      // Si la quête est déjà marquée comme complétée, on l'ignore
+      if (qs.completed.includes(questId)) continue;
+
       const quest = this.getQuest(questId);
       if (!quest) continue;
 
       if (quest.giverNpcId !== npcId) continue;
 
       const step = qs.questStep.get(questId) || 0;
-
-      if (this.isQuestFullyCompleted(quest, step)) completable.push(quest);
+      
+      // 🚨 LOGIQUE CLÉ :
+      // Une quête est prête à être rendue si l'index de l'étape actuelle
+      // est égal au nombre total d'étapes. Cela signifie que la dernière étape
+      // vient d'être terminée par le QuestObjectiveManager.
+      if (step >= quest.objectives.length) {
+        completable.push(quest);
+      }
     }
 
     return completable;
   }
 
   /* ===========================================================
-     CONDITIONS D’ACCÈS
+     CONDITIONS D'ACCÈS
      =========================================================== */
   private isQuestAvailableForPlayer(
     quest: IQuest,
@@ -179,6 +188,19 @@ export class QuestManager {
 
     // 🚀 IMPORTANT : MapSchema<MapSchema<number>>
     qs.questObjectives.set(questId, new MapSchema<number>());
+
+    // Initialiser les objectifs de la première étape
+    if (quest.objectives.length > 0 && quest.objectives[0]) {
+      const objectives = qs.questObjectives.get(questId) || new MapSchema<number>();
+      
+      for (const objective of quest.objectives[0]) {
+        if (!objectives.has(objective.objectiveId)) {
+          objectives.set(objective.objectiveId, 0);
+        }
+      }
+      
+      qs.questObjectives.set(questId, objectives);
+    }
 
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
     client.send("quest_accepted", { questId });
