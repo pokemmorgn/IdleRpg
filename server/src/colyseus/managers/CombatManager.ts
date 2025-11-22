@@ -155,28 +155,26 @@ export class CombatManager implements CombatEventCallbacks {
         this.net.emitMonsterHit(monster, player, extraDamage);
     }
 
-        // ======================================================
-        // 💀 DEATH EVENTS
-        // ======================================================
-        onMonsterDeath(monster: MonsterState, killer: PlayerState) {
-            this.net.emitMonsterDeath(monster, killer);
-        
-            // 🔥 GIVE XP (uniquement si un tueur valide existe)
-            if (killer) { // <-- AJOUT DE LA VÉRIFICATION
-                const baseXP = Math.max(5, monster.level * 20);
-                this.levelManager.giveXP(killer, baseXP);
-            }
-        
-            // 🔥 QUEST HOOK
-            if (this.questObjectiveManager && killer) {
-                this.questObjectiveManager.onMonsterKilled(killer, {
-                    enemyType: monster.type,
-                    enemyRarity: (monster as any).rarity ?? undefined,
-                    isBoss: (monster as any).isBoss ?? false,
-                    zoneId: killer.zoneId
-                });
-            }
+    // ======================================================
+    // 💀 DEATH EVENTS
+    // ======================================================
+    onMonsterDeath(monster: MonsterState, killer: PlayerState) {
+        this.net.emitMonsterDeath(monster, killer);
+    
+        if (killer) {
+            this.levelManager.giveXP(killer, monster.xpReward);
         }
+    
+        if (this.questObjectiveManager && killer) {
+            // PLUS BESOIN DE "as any" !
+            this.questObjectiveManager.onMonsterKilled(killer, {
+                enemyType: monster.type,
+                enemyRarity: monster.rarity,
+                isBoss: monster.isBoss,
+                zoneId: killer.zoneId
+            });
+        }
+    }
 
     onPlayerDeath(player: PlayerState, monster: MonsterState) {
         this.net.emitPlayerDeath(player, monster);
