@@ -19,6 +19,8 @@ import { TestManager } from "../test/TestManager";
 import { SkinManager } from "../managers/SkinManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 
+import { InventoryManager } from "../managers/InventoryManager";    // 🔥 AJOUT
+
 import ServerProfile from "../../models/ServerProfile";
 
 export class WorldRoom extends Room<GameState> {
@@ -34,6 +36,8 @@ export class WorldRoom extends Room<GameState> {
   private questManager!: QuestManager;
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
+
+  private inventoryManager!: InventoryManager;        // 🔥 AJOUT
 
   private testManager?: TestManager;
 
@@ -75,7 +79,7 @@ export class WorldRoom extends Room<GameState> {
       this.state
     );
 
-    // --- NPC + MONSTER ---
+    // --- NPC + MONSTERS ---
     this.npcManager = new NPCManager(
       this.serverId,
       this.state,
@@ -84,7 +88,10 @@ export class WorldRoom extends Room<GameState> {
       this.dialogueManager
     );
 
-    this.monsterManager = new MonsterManager(this.serverId, this.state);
+    this.monsterManager = new MonsterManager(
+      this.serverId,
+      this.state
+    );
 
     // --- COMBAT MANAGER ---
     this.combatManager = new CombatManager(
@@ -94,6 +101,16 @@ export class WorldRoom extends Room<GameState> {
         if (client) client.send(type, data);
       },
       this.questObjectiveManager
+    );
+
+    // --- INVENTORY MANAGER ---
+    this.inventoryManager = new InventoryManager(             // 🔥 AJOUT
+      this.state,
+      (sessionId, type, payload) => {
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, payload);
+      },
+      this.savePlayerData.bind(this)
     );
 
     // --- LOAD WORLD ENTITIES ---
@@ -106,7 +123,7 @@ export class WorldRoom extends Room<GameState> {
         this.state,
         this.questManager,
         this.dialogueManager,
-        this.questObjectiveManager     // ← ajouté !
+        this.questObjectiveManager
       );
       this.testManager.loadAll();
     }
@@ -120,18 +137,14 @@ export class WorldRoom extends Room<GameState> {
       this.handleMessage(client, String(type), msg);
     });
 
-    this.onMessage("raw", (client, raw) => {
-      console.log("📩 RAW:", raw);
-    });
-
     // ===========================================================
-    // SIMULATION LOOP (combat)
+    // SIMULATION LOOP
     // ===========================================================
     this.setSimulationInterval((dt) => {
       this.combatManager.update(dt);
     }, 33);
 
-    // update world time
+    // Time loop
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
@@ -173,7 +186,8 @@ export class WorldRoom extends Room<GameState> {
       characterRace: p.race,
       characterSlot: p.characterSlot,
       stats: p.stats,
-      questData: p.questData
+      questData: p.questData,
+      inventory: p.inventory          // 🔥 PAS OBLIGATOIRE SI GÉRÉ EN Manager
     };
   }
 
@@ -196,30 +210,17 @@ export class WorldRoom extends Room<GameState> {
 
     if (auth.questData) player.loadQuestsFromProfile(auth.questData);
 
-    // ALWAYS compute stats freshly
+    // LOAD INVENTORY
+    if (auth.inventory) {
+      player.inventory.loadFromProfile(auth.inventory);   // 🔥 AJOUT
+    }
+
+    // STATS
     const computed = computeFullStats(player);
     player.loadStatsFromProfile(computed);
 
-    // Send stats to client
-    client.send("stats_update", {
-      hp: player.hp,
-      maxHp: player.maxHp,
-      resource: player.resource,
-      maxResource: player.maxResource,
-      manaRegen: player.manaRegen,
-      attackPower: player.attackPower,
-      spellPower: player.spellPower,
-      armor: player.armor,
-      magicResistance: player.magicResistance,
-      criticalChance: player.criticalChance,
-      attackSpeed: player.attackSpeed,
-      damageReduction: player.damageReduction
-    });
-
-    if (this.serverId === "test") player.zoneId = "start_zone";
-
-    this.state.addPlayer(player);
     client.send("welcome", { ok: true });
+    this.state.addPlayer(player);
   }
 
   // ===========================================================
@@ -227,11 +228,7 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   async onLeave(client: Client) {
     const player = this.state.players.get(client.sessionId);
-
-    if (player) {
-      await this.savePlayerData(player);
-    }
-
+    if (player) await this.savePlayerData(player);
     this.state.removePlayer(client.sessionId);
   }
 
@@ -246,8 +243,11 @@ export class WorldRoom extends Room<GameState> {
     const handledBySkin = require("../managers/SkinManager")
       .SkinManagerInstance
       ?.handleMessage(type, client, player, msg);
-
     if (handledBySkin) return;
+
+    // ---- INVENTORY ----
+    const handledByInv = this.inventoryManager.handleMessage(type, client, player, msg);   // 🔥 AJOUT
+    if (handledByInv) return;
 
     // ---- RESPAWN ----
     if (type === "respawn") {
@@ -257,42 +257,15 @@ export class WorldRoom extends Room<GameState> {
     }
 
     // ---- NPC ----
-    if (type === "npc_interact") {
-      this.npcManager.handleInteraction(client, player, msg);
-      return;
-    }
-
-    if (type === "npc_accept_quest") {
-      this.npcManager.handleAcceptQuest(client, player, msg);
-      return;
-    }
-
-    if (type === "npc_turn_in_quest") {
-      this.npcManager.handleTurnInQuest(client, player, msg);
-      return;
-    }
-
-    if (type === "dialogue_choice") {
-      this.npcManager.handleDialogueChoice(client, player, msg);
-      return;
-    }
+    if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
+    if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
+    if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
+    if (type === "dialogue_choice") return this.npcManager.handleDialogueChoice(client, player, msg);
 
     // ---- QUEST OBJECTIVES ----
-
-    if (type === "quest_talk") {
-      this.questObjectiveManager.onTalk(player, msg);
-      return;
-    }
-
-    if (type === "quest_collect") {
-      this.questObjectiveManager.onCollect(player, msg);
-      return;
-    }
-
-    if (type === "quest_explore") {
-      this.questObjectiveManager.onExplore(player, msg);
-      return;
-    }
+    if (type === "quest_talk") return this.questObjectiveManager.onTalk(player, msg);
+    if (type === "quest_collect") return this.questObjectiveManager.onCollect(player, msg);
+    if (type === "quest_explore") return this.questObjectiveManager.onExplore(player, msg);
 
     // ---- TEST ----
     if (type === "test_trigger_quest_objective") {
@@ -312,11 +285,11 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // SAVE PLAYER DATA
+  // SAVE PLAYER
   // ===========================================================
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
-      console.log(`💾 Sauvegarde automatique pour ${player.characterName}...`);
+      console.log(`💾 Saving data for ${player.characterName}...`);
 
       const computed = computeFullStats(player);
 
@@ -324,13 +297,14 @@ export class WorldRoom extends Room<GameState> {
         $set: {
           lastOnline: new Date(),
           stats: computed,
-          questData: player.saveQuestsToProfile()
+          questData: player.saveQuestsToProfile(),
+          inventory: player.inventory.saveToProfile()      // 🔥 AJOUT
         }
       });
 
-      console.log(`✅ Sauvegarde réussie pour ${player.characterName}`);
+      console.log(`✅ Saved ${player.characterName}`);
     } catch (error) {
-      console.error("❌ Erreur sauvegarde:", error);
+      console.error("❌ Save error:", error);
     }
   }
 
