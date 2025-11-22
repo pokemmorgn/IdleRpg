@@ -11,27 +11,7 @@ dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/idlerpg";
 
-const colors = {
-  reset: "\x1b[0m",
-  green: "\x1b[32m",
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  cyan: "\x1b[36m",
-};
-
-const log = {
-  success: (msg: string) =>
-    console.log(`${colors.green}✅ ${msg}${colors.reset}`),
-  error: (msg: string) =>
-    console.log(`${colors.red}❌ ${msg}${colors.reset}`),
-  info: (msg: string) =>
-    console.log(`${colors.blue}ℹ️  ${msg}${colors.reset}`),
-  warning: (msg: string) =>
-    console.log(`${colors.yellow}⚠️  ${msg}${colors.reset}`),
-};
-
-const SERVER_ID = "test"; // même serveur que tes quêtes
+const SERVER_ID = "test";
 
 const NPCS = [
   {
@@ -82,15 +62,11 @@ const NPCS = [
 
 async function seedNPCs() {
   try {
-    log.info("Connexion à MongoDB...");
+    console.log("Connexion MongoDB...");
     await mongoose.connect(MONGO_URI);
-    log.success("Connecté à MongoDB");
 
     for (const npc of NPCS) {
-      log.info(`Suppression de '${npc.npcId}'...`);
       await NPC.deleteOne({ serverId: SERVER_ID, npcId: npc.npcId });
-
-      log.info(`Création de '${npc.npcId}'...`);
       await NPC.create({
         ...npc,
         serverId: SERVER_ID,
@@ -98,23 +74,16 @@ async function seedNPCs() {
         interactionRadius: 3,
         isActive: true,
       });
-
-      log.success(`→ ${npc.npcId} créé.`);
+      console.log(`→ NPC ${npc.npcId} créé.`);
     }
 
-    log.success("\n🎉 Tous les NPC ont été créés avec succès !");
     await mongoose.disconnect();
-    log.success("Déconnecté de MongoDB");
-
+    console.log("Tous les NPC ont été créés !");
     process.exit(0);
-
-  } catch (err: any) {
-    log.error(`Erreur: ${err.message}`);
+  } catch (err) {
     console.error(err);
     process.exit(1);
   }
 }
 
-if (require.main === module) {
-  seedNPCs();
-}
+if (require.main === module) seedNPCs();
