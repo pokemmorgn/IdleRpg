@@ -1,4 +1,5 @@
 // server/src/colyseus/managers/LevelManager.ts
+
 import { PlayerState } from "../schema/PlayerState";
 import { computeFullStats } from "./stats/PlayerStatsCalculator";
 import { TalentManager } from "./TalentManager";
@@ -7,7 +8,7 @@ export class LevelManager {
 
     constructor(
         private readonly send: (sessionId: string, type: string, data: any) => void,
-        private readonly talentManager: TalentManager      // <-- AJOUT
+        private readonly talentManager: TalentManager
     ) {}
 
     public async giveXP(player: PlayerState, amount: number) {
@@ -20,25 +21,27 @@ export class LevelManager {
 
         let leveled = false;
         while (player.xp >= player.nextLevelXp) {
+
             player.xp -= player.nextLevelXp;
             player.level++;
             player.nextLevelXp = this.computeNextLevelXp(player.level);
 
-            // ⭐ DONNER LE POINT DE TALENT ICI !
             this.talentManager.giveSkillPoint(player);
 
             leveled = true;
         }
 
         if (leveled) {
-            const newStats = await computeFullStats(player);
-            player.loadStatsFromProfile(newStats);
+            const stats = await computeFullStats(player);
+            player.loadStatsFromProfile(stats);
 
-            this.send(player.sessionId, "level_up", {
+            this.send(player.sessionId, "player_update", {
                 level: player.level,
                 xp: player.xp,
                 nextLevelXp: player.nextLevelXp,
-                stats: newStats
+                stats,
+                availableSkillPoints: player.availableSkillPoints,
+                talents: player.saveTalentsToProfile()
             });
         }
     }
