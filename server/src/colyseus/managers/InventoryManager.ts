@@ -7,6 +7,7 @@ import { InventorySlot } from "../schema/InventorySlot";
 
 import { EquipmentManager } from "./EquipmentManager";
 import { ItemManager } from "./ItemManager";
+import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
 export class InventoryManager {
 
@@ -23,6 +24,16 @@ export class InventoryManager {
     }
 
     // ============================================================
+    // 🔥 RECALCUL + ENVOI DES STATS
+    // ============================================================
+    private async syncStats(player: PlayerState) {
+        const computed = await computeFullStats(player);
+        player.loadStatsFromProfile(computed);
+
+        this.emit(player.sessionId, "stats_update", computed);
+    }
+
+    // ============================================================
     // MESSAGE HANDLER
     // ============================================================
     async handleMessage(type: string, client: any, player: PlayerState, msg: any): Promise<boolean> {
@@ -31,42 +42,52 @@ export class InventoryManager {
 
             case "inv_add":
                 await this.addItem(player, msg.itemId, msg.amount ?? 1);
+                await this.syncStats(player);
                 return true;
 
             case "inv_add_personal":
                 await this.addPersonalItem(player, msg.itemId, msg.amount ?? 1);
+                await this.syncStats(player);
                 return true;
 
             case "inv_remove":
                 this.removeItem(player, msg.itemId, msg.amount ?? 1);
+                await this.syncStats(player);
                 return true;
 
             case "inv_swap":
                 this.swapSlots(player, msg.from, msg.to);
+                await this.syncStats(player);
                 return true;
 
             case "inv_split":
                 this.splitStack(player, msg.from, msg.to, msg.amount);
+                await this.syncStats(player);
                 return true;
 
             case "inv_use":
                 await this.useItem(player, msg.slot);
+                await this.syncStats(player);
                 return true;
 
             case "inv_equip":
                 await this.equipmentManager.equip(player, msg.fromSlot);
+                await this.syncStats(player);
                 return true;
 
             case "inv_unequip":
                 await this.equipmentManager.unequip(player, msg.equipSlot);
+                await this.syncStats(player);
                 return true;
 
             case "inv_open":
                 await this.itemManager.openLootBox(player, msg.slot);
+                await this.syncStats(player);
                 return true;
 
             case "inv_upgrade_bag":
                 await this.handleBagUpgrade(player, msg.slot);
+                await this.syncStats(player);
                 return true;
 
             default:
@@ -95,16 +116,11 @@ export class InventoryManager {
     }
 
     // ============================================================
-    // ADD PERSONAL ITEM (inv_add_personal)
+    // ADD PERSONAL ITEM
     // ============================================================
     async addPersonalItem(player: PlayerState, itemId: string, amount: number = 1) {
         const model = await ItemModel.findOne({ itemId });
         if (!model) return;
-
-        // sécurité
-        if (!model.personal) {
-            console.warn(`⚠️ WARNING: Item ${itemId} ajouté comme personnel alors qu'il n'est pas personal:true`);
-        }
 
         const map = player.inventory.personalItems;
         const existing = map.get(itemId);
@@ -130,7 +146,7 @@ export class InventoryManager {
 
         const inv = player.inventory;
 
-        // 🔥 Items personnels → redirection auto vers personalItems
+        // Items personnels → auto vers personalItems
         if (model.personal === true) {
             return this.addPersonalItem(player, itemId, amount);
         }
@@ -172,14 +188,12 @@ export class InventoryManager {
     }
 
     // ============================================================
-    // REMOVE ITEM (interdit pour items personnels)
+    // REMOVE ITEM
     // ============================================================
     removeItem(player: PlayerState, itemId: string, amount: number = 1) {
         const inv = player.inventory;
 
-        if (inv.personalItems.has(itemId)) {
-            return; // interdit
-        }
+        if (inv.personalItems.has(itemId)) return;
 
         for (let i = 0; i < inv.slots.length; i++) {
             const slot = inv.slots[i];
@@ -203,7 +217,6 @@ export class InventoryManager {
     swapSlots(player: PlayerState, from: number, to: number) {
         const inv = player.inventory;
 
-        // sécurité items personnels
         if (inv.slots[from]?.itemId && inv.personalItems.has(inv.slots[from].itemId)) return;
         if (inv.slots[to]?.itemId && inv.personalItems.has(inv.slots[to].itemId)) return;
 
@@ -220,7 +233,7 @@ export class InventoryManager {
     }
 
     // ============================================================
-    // SPLIT STACK
+    // SPLIT
     // ============================================================
     splitStack(player: PlayerState, from: number, to: number, amount: number) {
         const inv = player.inventory;
@@ -239,10 +252,9 @@ export class InventoryManager {
     }
 
     // ============================================================
-    // USE CONSUMABLE
+    // USE
     // ============================================================
     async useItem(player: PlayerState, slotIndex: number) {
-
         const inv = player.inventory;
         const slot = inv.slots[slotIndex];
         if (!slot || !slot.itemId) return;
