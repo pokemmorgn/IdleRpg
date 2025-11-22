@@ -244,6 +244,8 @@ export class WorldRoom extends Room<GameState> {
 
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
+    const freshStats = await computeFullStats(player);
+  client.send("stats_update", freshStats);
   }
 
   // ===========================================================
