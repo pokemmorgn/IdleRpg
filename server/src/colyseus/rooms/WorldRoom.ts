@@ -10,16 +10,14 @@ import { loadPlayerCharacter, isCharacterAlreadyConnected } from "../utils/playe
 import { NPCManager } from "../managers/NPCManager";
 import { MonsterManager } from "../managers/MonsterManager";
 import { CombatManager } from "../managers/CombatManager";
-
 import { QuestManager } from "../managers/QuestManager";
 import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
 import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
 
 import { SkinManager } from "../managers/SkinManager";
-import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
-
 import { InventoryManager } from "../managers/InventoryManager";
+import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 
 import ServerProfile from "../../models/ServerProfile";
 import ItemModel from "../../models/Item";
@@ -33,11 +31,9 @@ export class WorldRoom extends Room<GameState> {
   private npcManager!: NPCManager;
   private monsterManager!: MonsterManager;
   private combatManager!: CombatManager;
-
   private questManager!: QuestManager;
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
-
   private inventoryManager!: InventoryManager;
 
   private testManager?: TestManager;
@@ -54,18 +50,15 @@ export class WorldRoom extends Room<GameState> {
 
     new SkinManager();
 
-    this.questManager = new QuestManager(
-      this.serverId,
-      this.state,
-      this.savePlayerData.bind(this)
-    );
+    // Load managers
+    this.questManager = new QuestManager(this.serverId, this.state, this.savePlayerData.bind(this));
     await this.questManager.loadAllQuestsFromDB();
 
     this.questObjectiveManager = new QuestObjectiveManager(
       this.state,
       (sessionId, type, payload) => {
-        const client = this.clients.find(c => c.sessionId === sessionId);
-        if (client) client.send(type, payload);
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, payload);
       },
       this.savePlayerData.bind(this)
     );
@@ -90,17 +83,17 @@ export class WorldRoom extends Room<GameState> {
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
-        const client = this.clients.find(c => c.sessionId === sessionId);
-        if (client) client.send(type, data);
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, data);
       },
       this.questObjectiveManager
     );
 
     this.inventoryManager = new InventoryManager(
       this.state,
-      (sessionId, type, payload) => {
+      (sessionId, type, data) => {
         const c = this.clients.find(cl => cl.sessionId === sessionId);
-        if (c) c.send(type, payload);
+        if (c) c.send(type, data);
       },
       this.savePlayerData.bind(this)
     );
@@ -135,8 +128,6 @@ export class WorldRoom extends Room<GameState> {
   // AUTH
   // ===========================================================
   async onAuth(client: Client, options: any) {
-    console.log("🔐 onAuth options:", options);
-
     if (!options.token) return false;
     if (options.serverId !== this.serverId) return false;
 
@@ -158,6 +149,7 @@ export class WorldRoom extends Room<GameState> {
 
     const p = load.profile;
 
+    // ❗❗ IMPORTANT : On NE retourne PAS p.stats ❗❗
     return {
       playerId: p.playerId,
       profileId: p.profileId,
@@ -166,7 +158,6 @@ export class WorldRoom extends Room<GameState> {
       characterClass: p.class,
       characterRace: p.race,
       characterSlot: p.characterSlot,
-      stats: p.stats,
       questData: p.questData,
       inventory: p.inventory
     };
@@ -176,8 +167,6 @@ export class WorldRoom extends Room<GameState> {
   // JOIN
   // ===========================================================
   async onJoin(client: Client, options: any, auth: any) {
-    console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
-
     const player = new PlayerState(
       client.sessionId,
       auth.playerId,
@@ -189,13 +178,11 @@ export class WorldRoom extends Room<GameState> {
       auth.characterRace
     );
 
+    // Load profile data
     if (auth.questData) player.loadQuestsFromProfile(auth.questData);
-
     if (auth.inventory) player.inventory.loadFromProfile(auth.inventory);
 
-    // ===========================================================
-    // BUILD itemCache
-    // ===========================================================
+    // Build itemCache
     player.itemCache = {};
 
     for (const [slot, invSlot] of player.inventory.equipment.entries()) {
@@ -204,18 +191,20 @@ export class WorldRoom extends Room<GameState> {
       if (model) player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
     }
 
-    for (const [itemId] of Object.entries(player.inventory.personalItems)) {
+    for (const [itemId] of Object.keys(player.inventory.personalItems)) {
       const model = await ItemModel.findOne({ itemId });
       if (model) player.itemCache[itemId] = { stats: model.stats || {} };
     }
 
-    // ===========================================================
-    // APPLY STATS  (fix: await)
-    // ===========================================================
+    // Compute real stats (the ONLY correct source)
     const computed = await computeFullStats(player);
+
+    // Apply stats
     player.loadStatsFromProfile(computed);
 
-    if (this.serverId === "test") player.zoneId = "start_zone";
+    if (this.serverId === "test") {
+      player.zoneId = "start_zone";
+    }
 
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
@@ -237,23 +226,21 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
+    // Skin manager
     const handledBySkin = require("../managers/SkinManager")
-      .SkinManagerInstance
-      ?.handleMessage(type, client, player, msg);
+      .SkinManagerInstance?.handleMessage(type, client, player, msg);
     if (handledBySkin) return;
 
+    // Inventory
     if (type.startsWith("inv_")) {
       await this.inventoryManager.handleMessage(type, client, player, msg);
       return;
     }
 
+    // Stats request (force fresh compute)
     if (type === "stats_request") {
-    
       const stats = await computeFullStats(player);
-    
-      // 🔥 LA LIGNE QUI FIXE TOUT
       player.loadStatsFromProfile(stats);
-    
       client.send("stats_update", stats);
       return;
     }
@@ -264,17 +251,14 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
+    // Quests and dialogue
     if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
     if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
     if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
-
     if (type === "dialogue_choice") {
       return this.dialogueManager.handleDialogueChoice(
-        client,
-        player,
-        msg.npcId,
-        msg.currentNodeId,
-        msg.choiceId
+        client, player,
+        msg.npcId, msg.currentNodeId, msg.choiceId
       );
     }
 
@@ -299,14 +283,13 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // SAVE PLAYER
+  // SAVE PLAYER (MMO correct)
   // ===========================================================
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
-      console.log(`💾 Saving data for ${player.characterName}...`);
-
-      const computed = await computeFullStats(player);   // ✔ fix
+      const computed = await computeFullStats(player);
       player.loadStatsFromProfile(computed);
+
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
           lastOnline: new Date(),
@@ -315,8 +298,6 @@ export class WorldRoom extends Room<GameState> {
           inventory: player.inventory.saveToProfile()
         }
       });
-
-      console.log(`✅ Saved ${player.characterName}`);
     } catch (error) {
       console.error("❌ Save error:", error);
     }
@@ -333,25 +314,15 @@ export class WorldRoom extends Room<GameState> {
       msg.name || "Dummy",
       "test",
       1,
-      30,
-      30,
-      5,
-      0,
-      1,
+      30, 30,
+      5, 0, 1,
       "test_zone",
       msg.x, msg.y, msg.z,
-      0,
-      0,
-      0,
+      0, 0, 0,
       "aggressive",
-      12,
-      20,
-      2,
-      5,
-      3,
-      false,
-      "dummy",
-      true
+      12, 20,
+      2, 5, 3,
+      false, "dummy", true
     );
 
     this.state.addMonster(m);
