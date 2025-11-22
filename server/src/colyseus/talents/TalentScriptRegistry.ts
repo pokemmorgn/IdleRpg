@@ -4,13 +4,27 @@ import { ITalentScript } from './ITalentScript';
 
 /**
  * Registre qui charge et fournit l'accès à tous les scripts de talents.
+ * Implémente un pattern Singleton pour n'être initialisé qu'une seule fois.
  */
 class TalentScriptRegistry {
   private scripts: Map<string, ITalentScript> = new Map();
   private isInitialized = false;
 
+  // L'instance unique de la classe (Singleton)
+  private static instance: TalentScriptRegistry;
+
   // Le constructeur est privé pour forcer l'utilisation du singleton.
   private constructor() {}
+
+  /**
+   * Récupère l'instance unique du registre.
+   */
+  public static getInstance(): TalentScriptRegistry {
+    if (!TalentScriptRegistry.instance) {
+      TalentScriptRegistry.instance = new TalentScriptRegistry();
+    }
+    return TalentScriptRegistry.instance;
+  }
 
   /**
    * Scanne le dossier des talents et charge tous les scripts .ts trouvés.
