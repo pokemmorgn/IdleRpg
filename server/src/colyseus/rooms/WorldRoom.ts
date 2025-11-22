@@ -15,7 +15,7 @@ import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
 import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
 
-import { SkinManager } from "../managers/SkinManager"; // ← AJOUT IMPORTANT
+import { SkinManager } from "../managers/SkinManager"; // ← IMPORT SKINS
 
 import ServerProfile from "../../models/ServerProfile";
 
@@ -33,7 +33,7 @@ export class WorldRoom extends Room<GameState> {
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
 
-  private skinManager!: SkinManager; // ← AJOUT
+  private skinManager!: SkinManager; // ← AJOUT SKINS
 
   private testManager?: TestManager;
 
@@ -54,7 +54,6 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
 
-    // 🟩 IMPORTANT → on charge toutes les quêtes du serveur
     await this.questManager.loadAllQuestsFromDB();
 
     this.questObjectiveManager = new QuestObjectiveManager(
@@ -95,7 +94,7 @@ export class WorldRoom extends Room<GameState> {
     );
 
     // --- SKIN MANAGER ---
-    this.skinManager = new SkinManager(); // ← AJOUT
+    this.skinManager = new SkinManager(); // ← INSTANCIATION SKINS
 
     // --- LOAD WORLD ENTITIES ---
     await this.npcManager.loadNPCs();
@@ -127,7 +126,7 @@ export class WorldRoom extends Room<GameState> {
       this.combatManager.update(dt);
     }, 33);
 
-    // World time
+    // World time update
     this.updateInterval = this.clock.setInterval(() => {
       this.state.updateWorldTime();
     }, 1000);
@@ -219,6 +218,9 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
+    // === SKIN MANAGER intercept ===
+    if (this.skinManager.handleMessage(type, client, player, msg)) return;
+
     // RESPAWN
     if (type === "respawn") {
       if (!player.isDead) return;
@@ -250,7 +252,7 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // TEST → trigger objective
+    // TEST → Trigger objective
     if (type === "test_trigger_quest_objective") {
       this.questObjectiveManager.onMonsterKilled(player, {
         enemyType: msg.enemyType || "test_wolf",
