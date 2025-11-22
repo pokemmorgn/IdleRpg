@@ -319,7 +319,11 @@ export class WorldRoom extends Room<GameState> {
     if (type === "stats_request") {
       const stats = await computeFullStats(player);
       player.loadStatsFromProfile(stats);
-      client.send("stats_update", stats);
+      client.send("stats_update", {
+          ...stats,
+          availableSkillPoints: player.availableSkillPoints,
+          talents: player.saveTalentsToProfile()
+      });
       return;
     }
 
