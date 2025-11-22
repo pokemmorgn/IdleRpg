@@ -42,7 +42,7 @@ export class MonsterState extends Schema {
   // ======================================================
   // 🔥 AJOUT: Propriétés pour la logique de quête et de combat
   // ======================================================
-  @type("string") rarity: string = "common"; // ex: "common", "rare", "elite", "boss"
+  @type("string") rarity: string = "normal";
   @type("boolean") isBoss: boolean = false;
   
   @type("string") modelId: string = "";
