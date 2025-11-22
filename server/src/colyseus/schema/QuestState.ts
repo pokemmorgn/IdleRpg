@@ -1,5 +1,6 @@
 // server/src/colyseus/schema/QuestState.ts
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
+import { QuestObjectiveMap } from "./QuestObjectiveMap";
 
 /**
  * QuestState
@@ -9,7 +10,7 @@ import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
  * questStep:        MapSchema<number>
  * questStartedAt:   MapSchema<number>
  *
- * questObjectives:  MapSchema<MapSchema<number>>
+ * questObjectives:  MapSchema<QuestObjectiveMap>
  *                   ↳ questId -> (objectiveId -> count)
  */
 export class QuestState extends Schema {
@@ -39,13 +40,11 @@ export class QuestState extends Schema {
   questStartedAt = new MapSchema<number>();
 
   /**
-   * 🔥 CORRECTION IMPORTANTE :
    * questId -> (objectiveId -> count)
-   *
-   * Donc une MapSchema de MapSchema<number>
+   * MapSchema<QuestObjectiveMap>
    */
-  @type({ map: MapSchema })
-  questObjectives = new MapSchema<MapSchema<number>>();
+  @type({ map: QuestObjectiveMap })
+  questObjectives = new MapSchema<QuestObjectiveMap>();
 
   /** Cooldowns journaliers */
   @type({ map: "number" })
