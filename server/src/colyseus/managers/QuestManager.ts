@@ -107,19 +107,29 @@ export class QuestManager {
   }
 
   /* ===========================================================
-     CONDITIONS D’ACCÈS
+     CONDITIONS D’ACCÈS (CORRIGÉ)
      =========================================================== */
   private isQuestAvailableForPlayer(
     quest: IQuest,
     player: PlayerState,
     qs: QuestState
   ): boolean {
+    // 🚨 NOUVELLE LOGIQUE PLUS ROBUSTE :
+    // Une quête n'est pas disponible si elle est déjà active ou terminée.
+    if (qs.activeMain === quest.questId) return false;
+    if (qs.activeSecondary === quest.questId) return false;
+    if (qs.activeRepeatables.includes(quest.questId)) return false;
+    if (qs.completed.includes(quest.questId)) return false;
+
+    // Conditions classiques
     if (player.level < quest.requiredLevel) return false;
     if (quest.zoneId && quest.zoneId !== player.zoneId) return false;
-    if (qs.completed.includes(quest.questId)) return false;
     if (quest.prerequisiteQuestId && !qs.completed.includes(quest.prerequisiteQuestId)) return false;
-    if (quest.type === "main" && qs.activeMain !== "") return false;
-    if (quest.type === "secondary" && qs.activeSecondary !== "") return false;
+
+    // Logique d'exclusivité par type (si nécessaire)
+    if (quest.type === "main" && qs.activeMain !== "" && qs.activeMain !== quest.questId) return false;
+    if (quest.type === "secondary" && qs.activeSecondary !== "" && qs.activeSecondary !== quest.questId) return false;
+    
     // ... (logique pour daily/weekly inchangée)
     return true;
   }
