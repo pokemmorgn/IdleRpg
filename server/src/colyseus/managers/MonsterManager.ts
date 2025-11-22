@@ -1,3 +1,4 @@
+// server/src/colyseus/managers/MonsterManager.ts
 import { GameState } from "../schema/GameState";
 import { MonsterState } from "../schema/MonsterState";
 import Monster from "../../models/Monster";
@@ -54,6 +55,8 @@ export class MonsterManager {
           monster.xpReward,
           monster.respawnTime,
           monster.respawnOnDeath,
+          monster.rarity || "common", // MODIFIÉ: Ajout de la rareté
+          monster.isBoss || false,   // MODIFIÉ: Ajout du statut de boss
           monster.modelId,
           monster.isActive
         );
