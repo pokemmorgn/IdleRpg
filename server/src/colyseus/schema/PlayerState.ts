@@ -3,10 +3,8 @@ import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
 import { QuestObjectiveMap } from "./QuestObjectiveMap";
+import { InventoryState } from "./InventoryState";   // ✅ AJOUT
 
-/**
- * État d'un joueur connecté + stats synchronisées.
- */
 export class PlayerState extends Schema {
 
   // ===== IDENTITÉ =====
@@ -22,6 +20,10 @@ export class PlayerState extends Schema {
   @type("string") race: string = "";
   @type(SkinState)
   skins: SkinState = new SkinState();
+
+  // ===== INVENTAIRE =====
+  @type(InventoryState)
+  inventory: InventoryState = new InventoryState();    // ✅ AJOUT
 
   // ===== CONNEXION =====
   @type("number") connectedAt: number = 0;
@@ -127,6 +129,22 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
+  // INVENTORY LOAD
+  // ===========================================================
+  loadInventoryFromProfile(data: any) {
+    if (data) {
+      this.inventory.loadFromProfile(data);
+    }
+  }
+
+  // ===========================================================
+  // INVENTORY SAVE
+  // ===========================================================
+  saveInventoryToProfile() {
+    return this.inventory.saveToProfile();
+  }
+
+  // ===========================================================
   // COMBAT UPDATE
   // ===========================================================
   updateCombatTimers(dt: number) {
@@ -154,88 +172,50 @@ export class PlayerState extends Schema {
   // ===========================================================
   loadStatsFromProfile(stats: any) {
     if (!stats) return;
-
-    this.hp = stats.hp;
-    this.maxHp = stats.maxHp;
-
-    this.resource = stats.resource;
-    this.maxResource = stats.maxResource;
-
-    this.manaRegen = stats.manaRegen;
-    this.rageRegen = stats.rageRegen;
-    this.energyRegen = stats.energyRegen;
-
-    this.attackPower = stats.attackPower;
-    this.spellPower = stats.spellPower;
-    this.attackSpeed = stats.attackSpeed;
-
-    this.criticalChance = stats.criticalChance;
-    this.criticalDamage = stats.criticalDamage;
-
-    this.damageReduction = stats.damageReduction;
-
-    this.armor = stats.armor;
-    this.magicResistance = stats.magicResistance;
-    this.precision = stats.precision;
-    this.evasion = stats.evasion;
-    this.penetration = stats.penetration;
-    this.tenacity = stats.tenacity;
-    this.lifesteal = stats.lifesteal;
-    this.spellPenetration = stats.spellPenetration;
+    Object.assign(this, stats);
   }
 
   // ===========================================================
   // LOAD QUESTS
   // ===========================================================
-  loadQuestsFromProfile(questData: any): void {
-
-    if (!questData) {
+  loadQuestsFromProfile(data: any) {
+    if (!data) {
       this.quests = new QuestState();
       return;
     }
 
     this.quests = new QuestState();
 
-    // LISTS
-    questData.completed?.forEach((id: string) =>
-      this.quests.completed.push(id)
-    );
+    data.completed?.forEach((id: string) => this.quests.completed.push(id));
 
-    this.quests.activeMain = questData.activeMain || "";
-    this.quests.activeSecondary = questData.activeSecondary || "";
+    this.quests.activeMain = data.activeMain || "";
+    this.quests.activeSecondary = data.activeSecondary || "";
 
-    questData.activeRepeatables?.forEach((id: string) =>
+    data.activeRepeatables?.forEach((id: string) =>
       this.quests.activeRepeatables.push(id)
     );
 
-    // MAPS
-    Object.entries(questData.questStep || {}).forEach(([k, v]) =>
+    Object.entries(data.questStep || {}).forEach(([k, v]) =>
       this.quests.questStep.set(k, v as number)
     );
 
-    Object.entries(questData.questStartedAt || {}).forEach(([k, v]) =>
+    Object.entries(data.questStartedAt || {}).forEach(([k, v]) =>
       this.quests.questStartedAt.set(k, v as number)
     );
 
-    Object.entries(questData.dailyCooldown || {}).forEach(([k, v]) =>
+    Object.entries(data.dailyCooldown || {}).forEach(([k, v]) =>
       this.quests.dailyCooldown.set(k, v as number)
     );
 
-    Object.entries(questData.weeklyCooldown || {}).forEach(([k, v]) =>
+    Object.entries(data.weeklyCooldown || {}).forEach(([k, v]) =>
       this.quests.weeklyCooldown.set(k, v as number)
     );
 
-    // OBJECTIVES MAP
-    Object.entries(questData.questObjectives || {}).forEach(([questId, raw]) => {
-      
+    Object.entries(data.questObjectives || {}).forEach(([questId, raw]) => {
       const objMap = new QuestObjectiveMap();
-
-      if (raw && typeof raw === "object") {
-        Object.entries(raw as Record<string, number>).forEach(([objectiveId, count]) => {
-          objMap.objectives.set(objectiveId, count ?? 0);
-        });
-      }
-
+      Object.entries(raw || {}).forEach(([objId, count]) => {
+        objMap.objectives.set(objId, count ?? 0);
+      });
       this.quests.questObjectives.set(questId, objMap);
     });
   }
@@ -243,23 +223,20 @@ export class PlayerState extends Schema {
   // ===========================================================
   // SAVE QUESTS
   // ===========================================================
-  saveQuestsToProfile(): any {
+  saveQuestsToProfile() {
     return {
       completed: [...this.quests.completed],
       activeMain: this.quests.activeMain,
       activeSecondary: this.quests.activeSecondary,
       activeRepeatables: [...this.quests.activeRepeatables],
-
       questStep: Object.fromEntries(this.quests.questStep),
       questStartedAt: Object.fromEntries(this.quests.questStartedAt),
-
       questObjectives: Object.fromEntries(
         [...this.quests.questObjectives].map(([qid, objMap]) => [
           qid,
           Object.fromEntries(objMap.objectives)
         ])
       ),
-
       dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
       weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
     };
@@ -268,7 +245,7 @@ export class PlayerState extends Schema {
   // ===========================================================
   // SAVE STATS
   // ===========================================================
-  saveStatsToProfile(): any {
+  saveStatsToProfile() {
     return {
       hp: this.hp,
       maxHp: this.maxHp,
