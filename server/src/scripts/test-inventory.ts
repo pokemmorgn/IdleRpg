@@ -1,5 +1,5 @@
 /**
- * TEST INVENTORY + STATS — Add / Equip / Use / Loot / Bag Upgrade / Personal
+ * TEST INVENTORY + STATS — Version propre, synchronisée, fiable
  */
 
 import * as Colyseus from "colyseus.js";
@@ -15,13 +15,26 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "InvTester";
 
-function sleep(ms: number) {
+function wait(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// =============================================================
-// AUTH HELPERS
-// =============================================================
+/* ============================================================
+   WAIT FOR SERVER MESSAGE
+   ============================================================ */
+function waitFor(room: Colyseus.Room, type: string): Promise<any> {
+    return new Promise(resolve => {
+        const handler = (msg: any) => {
+            room.offMessage(type, handler);
+            resolve(msg);
+        };
+        room.onMessage(type, handler);
+    });
+}
+
+/* ============================================================
+   AUTH HELPERS
+   ============================================================ */
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
@@ -125,32 +138,19 @@ async function reserveSeat(token: string) {
     return j;
 }
 
-// =============================================================
-// PRINT STATS (corrigé sans onceMessage)
-// =============================================================
-async function printStats(room: Colyseus.Room, label: string) {
-    return new Promise<void>(resolve => {
-
-        const handler = (msg: any) => {
-            console.log(`\n📊 ${label}:`, msg);
-
-            // On "désactive" le listener
-            room.onMessage("stats_update", () => {});
-            resolve();
-        };
-
-        // Ajoute le handler
-        room.onMessage("stats_update", handler);
-
-        // Demande de mise à jour des stats
-        room.send("stats_request");
-    });
+/* ============================================================
+   GET STATS ON DEMAND (safe)
+   ============================================================ */
+async function requestStats(room: Colyseus.Room, label: string) {
+    const p = waitFor(room, "stats_update");
+    room.send("stats_request");
+    const stats = await p;
+    console.log(`\n📊 ${label}:`, stats);
 }
 
-
-// =============================================================
-// MAIN TEST
-// =============================================================
+/* ============================================================
+   MAIN TEST
+   ============================================================ */
 (async () => {
     try {
         await register();
@@ -168,40 +168,15 @@ async function printStats(room: Colyseus.Room, label: string) {
         const client = new Colyseus.Client(WS_URL);
         const room = await client.consumeSeatReservation(mm);
 
-        console.log("🔌 CONNECTÉ AU SERVEUR DE JEU !");
-        console.log("⏳ Préparation du test inventaire…");
+        console.log("🔌 CONNECTÉ AU SERVEUR !");
+        await wait(1000);
 
-        // LISTENERS
-        room.onMessage("inventory_update", (msg) => {
-            console.log("📦 INVENTORY UPDATE:", msg);
-        });
+        /* ------------------------------------------- */
+        await requestStats(room, "Stats au login");
+        /* ------------------------------------------- */
 
-        room.onMessage("item_used", (msg) => {
-            console.log("🍾 ITEM USED:", msg);
-        });
+        console.log("\n🔥 AJOUT ITEMS…");
 
-        room.onMessage("stats_update", (msg) => {
-            console.log("📈 STATS UPDATE:", msg);
-        });
-
-        room.onMessage("welcome", () => {
-            console.log("👋 WELCOME !");
-        });
-
-        await sleep(1500);
-
-        // ============================================================
-        // STATS INITIALES
-        // ============================================================
-        await printStats(room, "Stats au login");
-
-        console.log("\n===============================");
-        console.log("🔥 DÉBUT DU TEST INVENTAIRE");
-        console.log("===============================\n");
-
-        // ============================================================
-        // 1) AJOUT ITEMS
-        // ============================================================
         const ALL_ITEMS = [
             "eq_head", "eq_chest", "eq_legs", "eq_feet", "eq_hands",
             "eq_weapon", "eq_offhand",
@@ -217,67 +192,56 @@ async function printStats(room: Colyseus.Room, label: string) {
             "personal_family_ring"
         ];
 
-        console.log("📥 AJOUT DES ITEMS…");
-
         for (const item of ALL_ITEMS) {
-            console.log(`→ Ajout ${item}`);
+            console.log(`→ add ${item}`);
+            const p = waitFor(room, "inventory_update");
             room.send("inv_add", { itemId: item, amount: 1 });
-            await sleep(150);
+            await p;
+            await wait(30);
         }
 
-        await sleep(800);
-        await printStats(room, "Stats après ajout objets (non équipés)");
+        await requestStats(room, "Stats après ajout objets");
 
-        // ============================================================
-        // 2) LOOTBOX
-        // ============================================================
-        console.log("\n🎁 OUVERTURE LOOTBOX");
+        /* ------------------------------------------- */
+        console.log("\n🎁 TEST LOOTBOX");
         room.send("inv_open", { slot: 5 });
-        await sleep(500);
+        await waitFor(room, "inventory_update");
+        /* ------------------------------------------- */
 
-        // ============================================================
-        // 3) CONSOMMABLE
-        // ============================================================
-        console.log("\n🍺 UTILISATION CONSOMMABLE");
+        console.log("\n🍺 TEST CONSOMMABLE");
         room.send("inv_use", { slot: 6 });
-        await sleep(500);
+        await waitFor(room, "item_used");
+        await waitFor(room, "inventory_update");
 
-        // ============================================================
-        // 4) EQUIP
-        // ============================================================
-        console.log("\n🛡️ TEST ÉQUIPEMENT");
+        /* ------------------------------------------- */
+        console.log("\n🛡️ TEST ÉQUIPEMENT (HEAD)");
         room.send("inv_equip", { fromSlot: 0 });
-        await sleep(700);
-        await printStats(room, "Stats après équipement tête");
+        await waitFor(room, "inventory_update");
+        await requestStats(room, "Stats après équipement tête");
 
-        // ============================================================
-        // 5) UNEQUIP
-        // ============================================================
-        console.log("\n🔧 TEST DÉSÉQUIPEMENT");
+        /* ------------------------------------------- */
+        console.log("\n🔧 TEST UNEQUIP (HEAD)");
         room.send("inv_unequip", { equipSlot: "head" });
-        await sleep(700);
-        await printStats(room, "Stats après déséquipement tête");
+        await waitFor(room, "inventory_update");
+        await requestStats(room, "Stats après déséquipement");
+        /* ------------------------------------------- */
 
-        // ============================================================
-        // 6) BAG UPGRADE
-        // ============================================================
         console.log("\n🎒 TEST UPGRADE DE SAC");
         room.send("inv_upgrade_bag", { slot: 7 });
-        await sleep(700);
+        await waitFor(room, "inventory_update");
 
-        // ============================================================
-        // 7) ITEM PERSONNEL
-        // ============================================================
+        /* ------------------------------------------- */
         console.log("\n💍 TEST ITEM PERSONNEL");
         room.send("inv_add_personal", { itemId: "personal_family_ring" });
-        await sleep(700);
-        await printStats(room, "Stats après ajout item personnel");
+        await waitFor(room, "inventory_update");
+        await requestStats(room, "Stats après item personnel");
+        /* ------------------------------------------- */
 
         console.log("\n🎉 FIN DU TEST INVENTAIRE !");
         process.exit(0);
 
     } catch (err) {
-        console.error("❌ Erreur test-inventory:", err);
+        console.error("❌ ERREUR TEST:", err);
         process.exit(1);
     }
 })();
