@@ -1,6 +1,7 @@
 // server/src/colyseus/schema/PlayerState.ts
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
+import { SkinState } from "./SkinState";
 
 /**
  * État d'un joueur connecté + stats synchronisées.
@@ -18,7 +19,8 @@ export class PlayerState extends Schema {
   @type("number") level: number = 1;
   @type("string") class: string = "";
   @type("string") race: string = "";
-
+  @type(SkinState)
+  skins: SkinState = new SkinState();
   // ===== CONNEXION =====
   @type("number") connectedAt: number = 0;
   @type("number") lastActivity: number = 0;
