@@ -1,3 +1,4 @@
+// server/src/colyseus/schema/MonsterState.ts
 import { Schema, type } from "@colyseus/schema";
 
 export class MonsterState extends Schema {
@@ -37,6 +38,12 @@ export class MonsterState extends Schema {
   @type("number") xpReward: number = 10;
   @type("number") respawnTime: number = 30;
   @type("boolean") respawnOnDeath: boolean = true;
+
+  // ======================================================
+  // 🔥 AJOUT: Propriétés pour la logique de quête et de combat
+  // ======================================================
+  @type("string") rarity: string = "common"; // ex: "common", "rare", "elite", "boss"
+  @type("boolean") isBoss: boolean = false;
   
   @type("string") modelId: string = "";
   @type("boolean") isActive: boolean = true;
@@ -72,6 +79,8 @@ export class MonsterState extends Schema {
     xpReward: number,
     respawnTime: number,
     respawnOnDeath: boolean,
+    rarity: string, // AJOUT
+    isBoss: boolean, // AJOUT
     modelId: string,
     isActive: boolean
   ) {
@@ -93,7 +102,7 @@ export class MonsterState extends Schema {
     this.posY = posY;
     this.posZ = posZ;
 
-    // 🔥 Enregistre le point de spawn NOUVEAU
+    // 🔥 Enregistre le point de spawn
     this.spawnX = posX;
     this.spawnY = posY;
     this.spawnZ = posZ;
@@ -110,6 +119,10 @@ export class MonsterState extends Schema {
     this.xpReward = xpReward;
     this.respawnTime = respawnTime;
     this.respawnOnDeath = respawnOnDeath;
+
+    // AJOUT: Initialisation des nouvelles propriétés
+    this.rarity = rarity;
+    this.isBoss = isBoss;
 
     this.modelId = modelId;
     this.isActive = isActive;
