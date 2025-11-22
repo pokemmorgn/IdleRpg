@@ -119,7 +119,9 @@ export class PlayerState extends Schema {
     characterName: string,
     level: number,
     characterClass: string,
-    characterRace: string
+    characterRace: string,
+    xp?: number,
+    nextLevelXp?: number
   ) {
     super();
     this.sessionId = sessionId;
@@ -132,8 +134,8 @@ export class PlayerState extends Schema {
     this.race = characterRace;
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
-    this.xp = 0;
-    this.nextLevelXp = this.computeNextLevelXp(level);
+    this.xp = xp ?? 0;
+    this.nextLevelXp = nextLevelXp ?? this.computeNextLevelXp(level);
   }
 
   // ===========================================================
