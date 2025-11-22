@@ -31,7 +31,7 @@ export class TestManager {
    */
   public loadAll() {
     console.log("🧪 Chargement des éléments de test...");
-    this.spawnTemporaryTestMonsters();
+    //this.spawnTemporaryTestMonsters();
     this.spawnTemporaryTestNPC();
     // ❌ loadTestQuests supprimé (quêtes maintenant seedées dans la BDD)
     this.loadTestDialogues();
