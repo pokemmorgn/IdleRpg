@@ -1,5 +1,5 @@
 import { PlayerState } from "../../schema/PlayerState";
-import { ITalentScript } from "../ITalentScript";
+import { ITalentScript } from "../../ITalentScript";
 
 export default class CriticalStrikeTalent implements ITalentScript {
   // Chaque rang donne +1.5% de coup critique
