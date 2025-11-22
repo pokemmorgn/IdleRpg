@@ -18,7 +18,6 @@ export class PlayerState extends Schema {
   @type("number") level: number = 1;
   @type("string") class: string = "";
   @type("string") race: string = "";
-
   @type(SkinState)
   skins: SkinState = new SkinState();
 
@@ -59,7 +58,7 @@ export class PlayerState extends Schema {
   @type("number") tenacity: number = 0;
   @type("number") lifesteal: number = 0;
 
-  // ===== COMBAT TIMERS =====
+  // ===== COMBAT =====
   @type("boolean") inCombat: boolean = false;
   @type("string") targetMonsterId: string = "";
   @type("string") lastAttackerId: string = "";
@@ -106,6 +105,11 @@ export class PlayerState extends Schema {
   @type("number") potionHP: number = 10;
   @type("number") food: number = 20;
 
+  // --------------------------------------------------------------------
+  // 🔥 ITEM CACHE (SERVER ONLY, NON SYNCHRONISÉ)
+  // --------------------------------------------------------------------
+  itemCache: { [itemId: string]: { stats: any } } = {};
+
   constructor(
     sessionId: string,
     playerId: string,
@@ -125,7 +129,6 @@ export class PlayerState extends Schema {
     this.level = level;
     this.class = characterClass;
     this.race = characterRace;
-
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
   }
@@ -147,29 +150,26 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // COMBAT UPDATE (🔥 FIX COMBAT MANAGER COMPATIBLE)
+  // COMBAT TIMER UPDATE
   // ===========================================================
   updateCombatTimers(dt: number) {
     if (this.isDead || this.isAFK) return;
 
-    // GCD
     if (this.gcdRemaining > 0)
       this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
 
-    // CAST LOCK
     if (this.castLockRemaining > 0) {
       this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
       if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
     }
 
-    // ANIMATION LOCK
     if (this.animationLockRemaining > 0) {
       this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
       if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
     }
 
-    // AUTO-ATTAQUE
-    this.autoAttackTimer += dt;
+    if (this.autoAttackTimer < this.attackSpeed * 1000)
+      this.autoAttackTimer += dt;
   }
 
   // ===========================================================
@@ -192,6 +192,7 @@ export class PlayerState extends Schema {
     this.quests = new QuestState();
 
     data.completed?.forEach((id: string) => this.quests.completed.push(id));
+
     this.quests.activeMain = data.activeMain || "";
     this.quests.activeSecondary = data.activeSecondary || "";
 
