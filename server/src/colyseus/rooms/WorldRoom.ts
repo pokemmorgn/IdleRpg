@@ -211,7 +211,7 @@ async onJoin(client: Client, options: any, auth: any) {
     damageReduction: player.damageReduction
   });
 
-  if (this.serverId === "test") player.zoneId = "test_zone";
+  if (this.serverId === "test") player.zoneId = "start_zone";
 
   this.state.addPlayer(player);
   client.send("welcome", { ok: true });
