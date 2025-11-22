@@ -1,3 +1,7 @@
+/**
+ * TEST SKINS — Unlock / Equip / Level-Up (version stable & patchée)
+ */
+
 import * as Colyseus from "colyseus.js";
 
 const API_URL = "http://localhost:3000";
@@ -142,91 +146,82 @@ function pickSkinFromClass(playerClass: string): string {
 }
 
 // =====================================================================
+// WAIT FOR REAL STATS UPDATE
+// =====================================================================
+async function waitForStatsUpdate(previousStats: any, lastStatsRef: { value: any }) {
+    return new Promise(resolve => {
+        const check = setInterval(() => {
+            if (lastStatsRef.value && lastStatsRef.value !== previousStats) {
+                clearInterval(check);
+                resolve(lastStatsRef.value);
+            }
+        }, 50);
+    });
+}
+
+// =====================================================================
 // TEST SKINS
 // =====================================================================
 async function testSkinSystem(room: Colyseus.Room, skinId: string) {
 
     console.log("\n🔥 DÉBUT DU TEST SKINS\n");
 
-    let lastStats: any = null;
+    let lastStats = { value: null };
 
+    // Listeners
     room.onMessage("stats_update", (msg) => {
-        console.log("📈 STATS UPDATE →", msg);
-        lastStats = msg;
+        lastStats.value = msg;
+        console.log("📈 STATS UPDATE:", msg);
     });
 
-    room.onMessage("skin_unlocked", (msg) => {
-        console.log("🟩 SKIN UNLOCKED →", msg);
-    });
+    room.onMessage("skin_unlocked", (msg) => console.log("🟩 SKIN UNLOCKED:", msg));
+    room.onMessage("skin_equipped", (msg) => console.log("🎽 SKIN EQUIPPED:", msg));
+    room.onMessage("skin_level_up", (msg) => console.log("⬆️  SKIN LEVEL UP:", msg));
+    room.onMessage("skin_error", (msg) => console.error("❌ SKIN ERROR:", msg));
 
-    room.onMessage("skin_equipped", (msg) => {
-        console.log("🎽 SKIN EQUIPPED →", msg);
-    });
+    // Attendre la première stats
+    console.log("⏳ En attente des premières stats...");
+    while (!lastStats.value) await sleep(200);
 
-    room.onMessage("skin_level_up", (msg) => {
-        console.log("⬆️  SKIN LEVEL UP →", msg);
-    });
+    console.log("\n🔍 STAT AVANT ACTIONS");
+    let before = structuredClone(lastStats.value);
 
-    room.onMessage("skin_error", (msg) => {
-        console.error("❌ SKIN ERROR →", msg);
-    });
-
-    await sleep(1000);
-
-    console.log("🔍 Capture des stats AVANT");
-    let before = structuredClone(lastStats);
-
-    // ---------------------------------------------------------
-    // 1) UNLOCK
-    // ---------------------------------------------------------
+    // --- UNLOCK ---
     console.log("\n--- ÉTAPE 1 : UNLOCK ---");
     room.send("skin_unlock", { skinId });
-    await sleep(800);
-
-    let afterUnlock = structuredClone(lastStats);
+    let afterUnlock = await waitForStatsUpdate(before, lastStats);
     console.log("📊 DIFF →", diff(before, afterUnlock));
 
-    // ---------------------------------------------------------
-    // 2) EQUIP
-    // ---------------------------------------------------------
+    // --- EQUIP ---
     console.log("\n--- ÉTAPE 2 : EQUIP ---");
+    before = afterUnlock;
     room.send("skin_equip", { skinId });
-    await sleep(800);
+    let afterEquip = await waitForStatsUpdate(before, lastStats);
+    console.log("📊 DIFF →", diff(before, afterEquip));
 
-    let afterEquip = structuredClone(lastStats);
-    console.log("📊 DIFF →", diff(afterUnlock, afterEquip));
-
-    // ---------------------------------------------------------
-    // 3) LEVEL 1
-    // ---------------------------------------------------------
+    // --- LEVEL 1 ---
     console.log("\n--- ÉTAPE 3 : LEVEL UP (1) ---");
+    before = afterEquip;
     room.send("skin_level_up", { skinId });
-    await sleep(800);
+    let afterL1 = await waitForStatsUpdate(before, lastStats);
+    console.log("📊 DIFF →", diff(before, afterL1));
 
-    let afterL1 = structuredClone(lastStats);
-    console.log("📊 DIFF →", diff(afterEquip, afterL1));
-
-    // ---------------------------------------------------------
-    // 4) LEVEL 2
-    // ---------------------------------------------------------
+    // --- LEVEL 2 ---
     console.log("\n--- ÉTAPE 4 : LEVEL UP (2) ---");
+    before = afterL1;
     room.send("skin_level_up", { skinId });
-    await sleep(800);
-
-    let afterL2 = structuredClone(lastStats);
-    console.log("📊 DIFF →", diff(afterL1, afterL2));
+    let afterL2 = await waitForStatsUpdate(before, lastStats);
+    console.log("📊 DIFF →", diff(before, afterL2));
 
     console.log("\n🎉 FIN DU TEST SKINS\n");
 }
 
-
 // =====================================================================
-// UTILS : DIFF ENTRE STATS
+// DIFF UTILS
 // =====================================================================
 function diff(a: any, b: any) {
     if (!a || !b) return "Pas de données.";
     let changes: Record<string, { from: any, to: any }> = {};
-
     for (const k in b) {
         if (a[k] !== b[k]) {
             changes[k] = { from: a[k], to: b[k] };
@@ -234,7 +229,6 @@ function diff(a: any, b: any) {
     }
     return changes;
 }
-
 
 // =====================================================================
 // MAIN
