@@ -3,7 +3,6 @@
 import { GameState } from "../schema/GameState";
 import { PlayerState } from "../schema/PlayerState";
 import ItemModel from "../../models/Item";
-import { InventoryState } from "../schema/InventoryState";
 import { InventorySlot } from "../schema/InventorySlot";
 
 export class InventoryManager {
@@ -59,7 +58,7 @@ export class InventoryManager {
         const stackable = model.stackable !== false;
         const maxStack = model.maxStack ?? 99;
 
-        // 🔹 1) tenter d'ajouter dans un stack existant
+        // ---- 1) Ajouter à un stack existant
         if (stackable) {
             for (let i = 0; i < inv.slots.length; i++) {
                 const slot = inv.slots[i];
@@ -77,11 +76,11 @@ export class InventoryManager {
             }
         }
 
-        // 🔹 2) remplir des nouveaux slots
+        // ---- 2) Ajouter dans un slot vide
         for (let i = 0; i < inv.slots.length && amount > 0; i++) {
             const slot = inv.slots[i];
             if (slot.itemId === "") {
-                const add = model.stackable !== false ? Math.min(amount, maxStack) : 1;
+                const add = stackable ? Math.min(amount, maxStack) : 1;
                 slot.setItem(itemId, add);
                 amount -= add;
             }
@@ -106,7 +105,6 @@ export class InventoryManager {
                 amount -= remove;
 
                 if (slot.amount <= 0) slot.clear();
-
                 if (amount <= 0) break;
             }
         }
@@ -162,7 +160,7 @@ export class InventoryManager {
 
         if (model.type !== "consumable") return;
 
-        // appliquer l’effet
+        // appliquer l'effet
         this.emit(player.sessionId, "item_used", {
             itemId: model.itemId,
             effects: model.effects ?? {}
@@ -177,12 +175,15 @@ export class InventoryManager {
     }
 
     // ============================================================
-    // SYNC CLIENT
+    // SEND UPDATE TO CLIENT
     // ============================================================
     private sync(player: PlayerState) {
+        const snapshot = player.inventory.saveToProfile();
+
         this.emit(player.sessionId, "inventory_update", {
-            slots: player.inventory.exportSlots(),
-            equipment: player.inventory.exportEquipment()
+            slots: snapshot.slots,
+            equipment: snapshot.equipment,
+            personalItems: snapshot.personalItems ?? []
         });
     }
 }
