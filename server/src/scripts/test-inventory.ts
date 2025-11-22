@@ -25,7 +25,7 @@ function wait(ms: number) {
 function waitFor(room: Colyseus.Room, type: string): Promise<any> {
     return new Promise(resolve => {
         const handler = (msg: any) => {
-            room.offMessage(type, handler);
+            room.onMessage(type, () => {});
             resolve(msg);
         };
         room.onMessage(type, handler);
