@@ -248,7 +248,12 @@ export class WorldRoom extends Room<GameState> {
     }
 
     if (type === "stats_request") {
-      const stats = await computeFullStats(player);   // ✔ fix
+    
+      const stats = await computeFullStats(player);
+    
+      // 🔥 LA LIGNE QUI FIXE TOUT
+      player.loadStatsFromProfile(stats);
+    
       client.send("stats_update", stats);
       return;
     }
