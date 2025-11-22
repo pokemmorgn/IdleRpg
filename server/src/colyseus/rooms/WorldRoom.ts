@@ -51,7 +51,12 @@ export class WorldRoom extends Room<GameState> {
     new SkinManager();
 
     // Load managers
-    this.questManager = new QuestManager(this.serverId, this.state, this.savePlayerData.bind(this));
+    this.questManager = new QuestManager(
+      this.serverId,
+      this.state,
+      this.savePlayerData.bind(this),
+      this.levelManager // MODIFIÉ: Passer l'instance du LevelManager
+    );
     await this.questManager.loadAllQuestsFromDB();
 
     this.questObjectiveManager = new QuestObjectiveManager(
