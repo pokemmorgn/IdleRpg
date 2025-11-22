@@ -1,139 +1,141 @@
 /**
- * Configuration des classes jouables
- * 
- * NOTE DEV - Rôles et spécialités par classe (pour référence) :
- * 
- * - Prêtre (Priest) : Healer/Support. Soins puissants, buffs d'équipe, résurrection.
- * - Mage : DPS distance magique. Burst élevé, contrôle de foule, AoE.
- * - Paladin : Tank/Healer/Mélée. Polyvalent en survie et soutien, armure lourde.
- * - Voleur (Rogue) : DPS mélée agile burst. Furtivité, combos rapides, critiques.
- * - Guerrier (Warrior) : Tank/DPS mélée. Haute survie, contrôle, dégâts physiques.
- * - Druide (Druid) : Support/Healer/DPS hybride. Transformation, polyvalence, magie nature.
+ * CONFIGURATION DES CLASSES — VERSION UNIFIÉE
+ * Contient :
+ * - Lore / description
+ * - Rôles
+ * - Restrictions race/classes (optionnel, tu peux déplacer)
+ * - Stats de base
+ * - Stats par niveau
+ * - MoveSpeed
+ * - ResourceType
+ * - getStatsForClass()
  */
 
 export type ClassRole = "TANK" | "DPS" | "HEALER" | "SUPPORT";
 
 export interface ClassConfig {
-  classId: string;          // ID unique (ex: "priest")
-  nameKey: string;          // Clé nom
-  descriptionKey: string;   // Clé description
-  loreKey: string;          // <-- AJOUT : Lore approfondi
-  roles: ClassRole[];       // Rôles possibles
-  
-  // Les stats de base seront ajoutées ici plus tard
-  // baseStats?: { [stat: string]: number };
+  classId: string;
+  nameKey: string;
+  descriptionKey: string;
+  loreKey: string;
+  roles: ClassRole[];
+
+  // Ajout : stats de combat
+  baseStats: {
+    strength: number;
+    agility: number;
+    intelligence: number;
+    endurance: number;
+    spirit: number;
+  };
+
+  statsPerLevel: {
+    strength: number;
+    agility: number;
+    intelligence: number;
+    endurance: number;
+    spirit: number;
+  };
+
+  baseMoveSpeed: number;       // déplacement
+  resourceType: "mana" | "rage" | "energy";
 }
 
-/**
- * Toutes les classes disponibles
- */
+// =============================================================
+// LISTE DES CLASSES — UNIFIÉE
+// =============================================================
 export const ALL_CLASSES: ClassConfig[] = [
   {
     classId: "priest",
     nameKey: "class.priest.name",
     descriptionKey: "class.priest.description",
     loreKey: "class.priest.lore",
-    roles: ["HEALER", "SUPPORT"]
+    roles: ["HEALER", "SUPPORT"],
+
+    baseStats: { strength: 2, agility: 4, intelligence: 10, endurance: 6, spirit: 12 },
+    statsPerLevel: { strength: 0.5, agility: 1, intelligence: 2, endurance: 1, spirit: 2 },
+    baseMoveSpeed: 2.8,
+    resourceType: "mana"
   },
+
   {
     classId: "mage",
     nameKey: "class.mage.name",
     descriptionKey: "class.mage.description",
     loreKey: "class.mage.lore",
-    roles: ["DPS"]
+    roles: ["DPS"],
+
+    baseStats: { strength: 2, agility: 5, intelligence: 12, endurance: 5, spirit: 8 },
+    statsPerLevel: { strength: 0.5, agility: 1, intelligence: 2.5, endurance: 1, spirit: 1.5 },
+    baseMoveSpeed: 2.7,
+    resourceType: "mana"
   },
+
   {
     classId: "paladin",
     nameKey: "class.paladin.name",
     descriptionKey: "class.paladin.description",
     loreKey: "class.paladin.lore",
-    roles: ["TANK", "HEALER"]
+    roles: ["TANK", "HEALER"],
+
+    baseStats: { strength: 8, agility: 4, intelligence: 6, endurance: 10, spirit: 10 },
+    statsPerLevel: { strength: 1.5, agility: 1, intelligence: 1.5, endurance: 2, spirit: 2 },
+    baseMoveSpeed: 2.6,
+    resourceType: "mana"
   },
+
   {
     classId: "rogue",
     nameKey: "class.rogue.name",
     descriptionKey: "class.rogue.description",
     loreKey: "class.rogue.lore",
-    roles: ["DPS"]
+    roles: ["DPS"],
+
+    baseStats: { strength: 5, agility: 12, intelligence: 3, endurance: 7, spirit: 4 },
+    statsPerLevel: { strength: 1, agility: 2, intelligence: 0.5, endurance: 1.5, spirit: 0.7 },
+    baseMoveSpeed: 3.2,
+    resourceType: "energy"
   },
+
   {
     classId: "warrior",
     nameKey: "class.warrior.name",
     descriptionKey: "class.warrior.description",
     loreKey: "class.warrior.lore",
-    roles: ["TANK", "DPS"]
+    roles: ["TANK", "DPS"],
+
+    baseStats: { strength: 10, agility: 5, intelligence: 2, endurance: 12, spirit: 3 },
+    statsPerLevel: { strength: 2, agility: 1, intelligence: 0.5, endurance: 2, spirit: 0.5 },
+    baseMoveSpeed: 2.5,
+    resourceType: "rage"
   },
+
   {
     classId: "druid",
     nameKey: "class.druid.name",
     descriptionKey: "class.druid.description",
     loreKey: "class.druid.lore",
-    roles: ["SUPPORT", "HEALER", "DPS"]
+    roles: ["SUPPORT", "HEALER", "DPS"],
+
+    baseStats: { strength: 3, agility: 5, intelligence: 10, endurance: 7, spirit: 10 },
+    statsPerLevel: { strength: 0.8, agility: 1, intelligence: 2, endurance: 1.2, spirit: 2 },
+    baseMoveSpeed: 2.9,
+    resourceType: "mana"
   }
 ];
 
-/**
- * Restrictions de classe par race
- * Format: { raceId: [classIds autorisées] }
- */
-export const CLASS_RACE_RESTRICTIONS: { [raceId: string]: string[] } = {
-  "arkanyds": ["mage", "priest", "rogue", "warrior"],
-  "humans":     ["mage", "priest", "rogue", "warrior", "paladin"],
-  "orcs": ["rogue", "warrior"],
-  "murlocs":         ["rogue", "warrior", "paladin"],
-  "noxariens": ["mage", "druid"],
-  "dwarfs":      ["priest", "warrior", "paladin"],
-  "trolls":  ["mage", "priest", "rogue", "druid"],
-  "varkyns":   ["warrior", "paladin", "druid"]
-};
-
-/**
- * Vérifie si une combinaison classe/race est autorisée
- */
-export function isClassAllowedForRace(classId: string, raceId: string): boolean {
-  const allowedClasses = CLASS_RACE_RESTRICTIONS[raceId];
-  if (!allowedClasses) return true;
-  return allowedClasses.includes(classId);
-}
-
-/**
- * Récupère les classes autorisées pour une race donnée
- */
-export function getAllowedClassesForRace(raceId: string): ClassConfig[] {
-  const allowedClassIds = CLASS_RACE_RESTRICTIONS[raceId];
-  if (!allowedClassIds) return ALL_CLASSES;
-  return ALL_CLASSES.filter(cls => allowedClassIds.includes(cls.classId));
-}
-
-/**
- * Map des classes par ID
- */
-export const CLASSES_BY_ID: Map<string, ClassConfig> = new Map(
+// =============================================================
+// MAP
+// =============================================================
+export const CLASSES_BY_ID = new Map(
   ALL_CLASSES.map(cls => [cls.classId, cls])
 );
 
-/**
- * Vérifie si un classId est valide
- */
-export function isValidClass(classId: string): boolean {
-  return CLASSES_BY_ID.has(classId);
+// =============================================================
+// getStatsForClass — REQUIS PAR PlayerStatsCalculator
+// =============================================================
+export function getStatsForClass(classId: string): ClassConfig {
+  const cls = CLASSES_BY_ID.get(classId);
+  if (!cls) throw new Error(`Classe inconnue: ${classId}`);
+  return cls;
 }
-
-/**
- * Récupère une classe par son ID
- */
-export function getClassById(classId: string): ClassConfig | undefined {
-  return CLASSES_BY_ID.get(classId);
-}
-
-/**
- * Classes par rôle
- */
-export function getClassesByRole(role: ClassRole): ClassConfig[] {
-  return ALL_CLASSES.filter(cls => cls.roles.includes(role));
-}
-
-/**
- * Liste des IDs valides
- */
-export const VALID_CLASS_IDS = ALL_CLASSES.map(c => c.classId);
