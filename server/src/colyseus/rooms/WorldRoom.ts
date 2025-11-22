@@ -294,7 +294,15 @@ export class WorldRoom extends Room<GameState> {
     if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
     if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
     if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
-    if (type === "dialogue_choice") return this.dialogueManager.handleDialogueChoice(client, player, msg);
+    if (type === "dialogue_choice") {
+        return this.dialogueManager.handleDialogueChoice(
+            client,
+            player,
+            msg.npcId,
+            msg.currentNodeId,
+            msg.choiceId
+        );
+    }
 
     // ---- QUEST OBJECTIVES ----
     if (type === "quest_talk") return this.questObjectiveManager.onTalk(player, msg);
