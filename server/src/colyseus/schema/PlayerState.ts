@@ -22,6 +22,9 @@ export class PlayerState extends Schema {
   skins: SkinState = new SkinState();
   @type("number") xp: number = 0;
   @type("number") nextLevelXp: number = 100;
+  // ===== TALENTS (À AJOUTER) =====
+  @type("number") availableSkillPoints: number = 0;
+  @type({ map: "number" }) talents = new MapSchema<number>();
   // ===== INVENTAIRE =====
   @type(InventoryState)
   inventory: InventoryState = new InventoryState();
