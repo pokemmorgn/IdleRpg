@@ -18,7 +18,7 @@ const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "QuestTester";
 
 function sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ============================================================
@@ -41,23 +41,134 @@ interface QuestTestEntry {
 }
 
 // ============================================================
-// QUÊTES
+// AUTH
+// ============================================================
+
+async function register() {
+    const r = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD
+        })
+    });
+
+    if (r.ok) {
+        console.log("✔ Compte créé");
+        return;
+    }
+
+    const j = await r.json();
+    if (j.error === "Username already taken") {
+        console.log("ℹ Compte déjà existant");
+        return;
+    }
+
+    console.error("❌ Erreur register:", j);
+}
+
+async function login(): Promise<string> {
+    const r = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            password: TEST_PASSWORD
+        })
+    });
+
+    const j = await r.json();
+    if (!r.ok) throw new Error("Erreur login");
+
+    console.log("✔ Connecté");
+    return j.token;
+}
+
+async function checkProfile(token: string) {
+    const r = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const j = await r.json();
+    if (!r.ok) return null;
+
+    return j.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) ?? null;
+}
+
+async function getCreationData(token: string) {
+    const r = await fetch(`${API_URL}/game-data/creation`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const j = await r.json();
+    if (!r.ok) return null;
+
+    return j;
+}
+
+async function createCharacter(token: string, race: string, classId: string) {
+    const r = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            characterSlot: CHARACTER_SLOT,
+            characterName: CHARACTER_NAME,
+            characterClass: classId,
+            characterRace: race
+        })
+    });
+
+    const j = await r.json();
+    if (!r.ok) {
+        console.error("❌ Erreur create:", j);
+        return null;
+    }
+
+    console.log("✔ Personnage créé!");
+    return j.profile;
+}
+
+async function reserveSeat(token: string) {
+    const r = await fetch(`${API_URL}/matchmaking/join-world`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            serverId: SERVER_ID,
+            characterSlot: CHARACTER_SLOT
+        })
+    });
+
+    const j = await r.json();
+    if (!r.ok) throw new Error("Matchmaking failed");
+    return j;
+}
+
+// ============================================================
+// CHAÎNES DE QUÊTES
 // ============================================================
 
 const QUESTS_MAIN: QuestTestEntry[] = [
-    { id: "main_01", npc: "npc_instructor", type: "talk", payload: { type: "talk", npcId: "npc_instructor" } },
-    { id: "main_02", npc: "npc_instructor", type: "kill", payload: { type: "kill", enemyType: "wolf_basic" } },
-    { id: "main_03", npc: "npc_instructor", type: "explore", payload: { type: "explore", locationId: "camp_east" } },
+    { id: "main_01", npc: "npc_instructor", type: "talk", payload: { npcId: "npc_instructor" } },
+    { id: "main_02", npc: "npc_instructor", type: "kill", payload: { enemyType: "wolf_basic" } },
+    { id: "main_03", npc: "npc_instructor", type: "explore", payload: { locationId: "camp_east" } },
 ];
 
 const QUESTS_SIDE: QuestTestEntry[] = [
-    { id: "side_01", npc: "npc_gatherer", type: "collect", payload: { type: "collect", resourceId: "berry" }, count: 5 },
-    { id: "side_02", npc: "npc_gatherer", type: "talk", payload: { type: "talk", npcId: "npc_old_lady" } },
-    { id: "side_03", npc: "npc_farmer", type: "kill", payload: { type: "kill", enemyType: "rat" }, count: 3 },
+    { id: "side_01", npc: "npc_gatherer", type: "collect", payload: { resourceId: "berry" }, count: 5 },
+    { id: "side_02", npc: "npc_gatherer", type: "talk", payload: { npcId: "npc_old_lady" } },
+    { id: "side_03", npc: "npc_farmer", type: "kill", payload: { enemyType: "rat" }, count: 3 },
 ];
 
 // ============================================================
-// TEST CHAÎNE DE QUÊTES
+// TEST COMPLET D'UNE CHAÎNE
 // ============================================================
 
 async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
@@ -78,16 +189,17 @@ async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
     room.onMessage("quest_accepted", msg => console.log("✔ ACCEPTÉE →", msg));
     room.onMessage("quest_update", msg => console.log("🔄 UPDATE →", msg));
     room.onMessage("quest_step_complete", msg => console.log("📝 STEP COMPLETE →", msg));
-    room.onMessage("quest_ready_to_turn_in", msg => console.log("🏁 READY →", msg));
-    room.onMessage("quest_complete", msg => console.log("🏆 COMPLETE →", msg));
-    room.onMessage("quest_turned_in", msg => console.log("🎉 TURNED IN →", msg));
+    room.onMessage("quest_complete", msg => console.log("🏁 QUEST COMPLETE →", msg));
+    room.onMessage("quest_ready_to_turn_in", msg => console.log("🏁 READY TO TURN IN →", msg));
+    room.onMessage("quest_turned_in", msg => console.log("🏆 QUEST TURNED IN →", msg));
+
     room.onMessage("error", msg => console.error("❌ ERREUR SERVEUR →", msg));
 
     for (const q of quests) {
 
         console.log(`\n=== 🔵 TEST DE ${q.id} ===`);
 
-        // 1) INTERACT WITH NPC
+        // 1) NPC INTERACTION
         room.send("npc_interact", { npcId: q.npc });
         await sleep(500);
 
@@ -98,16 +210,34 @@ async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
         }
         console.log(`✔ ${q.id} trouvée.`);
 
-        // 2) ACCEPT
+        // 2) ACCEPT QUEST
         room.send("npc_accept_quest", { npcId: q.npc, questId: q.id });
-        await sleep(400);
+        await sleep(300);
 
-        // 3) PROGESSION
-        const count = q.count || 1;
+        // 3) PROGRESS OBJECTIVE
+        const count = q.count ?? 1;
 
         for (let i = 0; i < count; i++) {
-            room.send("test_trigger_quest_objective", q.payload);
-            await sleep(400);
+
+            switch (q.type) {
+                case "talk":
+                    room.send("quest_talk", q.payload);
+                    break;
+
+                case "collect":
+                    room.send("quest_collect", q.payload);
+                    break;
+
+                case "explore":
+                    room.send("quest_explore", q.payload);
+                    break;
+
+                case "kill":
+                    room.send("test_trigger_quest_objective", q.payload);
+                    break;
+            }
+
+            await sleep(250);
         }
 
         // 4) CHECK READY TO TURN IN
@@ -119,6 +249,7 @@ async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
             console.error(`❌ La quête ${q.id} n'est PAS prête à être rendue !`);
             return;
         }
+
         console.log(`✔ ${q.id} prête à être rendue.`);
 
         // 5) TURN IN
@@ -128,7 +259,7 @@ async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
         console.log(`🎉 ${q.id} validée !`);
     }
 
-    console.log("\n🎉🎉🎉 CHAÎNE TERMINEE AVEC SUCCÈS !\n");
+    console.log("\n🎉🎉🎉 CHAÎNE TERMINÉE AVEC SUCCÈS !\n");
 }
 
 // ============================================================
@@ -137,35 +268,23 @@ async function testQuestChain(room: Colyseus.Room, quests: QuestTestEntry[]) {
 
 (async () => {
 
-    const register = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: TEST_USERNAME, email: TEST_EMAIL, password: TEST_PASSWORD })
-    });
+    await register();
+    const token = await login();
+    let profile = await checkProfile(token);
 
-    const loginReq = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: TEST_USERNAME, password: TEST_PASSWORD })
-    });
+    if (!profile) {
+        const creation = await getCreationData(token);
+        const race = creation.races[0].raceId;
+        const classId = creation.byRace[race][0].classId;
+        profile = await createCharacter(token, race, classId);
+    }
 
-    const login = await loginReq.json();
-    const token = login.token;
-
-    const seatReq = await fetch(`${API_URL}/matchmaking/join-world`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ serverId: SERVER_ID, characterSlot: CHARACTER_SLOT })
-    });
-
-    const seat = await seatReq.json();
-
+    const mm = await reserveSeat(token);
     const client = new Colyseus.Client(WS_URL);
-    const room = await client.consumeSeatReservation(seat);
+    const room = await client.consumeSeatReservation(mm);
 
-    console.log("🔌 CONNECTÉ AU SERVEUR !");
-
-    await sleep(2000);
+    console.log("🔌 CONNECTÉ AU SERVEUR DE JEU !");
+    await sleep(1500);
 
     console.log("\n🔥 TEST PRINCIPALES");
     await testQuestChain(room, QUESTS_MAIN);
