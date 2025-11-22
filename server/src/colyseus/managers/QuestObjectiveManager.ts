@@ -24,7 +24,7 @@ export class QuestObjectiveManager {
   }
 
   /* =====================================================================
-      1) ENTRYPOINTS
+      1) ENTRYPOINTS (inchangés)
      ===================================================================== */
   onMonsterKilled(player: PlayerState, payload: any) {
     this.processAllObjectives(player, "kill", payload);
@@ -59,7 +59,7 @@ export class QuestObjectiveManager {
   }
 
   /* =====================================================================
-      2) MOTEUR CENTRAL
+      2) MOTEUR CENTRAL (MODIFIÉ)
      ===================================================================== */
   private async processAllObjectives(
     player: PlayerState,
@@ -69,45 +69,53 @@ export class QuestObjectiveManager {
     const activeQuests = this.getAllActiveQuests(player);
 
     for (const questId of activeQuests) {
-      const step = player.quests.questStep.get(questId) || 0;
+      // Vérifier si la quête est déjà terminée
+      if (player.quests.completed.includes(questId)) continue;
 
       let quest = await Quest.findOne({ questId });
       if (!quest) continue;
 
-      // Vérifier si la quête est déjà terminée
-      if (player.quests.completed.includes(questId)) continue;
+      let questUpdated = false;
 
-      const currentObj = quest.objectives[step];
-      if (!currentObj) continue;
+      // 🚨 NOUVELLE LOGIQUE : Parcourir TOUS les objectifs de la quête
+      for (const objective of quest.objectives) {
+        if (objective.type !== type) continue;
 
-      if (currentObj.type !== type) continue;
+        if (!this.validateObjectiveMatching(objective, payload)) continue;
 
-      if (!this.validateObjectiveMatching(currentObj, payload)) continue;
+        // ▶️ Mise à jour progression
+        const wasCompleted = this.incrementObjectiveProgress(player, questId, objective);
 
-      // ▶️ Mise à jour progression
-      const done = this.incrementObjectiveProgress(player, questId, currentObj);
+        if (wasCompleted) {
+          questUpdated = true;
+        }
 
-      // ▶️ Notif progression
-      const progressMap = player.quests.questObjectives.get(questId)!;
-      const progressValue = progressMap.get(currentObj.objectiveId) || 0;
+        // ▶️ Notif progression
+        const progressMap = player.quests.questObjectives.get(questId)!;
+        const progressValue = progressMap.get(objective.objectiveId) || 0;
 
-      this.notify(player.sessionId, "quest_update", {
-        questId,
-        step,
-        objectiveId: currentObj.objectiveId,
-        progress: progressValue,
-        required: currentObj.count || 1
-      });
+        this.notify(player.sessionId, "quest_update", {
+          questId,
+          objectiveId: objective.objectiveId,
+          progress: progressValue,
+          required: objective.count || 1
+        });
+      }
 
-      // ▶️ Étape terminée ?
-      if (done) {
-        await this.completeObjective(player, questId, quest);
+      // ▶️ Si un objectif a été complété, vérifier si la quête entière est terminée
+      if (questUpdated) {
+        if (this.isQuestFullyCompleted(player, quest)) {
+          this.finishQuest(player, quest);
+        }
+        
+        // Sauvegarder les données du joueur
+        this.onSavePlayer?.(player);
       }
     }
   }
 
   /* =====================================================================
-      3) VALIDATION
+      3) VALIDATION (inchangée)
      ===================================================================== */
   private validateObjectiveMatching(objective: IQuestObjective, payload: any): boolean {
     switch (objective.type) {
@@ -151,17 +159,15 @@ export class QuestObjectiveManager {
   }
 
   /* =====================================================================
-      4) PROGRESSION
+      4) PROGRESSION (inchangée)
      ===================================================================== */
   private incrementObjectiveProgress(
     player: PlayerState,
     questId: string,
     objective: IQuestObjective,
   ): boolean {
-
     const oid = objective.objectiveId;
 
-    // ➤ récupérer (ou créer) la map d'objectifs
     let objectivesMap = player.quests.questObjectives.get(questId);
     if (!objectivesMap) {
       objectivesMap = new MapSchema<number>();
@@ -171,49 +177,18 @@ export class QuestObjectiveManager {
     const current = objectivesMap.get(oid) || 0;
     const target = objective.count ?? 1;
 
+    if (current >= target) {
+      return false; // L'objectif est déjà complété
+    }
+
     const newValue = Math.min(target, current + 1);
     objectivesMap.set(oid, newValue);
 
-    return newValue >= target;
+    return newValue >= target; // Retourne true si l'objectif vient d'être complété
   }
 
   /* =====================================================================
-      5) FIN D'ÉTAPE
-     ===================================================================== */
-  private async completeObjective(
-    player: PlayerState,
-    questId: string,
-    quest: any
-  ) {
-    const step = player.quests.questStep.get(questId) || 0;
-
-    this.notify(player.sessionId, "quest_step_complete", {
-      questId,
-      step
-    });
-
-    // Vérifier si tous les objectifs de l'étape actuelle sont complétés
-    const allObjectivesCompleted = this.areAllObjectivesInStepCompleted(player, quest, step);
-    
-    if (allObjectivesCompleted) {
-      const newStep = step + 1;
-      player.quests.questStep.set(questId, newStep);
-
-      // Initialiser les objectifs de la nouvelle étape
-      if (newStep < quest.objectives.length) {
-        this.initializeStepObjectives(player, questId, quest.objectives[newStep]);
-      } else {
-        // Toutes les étapes sont terminées
-        this.finishQuest(player, quest);
-      }
-    }
-    
-    // Sauvegarder les données du joueur
-    this.onSavePlayer?.(player);
-  }
-
-  /* =====================================================================
-      6) FIN DE QUÊTE
+      5) FIN DE QUÊTE (remplace les anciennes méthodes par étape)
      ===================================================================== */
   private finishQuest(player: PlayerState, quest: any) {
     const questId = quest.questId;
@@ -225,12 +200,16 @@ export class QuestObjectiveManager {
       rewards: quest.rewards
     });
 
-    // Ne pas envoyer "quest_complete" ici, car la quête n'est pas encore terminée
-    // Elle doit être rendue au PNJ pour être considérée comme terminée
+    // Notifier que la quête est terminée (mais pas encore rendue)
+    this.notify(player.sessionId, "quest_complete", {
+      questId,
+      questName: quest.name,
+      rewards: quest.rewards
+    });
   }
 
   /* =====================================================================
-      7) UTILS
+      6) UTILS
      ===================================================================== */
   private getAllActiveQuests(player: PlayerState): string[] {
     const list: string[] = [];
@@ -242,49 +221,25 @@ export class QuestObjectiveManager {
     return list;
   }
 
-  private ensureQuestProgress(player: PlayerState, questId: string) {
-    return {
-      step: player.quests.questStep.get(questId) || 0,
-      objectives: player.quests.questObjectives.get(questId)
-    };
-  }
-
   /**
-   * Vérifie si tous les objectifs d'une étape sont complétés
+   * 🚨 NOUVELLE MÉTHODE : Vérifie si tous les objectifs d'une quête sont complétés.
+   * (Logique identique à celle ajoutée dans QuestManager)
    */
-  private areAllObjectivesInStepCompleted(player: PlayerState, quest: any, step: number): boolean {
-    if (!quest.objectives[step]) return false;
-    
+  private isQuestFullyCompleted(player: PlayerState, quest: any): boolean {
     const objectivesMap = player.quests.questObjectives.get(quest.questId);
-    if (!objectivesMap) return false;
-    
-    for (const objective of quest.objectives[step]) {
+
+    if (!objectivesMap || quest.objectives.length === 0) {
+      return false;
+    }
+
+    for (const objective of quest.objectives) {
       const progress = objectivesMap.get(objective.objectiveId) || 0;
-      const required = objective.count || 1;
-      
+      const required = objective.count ?? 1;
       if (progress < required) {
         return false;
       }
     }
-    
-    return true;
-  }
 
-  /**
-   * Initialise les objectifs d'une étape
-   */
-  private initializeStepObjectives(player: PlayerState, questId: string, stepObjectives: any[]) {
-    let objectivesMap = player.quests.questObjectives.get(questId);
-    
-    if (!objectivesMap) {
-      objectivesMap = new MapSchema<number>();
-      player.quests.questObjectives.set(questId, objectivesMap);
-    }
-    
-    for (const objective of stepObjectives) {
-      if (!objectivesMap.has(objective.objectiveId)) {
-        objectivesMap.set(objective.objectiveId, 0);
-      }
-    }
+    return true;
   }
 }
