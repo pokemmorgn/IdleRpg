@@ -1,190 +1,93 @@
 // server/src/colyseus/managers/EquipmentManager.ts
 
-import ItemModel, { IItemModel } from "../../models/Item";
 import { PlayerState } from "../schema/PlayerState";
+import ItemModel from "../../models/Item";
 import { InventorySlot } from "../schema/InventorySlot";
-import { InventoryState } from "../schema/InventoryState";
-import { computeFullStats } from "./stats/PlayerStatsCalculator";
-
-export type EquipNotify = (
-    sessionId: string,
-    type: string,
-    payload: any
-) => void;
 
 export class EquipmentManager {
 
-    private items: Map<string, IItemModel> = new Map();
-    private notify: EquipNotify;
+    constructor(
+        private readonly emit: (sessionId: string, type: string, payload: any) => void,
+        private readonly savePlayer: (player: PlayerState) => Promise<void>
+    ) {}
 
-    constructor(notifyCallback: EquipNotify) {
-        this.notify = notifyCallback;
-    }
+    // ============================================================
+    // EQUIP ITEM FROM BAG → SLOT
+    // ============================================================
+    async equip(player: PlayerState, fromSlotIndex: number) {
 
-    /* ============================================================
-       🔥 LOAD ALL EQUIPMENT MODELS
-       ============================================================ */
-    public async loadAllEquipment() {
-        const docs = await ItemModel.find({ type: "equipment" });
-        this.items.clear();
-
-        for (const d of docs) {
-            this.items.set(d.itemId, d.toObject());
-        }
-
-        console.log(`🛡️ [EquipmentManager] ${docs.length} équipements chargés.`);
-    }
-
-    /* ============================================================
-       🔥 GET EQUIPMENT MODEL
-       ============================================================ */
-    public getModel(itemId: string): IItemModel | null {
-        return this.items.get(itemId) ?? null;
-    }
-
-    /* ============================================================
-       🔥 EQUIP AN ITEM
-       ============================================================ */
-    public equipItem(player: PlayerState, fromSlotIndex: number): boolean {
         const inv = player.inventory;
         const s = inv.slots[fromSlotIndex];
-        if (!s || !s.itemId) return false;
+        if (!s || !s.itemId) return;
 
-        const model = this.getModel(s.itemId);
-        if (!model) return false; // not equipment
+        const model = await ItemModel.findOne({ itemId: s.itemId });
+        if (!model || model.type !== "equipment") return;
 
-        const slot = model.equipSlot;
-        if (!slot) return false;
+        const equipSlot = model.equipSlot;
+        if (!equipSlot) return;
 
-        // ex : head, ring1, ring2, trinket1, trinket2
-        const currently = inv.equipment[slot];
-        const wasEmpty = !currently.itemId;
+        const currently = inv.equipment.get(equipSlot);
 
-        // -----------------------------------------
-        // Si un item est déjà équipé → swap
-        // -----------------------------------------
-        if (!wasEmpty) {
-            const success = this.swapWithInventory(player, slot, fromSlotIndex);
-            if (!success) return false;
-        } else {
-            // Équiper directement
-            currently.setItem(s.itemId, 1);
-            s.clear();
+        // Si un item est déjà équipé → le remettre dans un slot libre
+        if (currently && currently.itemId !== "") {
+            const free = this.findFreeBagSlot(inv);
+            if (free === -1) return;
+
+            inv.slots[free].setItem(currently.itemId, currently.amount);
         }
 
-        // mise à jour stats
-        this.recomputeStats(player);
+        // équiper le nouveau
+        const newSlot = new InventorySlot();
+        newSlot.setItem(s.itemId, 1);
+        inv.equipment.set(equipSlot, newSlot);
 
-        // notify client
-        this.notify(player.sessionId, "equip_changed", {
-            slot,
-            itemId: currently.itemId
-        });
+        // enlever du sac
+        s.amount -= 1;
+        if (s.amount <= 0) s.clear();
 
-        return true;
+        this.sync(player);
+        await this.savePlayer(player);
     }
 
-    /* ============================================================
-       🔥 UNEQUIP AN ITEM
-       ============================================================ */
-    public unequipItem(player: PlayerState, equipSlot: string): boolean {
-        const inv = player.inventory;
-        const eq = inv.equipment[equipSlot];
-        if (!eq || !eq.itemId) return false;
+    // ============================================================
+    // UNEQUIP BACK TO BAG
+    // ============================================================
+    async unequip(player: PlayerState, equipSlot: number) {
 
-        // chercher un slot vide dans l’inventaire
-        const free = this.findFreeSlot(inv);
-        if (free === -1) return false; // inventaire plein
+        const inv = player.inventory;
+
+        const eq = inv.equipment.get(equipSlot);
+        if (!eq || !eq.itemId) return;
+
+        const free = this.findFreeBagSlot(inv);
+        if (free === -1) return;
 
         inv.slots[free].setItem(eq.itemId, 1);
-        eq.clear();
 
-        this.recomputeStats(player);
+        const empty = new InventorySlot();
+        inv.equipment.set(equipSlot, empty);
 
-        this.notify(player.sessionId, "equip_removed", {
-            slot: equipSlot
-        });
-
-        return true;
+        this.sync(player);
+        await this.savePlayer(player);
     }
 
-    /* ============================================================
-       🔥 INTERNAL — SWAP WITH INVENTORY
-       ============================================================ */
-    private swapWithInventory(
-        player: PlayerState,
-        equipSlot: string,
-        fromSlot: number
-    ): boolean {
-        const inv = player.inventory;
-
-        const eq = inv.equipment[equipSlot];
-        const bagSlot = inv.slots[fromSlot];
-
-        if (!eq || !bagSlot) return false;
-
-        const tmp = new InventorySlot();
-        tmp.copyFrom(eq);
-
-        eq.setItem(bagSlot.itemId, 1);
-        bagSlot.setItem(tmp.itemId, tmp.amount);
-
-        return true;
-    }
-
-    /* ============================================================
-       🔥 INTERNAL — LOOKING FOR FREE INVENTORY SLOT
-       ============================================================ */
-    private findFreeSlot(inv: InventoryState): number {
-        for (let i = 0; i < inv.maxSlots; i++) {
-            const s = inv.slots[i];
-            if (!s || !s.itemId) return i;
+    // ============================================================
+    // FIND FREE BAG SLOT
+    // ============================================================
+    private findFreeBagSlot(inv: any): number {
+        for (let i = 0; i < inv.slots.length; i++) {
+            if (!inv.slots[i].itemId) return i;
         }
         return -1;
     }
 
-    /* ============================================================
-       🔥 INTERNAL — RECOMPUTE PLAYER STATS
-       ============================================================ */
-    private recomputeStats(player: PlayerState) {
-        const newStats = computeFullStats(player);
-        player.loadStatsFromProfile(newStats);
-
-        this.notify(player.sessionId, "stats_update", {
-            hp: player.hp,
-            maxHp: player.maxHp,
-            attackPower: player.attackPower,
-            spellPower: player.spellPower,
-            armor: player.armor,
-            magicResistance: player.magicResistance,
+    // ============================================================
+    // SYNC CLIENT
+    // ============================================================
+    private sync(player: PlayerState) {
+        this.emit(player.sessionId, "inventory_update", {
+            slots: player.inventory.exportSlots(),
+            equipment: player.inventory.exportEquipment()
         });
-    }
-
-    /* ============================================================
-       🔥 PUBLIC API — from WorldRoom
-       ============================================================ */
-    public handleMessage(
-        type: string,
-        client: any,
-        player: PlayerState,
-        msg: any
-    ): boolean {
-
-        switch (type) {
-
-            case "equip_item":
-                if (this.equipItem(player, msg.fromSlot)) {
-                    return true;
-                }
-                return false;
-
-            case "unequip_item":
-                if (this.unequipItem(player, msg.equipSlot)) {
-                    return true;
-                }
-                return false;
-        }
-
-        return false;
     }
 }
