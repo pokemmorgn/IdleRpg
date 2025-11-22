@@ -54,26 +54,30 @@ export class SkinManager {
   // ===========================================================================
   // RE-CALCUL DES STATS DU JOUEUR
   // ===========================================================================
-  private recalcStats(player: PlayerState, client: Client) {
-
+private recalcStats(player: PlayerState, client: Client) {
+    console.log(`🔄 Recalcul des stats pour le joueur ${player.characterName}`);
+    
     const computed = computeFullStats(player);
     player.loadStatsFromProfile(computed);
 
-    client.send("stats_update", {
-      hp: player.hp,
-      maxHp: player.maxHp,
-      resource: player.resource,
-      maxResource: player.maxResource,
-      manaRegen: player.manaRegen,
-      attackPower: player.attackPower,
-      spellPower: player.spellPower,
-      armor: player.armor,
-      magicResistance: player.magicResistance,
-      criticalChance: player.criticalChance,
-      attackSpeed: player.attackSpeed,
-      damageReduction: player.damageReduction
-    });
-  }
+    const statsUpdate = {
+        hp: player.hp,
+        maxHp: player.maxHp,
+        resource: player.resource,
+        maxResource: player.maxResource,
+        manaRegen: player.manaRegen,
+        attackPower: player.attackPower,
+        spellPower: player.spellPower,
+        armor: player.armor,
+        magicResistance: player.magicResistance,
+        criticalChance: player.criticalChance,
+        attackSpeed: player.attackSpeed,
+        damageReduction: player.damageReduction
+    };
+    
+    console.log("📤 Envoi des stats_update:", statsUpdate);
+    client.send("stats_update", statsUpdate);
+}
 
   // ===========================================================================
   // UNLOCK
