@@ -15,25 +15,26 @@ export class CombatManager implements CombatEventCallbacks {
     private onlineSystem: OnlineCombatSystem;
     private monsterSystem: MonsterCombatSystem;
     private net: CombatNetworkEmitter;
-    private levelManager: LevelManager;
-constructor(
-    private readonly gameState: GameState,
-    private readonly broadcast: (sessionId: string, type: string, data: any) => void,
-    private readonly levelManager: LevelManager,               // ⭐ ON RECOIT ICI
-    private readonly questObjectiveManager?: QuestObjectiveManager
-) {
-    this.net = new CombatNetworkEmitter(gameState, broadcast);
-    
-    this.onlineSystem = new OnlineCombatSystem(
-        this.gameState,
-        this
-    );
 
-    this.monsterSystem = new MonsterCombatSystem(
-        this.gameState,
-        this
-    );
-}
+    // ⭐ Garder UNE SEULE déclaration ici
+    constructor(
+        private readonly gameState: GameState,
+        private readonly broadcast: (sessionId: string, type: string, data: any) => void,
+        private readonly levelManager: LevelManager,            // ⭐ on la reçoit ici
+        private readonly questObjectiveManager?: QuestObjectiveManager
+    ) {
+        this.net = new CombatNetworkEmitter(gameState, broadcast);
+
+        this.onlineSystem = new OnlineCombatSystem(
+            this.gameState,
+            this
+        );
+
+        this.monsterSystem = new MonsterCombatSystem(
+            this.gameState,
+            this
+        );
+    }
 
     // ======================================================
     // 🔄 UPDATE LOOP
