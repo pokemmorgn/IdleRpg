@@ -2,28 +2,30 @@
 import { Schema, type } from "@colyseus/schema";
 
 export class InventorySlot extends Schema {
-  @type("string")
-  itemId: string = "";
 
-  @type("boolean")
-  isEquipment: boolean = false;
+    @type("string") itemId: string = "";
+    @type("number") amount: number = 0;
 
-  @type("string")
-  uniqueId: string = ""; // instance unique (UUID)
+    constructor() {
+        super();
+    }
 
-  @type("number")
-  quantity: number = 0;
+    setItem(id: string, amt: number) {
+        this.itemId = id;
+        this.amount = amt;
+    }
 
-  @type("boolean")
-  isBound: boolean = false;
+    clear() {
+        this.itemId = "";
+        this.amount = 0;
+    }
 
-  @type("string")
-  rarity: string = ""; // utile pour l'affichage côté client
+    copyFrom(other: InventorySlot) {
+        this.itemId = other.itemId;
+        this.amount = other.amount;
+    }
 
-  @type("string")
-  iconId: string = ""; // direct pour Unity
-
-  // Stats générées pour les équipements
-  @type({ map: "number" })
-  generatedStats = new Map<string, number>();
+    isEmpty() {
+        return !this.itemId || this.amount <= 0;
+    }
 }
