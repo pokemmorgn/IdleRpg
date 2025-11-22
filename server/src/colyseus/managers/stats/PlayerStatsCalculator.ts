@@ -1,126 +1,58 @@
 import { IClassStats } from "../../../models/ClassStats";
 import { PlayerState } from "../../schema/PlayerState";
-import {
-  getRaceById,
-  RaceConfig
-} from "../../../config/races.config";
-import {
-  IPlayerPrimaryStats,
-  IPlayerComputedStats
-} from "../../../models/ServerProfile";
+import { getRaceById } from "../../../config/races.config";
+import { IPlayerPrimaryStats, IPlayerComputedStats } from "../../../models/ServerProfile";
 import { SkinManagerInstance } from "../SkinManager";
-
-// =======================================================================
-// BONUS RACIAUX – PRIMAIRES
-// =======================================================================
-
-function applyPrimaryRaceBonuses(
-  primary: IPlayerPrimaryStats,
-  race?: RaceConfig
-): IPlayerPrimaryStats {
-  if (!race?.statsModifiers?.primaryPercent) return primary;
-
-  const result = { ...primary };
-
-  for (const [stat, percent] of Object.entries(race.statsModifiers.primaryPercent)) {
-    if (percent == null) continue;
-    const key = stat as keyof IPlayerPrimaryStats;
-    result[key] = Math.floor(result[key] * (1 + percent / 100));
-  }
-
-  return result;
-}
-
-// =======================================================================
-// BONUS RACIAUX – COMPUTED
-// =======================================================================
-
-function applyComputedRaceBonuses(
-  computed: IPlayerComputedStats,
-  race?: RaceConfig
-): IPlayerComputedStats {
-  if (!race?.statsModifiers?.computedPercent) return computed;
-
-  const result = { ...computed };
-
-  for (const [stat, percent] of Object.entries(race.statsModifiers.computedPercent)) {
-    if (percent == null) continue;
-    const key = stat as keyof IPlayerComputedStats;
-
-    if (typeof result[key] === "number") {
-      result[key] = Math.floor(result[key] * (1 + percent / 100));
-    }
-  }
-
-  return result;
-}
-
-// =======================================================================
-// BONUS SKINS — FORMAT IDENTIQUE AUX BONUS RACIAUX
-// =======================================================================
-
-type SkinBonus = {
-  primaryPercent?: Record<string, number>;
-  computedPercent?: Record<string, number>;
-};
-
-// = PRIMAIRES ============================================================
-
-function applyPrimarySkinBonuses(
-  primary: IPlayerPrimaryStats,
-  skinBonus?: SkinBonus
-): IPlayerPrimaryStats {
-  if (!skinBonus?.primaryPercent) return primary;
-
-  const result = { ...primary };
-
-  for (const [stat, percent] of Object.entries(skinBonus.primaryPercent)) {
-    if (percent == null) continue;
-    const key = stat as keyof IPlayerPrimaryStats;
-    result[key] = Math.floor(result[key] * (1 + percent / 100));
-  }
-
-  return result;
-}
-
-// = COMPUTED =============================================================
-
-function applyComputedSkinBonuses(
-  computed: IPlayerComputedStats,
-  skinBonus?: SkinBonus
-): IPlayerComputedStats {
-  if (!skinBonus?.computedPercent) return computed;
-
-  const result = { ...computed };
-
-  for (const [stat, percent] of Object.entries(skinBonus.computedPercent)) {
-    if (percent == null) continue;
-    const key = stat as keyof IPlayerComputedStats;
-
-    if (typeof result[key] === "number") {
-      result[key] = Math.floor(result[key] * (1 + percent / 100));
-    }
-  }
-
-  return result;
-}
-
-// =======================================================================
-// CALCULATEUR COMPLET
-// =======================================================================
 
 export class PlayerStatsCalculator {
 
   static compute(player: PlayerState, classStats: IClassStats) {
 
     const level = player.level;
+
+    // ==========================================================
+    // 0) GATHER ALL BONUS % INTO ONE OBJECT (RACE + SKINS)
+    // ==========================================================
+
     const race = getRaceById(player.race);
+    const skinBonus = SkinManagerInstance?.getSkinStatBonus(player);
 
-    // ===================================================
-    // 1) STATS PRIMAIRES – Base + Level scaling
-    // ===================================================
+    const totalPrimary: Record<string, number> = {};
+    const totalComputed: Record<string, number> = {};
 
-    let primaryStats: IPlayerPrimaryStats = {
+    // --- Race primary
+    if (race?.statsModifiers?.primaryPercent) {
+      for (const [k, v] of Object.entries(race.statsModifiers.primaryPercent)) {
+        totalPrimary[k] = (totalPrimary[k] ?? 0) + v;
+      }
+    }
+
+    // --- Skins primary
+    if (skinBonus?.primaryPercent) {
+      for (const [k, v] of Object.entries(skinBonus.primaryPercent)) {
+        totalPrimary[k] = (totalPrimary[k] ?? 0) + v;
+      }
+    }
+
+    // --- Race computed
+    if (race?.statsModifiers?.computedPercent) {
+      for (const [k, v] of Object.entries(race.statsModifiers.computedPercent)) {
+        totalComputed[k] = (totalComputed[k] ?? 0) + v;
+      }
+    }
+
+    // --- Skins computed
+    if (skinBonus?.computedPercent) {
+      for (const [k, v] of Object.entries(skinBonus.computedPercent)) {
+        totalComputed[k] = (totalComputed[k] ?? 0) + v;
+      }
+    }
+
+    // ==========================================================
+    // 1) BASE PRIMARY STATS (Class + level)
+    // ==========================================================
+
+    let primary: IPlayerPrimaryStats = {
       strength: classStats.baseStats.strength + classStats.statsPerLevel.strength * (level - 1),
       agility: classStats.baseStats.agility + classStats.statsPerLevel.agility * (level - 1),
       intelligence: classStats.baseStats.intelligence + classStats.statsPerLevel.intelligence * (level - 1),
@@ -128,25 +60,24 @@ export class PlayerStatsCalculator {
       spirit: classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1)
     };
 
-    // -- BONUS PRIMAIRES RACIAUX --
-    primaryStats = applyPrimaryRaceBonuses(primaryStats, race);
+    // ==========================================================
+    // 2) APPLY BONUS % ONCE (primary)
+    // ==========================================================
 
-    // -- BONUS PRIMAIRES SKINS --
-    const skinBonus: SkinBonus | undefined =
-      SkinManagerInstance?.getSkinStatBonus(player);
+    for (const [stat, percent] of Object.entries(totalPrimary)) {
+      const key = stat as keyof IPlayerPrimaryStats;
+      primary[key] = Math.floor(primary[key] * (1 + percent / 100));
+    }
 
-    primaryStats = applyPrimarySkinBonuses(primaryStats, skinBonus);
+    const STR = primary.strength;
+    const AGI = primary.agility;
+    const INT = primary.intelligence;
+    const END = primary.endurance;
+    const SPI = primary.spirit;
 
-    // Extracted for convenience
-    const STR = primaryStats.strength;
-    const AGI = primaryStats.agility;
-    const INT = primaryStats.intelligence;
-    const END = primaryStats.endurance;
-    const SPI = primaryStats.spirit;
-
-    // ===================================================
-    // 2) STATS COMPUTED DE BASE
-    // ===================================================
+    // ==========================================================
+    // 3) COMPUTED BASE STATS
+    // ==========================================================
 
     let computed: IPlayerComputedStats = {
       maxHp: 100 + END * 5,
@@ -179,41 +110,39 @@ export class PlayerStatsCalculator {
       spellPenetration: 0
     };
 
-    // ===================================================
-    // 3) TYPE DE RESSOURCE
-    // ===================================================
+    // ==========================================================
+    // 4) RESOURCE TYPE
+    // ==========================================================
 
     switch (classStats.resourceType) {
       case "mana":
         computed.maxResource = 100 + INT * 5;
         computed.manaRegen = SPI * 2;
         break;
-
       case "rage":
         computed.maxResource = 100;
         break;
-
       case "energy":
         computed.maxResource = 100;
         computed.energyRegen = 10;
         break;
     }
 
-    // ===================================================
-    // 4) BONUS RACIAL SUR COMPUTED
-    // ===================================================
+    // ==========================================================
+    // 5) APPLY COMPUTED % BONUSES (RACE + SKIN) — once
+    // ==========================================================
 
-    computed = applyComputedRaceBonuses(computed, race);
+    for (const [stat, percent] of Object.entries(totalComputed)) {
+      const key = stat as keyof IPlayerComputedStats;
 
-    // ===================================================
-    // 5) BONUS SKINS SUR COMPUTED
-    // ===================================================
+      if (typeof computed[key] === "number") {
+        computed[key] = Math.floor(computed[key] * (1 + percent / 100));
+      }
+    }
 
-    computed = applyComputedSkinBonuses(computed, skinBonus);
-
-    // ===================================================
-    // 6) FINAL (hp / resource = full)
-    // ===================================================
+    // ==========================================================
+    // 6) FINAL
+    // ==========================================================
 
     computed.hp = computed.maxHp;
     computed.resource = computed.maxResource;
