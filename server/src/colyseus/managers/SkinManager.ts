@@ -1,13 +1,23 @@
-// src/colyseus/managers/SkinManager.ts
+// server/src/colyseus/managers/SkinManager.ts
 
 import { PlayerState } from "../schema/PlayerState";
-import { SkinProgressState } from "../schema/SkinState";
-import { ALL_SKINS, getSkinById, getSkinsByClass } from "../../config/skins/skins.config";
+import { SkinState, SkinProgressState } from "../schema/SkinState";
+import {
+  ALL_SKINS,
+  getSkinById,
+  getSkinsByClass
+} from "../../config/skins/skins.config";
+
+/**
+ * Instance globale du SkinManager
+ */
+export let SkinManagerInstance: SkinManager | null = null;
 
 export class SkinManager {
 
   constructor() {
     console.log(`🎨 SkinManager chargé avec ${ALL_SKINS.length} skins.`);
+    SkinManagerInstance = this;
   }
 
   // ===========================================================================
@@ -30,13 +40,15 @@ export class SkinManager {
     const config = getSkinById(skinId);
     if (!config) return false;
 
-    // Vérifie que la classe du skin correspond à la classe du joueur
+    // Vérifie que la classe correspond
     if (config.classId !== player.class) {
-      console.warn(`❌ Tentative d'unlock skin ${skinId} pour la mauvaise classe (player.class=${player.class}).`);
+      console.warn(
+        `❌ Tentative d'unlock skin ${skinId} pour mauvaise classe (player.class=${player.class})`
+      );
       return false;
     }
 
-    // Déjà débloqué → on ne fait rien de plus
+    // Déjà débloqué
     if (this.hasSkin(player, skinId)) {
       return true;
     }
@@ -76,7 +88,6 @@ export class SkinManager {
     const config = getSkinById(skinId);
     if (!config) return false;
 
-    // Vérif classe encore une fois par sécurité
     if (config.classId !== player.class) return false;
 
     player.skins.equippedSkinId = skinId;
@@ -85,6 +96,7 @@ export class SkinManager {
 
   // ===========================================================================
   // Récupération des stats cumulées du joueur via skins
+  // (même format que raceBonus)
   // ===========================================================================
 
   getSkinStatBonus(player: PlayerState) {
@@ -98,7 +110,7 @@ export class SkinManager {
       if (!config) continue;
 
       const levelMultiplier = progress.level / config.maxLevel;
-      // ex: niveau 1/5 = x0.2, niveau 5/5 = x1.0
+      // ex: 1/5 = 0.2, 5/5 = 1.0
 
       if (config.statsModifiers.primaryPercent) {
         for (const [stat, value] of Object.entries(config.statsModifiers.primaryPercent)) {
