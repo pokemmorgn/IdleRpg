@@ -185,7 +185,7 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // LOAD QUESTS (★★★ CORRIGÉ ★★★)
+  // LOAD QUESTS
   // ===========================================================
   loadQuestsFromProfile(questData: any): void {
 
@@ -225,9 +225,7 @@ export class PlayerState extends Schema {
       this.quests.weeklyCooldown.set(k, v as number)
     );
 
-    // ===========================================================
-    // QUEST OBJECTIVES : JSON → QuestObjectiveMap
-    // ===========================================================
+    // OBJECTIVES MAP
     Object.entries(questData.questObjectives || {}).forEach(([questId, raw]) => {
       
       const objMap = new QuestObjectiveMap();
@@ -243,7 +241,7 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // SAVE QUESTS (★★★ CORRIGÉ ★★★)
+  // SAVE QUESTS
   // ===========================================================
   saveQuestsToProfile(): any {
     return {
