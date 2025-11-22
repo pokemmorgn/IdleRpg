@@ -29,9 +29,9 @@ class TalentScriptRegistry {
 
     console.log("🔧 [TalentScriptRegistry] Initialisation...");
     
-    // CORRIGÉ: On s'assure que le chemin pointe bien vers le dossier source, pas le dossier compilé.
-    // On part de __filename (le fichier actuel) et on remonte jusqu'au dossier des talents.
-    const talentsDir = path.resolve(__dirname);
+    // CORRIGÉ: On construit le chemin vers le dossier DISTRIBUÉ (dist/colyseus/talents)
+    // On part de __dirname (qui est dans dist/colyseus/talents) et on reste là.
+    const talentsDir = __dirname;
 
     try {
       await this.loadScriptsFromDirectory(talentsDir);
@@ -52,7 +52,8 @@ class TalentScriptRegistry {
 
       if (entry.isDirectory()) {
         await this.loadScriptsFromDirectory(fullPath);
-      } else if (entry.isFile() && entry.name.endsWith('.ts') && entry.name !== 'ITalentScript.ts' && entry.name !== 'TalentScriptRegistry.ts') {
+      } else if (entry.isFile() && entry.name.endsWith('.js') && entry.name !== 'ITalentScript.js' && entry.name !== 'TalentScriptRegistry.js') {
+        // CORRIGÉ: On cherche les fichiers .js compilés
         await this.loadScript(fullPath);
       }
     }
@@ -60,8 +61,8 @@ class TalentScriptRegistry {
 
   private async loadScript(scriptPath: string): Promise<void> {
     try {
-      // CORRIGÉ: On utilise path.resolve pour s'assurer que le chemin est absolu et correct
-      const module = await import(path.resolve(scriptPath));
+      // CORRIGÉ: On importe le fichier .js
+      const module = await import(scriptPath);
       const TalentClass = module.default;
 
       if (!TalentClass) {
@@ -70,7 +71,8 @@ class TalentScriptRegistry {
       }
 
       const scriptInstance: ITalentScript = new TalentClass();
-      const scriptName = path.basename(scriptPath, '.ts');
+      // CORRIGÉ: On extrait le nom du fichier .js
+      const scriptName = path.basename(scriptPath, '.js');
       this.scripts.set(scriptName, scriptInstance);
       console.log(`  ➕ Chargé: ${scriptName}`);
 
