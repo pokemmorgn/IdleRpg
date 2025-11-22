@@ -160,10 +160,12 @@ export class CombatManager implements CombatEventCallbacks {
     // ======================================================
     onMonsterDeath(monster: MonsterState, killer: PlayerState) {
         this.net.emitMonsterDeath(monster, killer);
-
-        // ================================
-        // 🔥 QUEST HOOK: Monster Kill Objective
-        // ================================
+    
+        // 🔥 GIVE XP (ex: monster.level * 20)
+        const baseXP = Math.max(5, monster.level * 20);
+        this.levelManager.giveXP(killer, baseXP);
+    
+        // 🔥 QUEST HOOK
         if (this.questObjectiveManager && killer) {
             this.questObjectiveManager.onMonsterKilled(killer, {
                 enemyType: monster.type,
@@ -173,6 +175,7 @@ export class CombatManager implements CombatEventCallbacks {
             });
         }
     }
+
 
     onPlayerDeath(player: PlayerState, monster: MonsterState) {
         this.net.emitPlayerDeath(player, monster);
