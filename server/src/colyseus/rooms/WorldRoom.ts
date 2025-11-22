@@ -57,7 +57,13 @@ export class WorldRoom extends Room<GameState> {
 
     // Talents INIT
     await talentScriptRegistry.initialize();
-    this.talentManager = new TalentManager(this.savePlayerData.bind(this));
+    this.talentManager = new TalentManager(
+      this.savePlayerData.bind(this),
+      (sessionId, type, data) => {
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, data);
+      }
+    );
     await this.talentManager.loadAllTalentsFromDB();
 
     // Level Manager (avec TalentManager)
@@ -104,7 +110,7 @@ export class WorldRoom extends Room<GameState> {
 
     this.monsterManager = new MonsterManager(this.serverId, this.state);
 
-    // Combat Manager (réception LevelManager OK)
+    // Combat Manager (LevelManager et QuestObjectiveManager)
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
@@ -233,8 +239,8 @@ export class WorldRoom extends Room<GameState> {
     }
 
     // Compute full stats
-    const computed = await computeFullStats(player);
-    player.loadStatsFromProfile(computed);
+    const stats = await computeFullStats(player);
+    player.loadStatsFromProfile(stats);
 
     if (this.serverId === "test") {
       player.zoneId = "start_zone";
@@ -243,12 +249,12 @@ export class WorldRoom extends Room<GameState> {
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
 
-    // ⭐ ENVOYER des stats COMPLETES
-    client.send("stats_update", {
-      ...computed,
+    // ⭐ ENVOYER le paquet complet
+    client.send("player_update", {
       level: player.level,
       xp: player.xp,
       nextLevelXp: player.nextLevelXp,
+      stats,
       availableSkillPoints: player.availableSkillPoints,
       talents: player.saveTalentsToProfile()
     });
@@ -276,38 +282,15 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // TALENTS
+    // TALENT LEARN
     if (type === "talent_learn") {
       await this.talentManager.learnTalent(player, msg.talentId);
-
-      const stats = await computeFullStats(player);
-      player.loadStatsFromProfile(stats);
-
-      client.send("stats_update", {
-        ...stats,
-        level: player.level,
-        xp: player.xp,
-        nextLevelXp: player.nextLevelXp,
-        availableSkillPoints: player.availableSkillPoints,
-        talents: player.saveTalentsToProfile()
-      });
       return;
     }
 
+    // TALENT RESET
     if (type === "talent_reset") {
       await this.talentManager.resetTalents(player);
-
-      const stats = await computeFullStats(player);
-      player.loadStatsFromProfile(stats);
-
-      client.send("stats_update", {
-        ...stats,
-        level: player.level,
-        xp: player.xp,
-        nextLevelXp: player.nextLevelXp,
-        availableSkillPoints: player.availableSkillPoints,
-        talents: player.saveTalentsToProfile()
-      });
       return;
     }
 
@@ -319,16 +302,16 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // STATS REQUEST
+    // STATS REQUEST → renvoie player_update
     if (type === "stats_request") {
       const stats = await computeFullStats(player);
       player.loadStatsFromProfile(stats);
 
-      client.send("stats_update", {
-        ...stats,
+      client.send("player_update", {
         level: player.level,
         xp: player.xp,
         nextLevelXp: player.nextLevelXp,
+        stats,
         availableSkillPoints: player.availableSkillPoints,
         talents: player.saveTalentsToProfile()
       });
@@ -378,8 +361,8 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   private async savePlayerData(player: PlayerState): Promise<void> {
     try {
-      const computed = await computeFullStats(player);
-      player.loadStatsFromProfile(computed);
+      const stats = await computeFullStats(player);
+      player.loadStatsFromProfile(stats);
 
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
@@ -389,7 +372,7 @@ export class WorldRoom extends Room<GameState> {
           nextLevelXp: player.nextLevelXp,
           availableSkillPoints: player.availableSkillPoints,
           talents: player.saveTalentsToProfile(),
-          stats: computed,
+          stats,
           questData: player.saveQuestsToProfile(),
           inventory: player.inventory.saveToProfile()
         }
