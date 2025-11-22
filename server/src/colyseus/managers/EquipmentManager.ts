@@ -26,44 +26,35 @@ export class EquipmentManager {
 
         const equipSlot = String(model.equipSlot);
 
-        // 🟩 CORRECT : accéder avec []
-        const currently = inv.equipment[equipSlot];
+        // récupérer ancien équipement
+        const oldSlot = inv.equipment.get(equipSlot);
 
-        // ---------------------------------------------------------
-        // 🟥 RETIRER ancien item du itemCache
-        // ---------------------------------------------------------
-        if (currently && currently.itemId) {
-            delete player.itemCache[currently.itemId];
-        }
-
-        // Remettre l’ancien équipement dans un slot libre
-        if (currently && currently.itemId !== "") {
+        // si déjà équipé → remettre dans inventaire
+        if (oldSlot && oldSlot.itemId) {
             const free = this.findFreeBagSlot(inv);
             if (free === -1) return;
-            inv.slots[free].setItem(currently.itemId, currently.amount);
+            inv.slots[free].setItem(oldSlot.itemId, oldSlot.amount);
         }
 
-        // ---------------------------------------------------------
-        // 🟩 ÉQUIPER NOUVEL ITEM
-        // ---------------------------------------------------------
+        // créer un nouveau slot d’équipement
         const newSlot = new InventorySlot();
         newSlot.setItem(s.itemId, 1);
 
-        // 🟩 CORRECT : assigner via propriété
-        inv.equipment[equipSlot] = newSlot;
+        // 💥 copier les stats depuis ItemModel dans le slot
+        if (model.stats) {
+            for (const [stat, value] of Object.entries(model.stats)) {
+                newSlot.stats.set(stat, value as number);
+            }
+        }
 
-        // 🔥 Ajouter à itemCache
-        player.itemCache[s.itemId] = {
-            stats: model.stats || {}
-        };
+        // placer dans la MapSchema d’équipement
+        inv.equipment.set(equipSlot, newSlot);
 
-        // Enlever du sac
+        // retirer du sac
         s.amount -= 1;
         if (s.amount <= 0) s.clear();
 
-        // ---------------------------------------------------------
-        // 🔥 RECALCUL + SYNC
-        // ---------------------------------------------------------
+        // recalcul
         const newStats = await computeFullStats(player);
         player.loadStatsFromProfile(newStats);
 
@@ -78,29 +69,20 @@ export class EquipmentManager {
     async unequip(player: PlayerState, equipSlot: string) {
 
         const inv = player.inventory;
-        const key = String(equipSlot);
-
-        // 🟩 CORRECT
-        const eq = inv.equipment[key];
+        const eq = inv.equipment.get(equipSlot);
         if (!eq || !eq.itemId) return;
 
         const free = this.findFreeBagSlot(inv);
         if (free === -1) return;
 
-        // Remettre dans l'inventaire
+        // remettre dans sac
         inv.slots[free].setItem(eq.itemId, 1);
 
-        // ---------------------------------------------------------
-        // 🟥 supprimer l’item du cache !
-        // ---------------------------------------------------------
-        delete player.itemCache[eq.itemId];
+        // vider l'équipement
+        const empty = new InventorySlot();
+        inv.equipment.set(equipSlot, empty);
 
-        // vider le slot d’équipement
-        inv.equipment[key] = new InventorySlot();
-
-        // ---------------------------------------------------------
-        // 🔥 RECALCUL
-        // ---------------------------------------------------------
+        // recalcul
         const newStats = await computeFullStats(player);
         player.loadStatsFromProfile(newStats);
 
