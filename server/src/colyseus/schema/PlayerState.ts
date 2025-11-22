@@ -111,7 +111,7 @@ export class PlayerState extends Schema {
   @type("number") potionHP: number = 10;
   @type("number") food: number = 20;
 
-  // ===== SERVER ONLY =====
+  // ===== SERVER ONLY CACHE =====
   itemCache: { [itemId: string]: { stats: any } } = {};
 
   constructor(
@@ -157,39 +157,47 @@ export class PlayerState extends Schema {
   updateCombatTimers(dt: number) {
     if (this.isDead || this.isAFK) return;
 
-    if (this.gcdRemaining > 0)
-      this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
+    this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
+    this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
+    this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
 
-    if (this.castLockRemaining > 0) {
-      this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
-      if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
-    }
-
-    if (this.animationLockRemaining > 0) {
-      this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
-      if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
-    }
+    if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
+    if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
 
     if (this.autoAttackTimer < this.attackSpeed * 1000)
       this.autoAttackTimer += dt;
   }
 
   // ===========================================================
-  // LOAD STATS (Mongo → Serveur)
+  // LOAD STATS
   // ===========================================================
   loadStatsFromProfile(stats: any) {
     if (!stats) return;
 
-    // Leveling
+    // XP & LEVEL
     if (stats.xp !== undefined) this.xp = stats.xp;
     if (stats.nextLevelXp !== undefined) this.nextLevelXp = stats.nextLevelXp;
     if (stats.level !== undefined) this.level = stats.level;
 
-    Object.assign(this, stats);
+    // Apply all real stat fields
+    const fields = [
+      "hp", "maxHp",
+      "resource", "maxResource",
+      "manaRegen", "rageRegen", "energyRegen",
+      "attackPower", "spellPower", "attackSpeed",
+      "criticalChance", "criticalDamage",
+      "damageReduction", "armor", "magicResistance",
+      "precision", "evasion", "penetration", "tenacity",
+      "lifesteal", "spellPenetration"
+    ];
+
+    for (const f of fields) {
+      if (stats[f] !== undefined) this[f] = stats[f];
+    }
   }
 
   // ===========================================================
-  // SAVE STATS (Serveur → Mongo)
+  // SAVE STATS
   // ===========================================================
   saveStatsToProfile() {
     return {
@@ -214,8 +222,6 @@ export class PlayerState extends Schema {
       tenacity: this.tenacity,
       lifesteal: this.lifesteal,
       spellPenetration: this.spellPenetration,
-
-      // 🔥 LEVELING
       xp: this.xp,
       nextLevelXp: this.nextLevelXp,
       level: this.level
@@ -257,12 +263,12 @@ export class PlayerState extends Schema {
       this.quests.weeklyCooldown.set(k, v as number)
     );
 
-    Object.entries(data.questObjectives || {}).forEach(([questId, raw]) => {
+    Object.entries(data.questObjectives || {}).forEach(([qid, raw]) => {
       const objMap = new QuestObjectiveMap();
       Object.entries(raw || {}).forEach(([objId, count]) => {
         objMap.objectives.set(objId, count ?? 0);
       });
-      this.quests.questObjectives.set(questId, objMap);
+      this.quests.questObjectives.set(qid, objMap);
     });
   }
 
