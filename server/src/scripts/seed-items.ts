@@ -11,29 +11,86 @@ dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/idlerpg";
 
-// ===========================================
-// 📌 1) ITEMS D’ÉQUIPEMENT
-// ===========================================
-const EQUIPMENT_SLOTS = [
-  "head", "chest", "legs", "feet", "hands",
-  "weapon", "offhand",
-  "ring1", "ring2",
-  "trinket1", "trinket2",
-  "neck"
-];
+// ============================================================
+// 📌 CONFIG DES RARETÉS
+// ============================================================
+const RARITIES = {
+  common:    { hp: 0,   primary: 1, computed: 1 },
+  uncommon:  { hp: 5,   primary: 2, computed: 2 },
+  rare:      { hp: 10,  primary: 3, computed: 3 },
+  epic:      { hp: 20,  primary: 5, computed: 5 },
+};
 
-const EQUIPMENT_ITEMS = EQUIPMENT_SLOTS.map(slot => ({
-  itemId: `eq_${slot}`,
-  name: `Équipement ${slot}`,
-  icon: `icons/${slot}.png`,
-  type: "equipment",
-  equipSlot: slot,
-  stats: { hp: 5, attack: 1 }
-}));
+function applyRarity(baseStats: any, rarity: keyof typeof RARITIES) {
+  const r = RARITIES[rarity];
+  const s: any = {};
 
-// ===========================================
-// 📌 2) ITEMS “normaux”
-// ===========================================
+  for (const k of Object.keys(baseStats)) {
+    const val = baseStats[k];
+
+    if (typeof val === "number") {
+      // stats primaires
+      if (["strength","agility","intelligence","endurance","spirit"].includes(k))
+        s[k] = val * r.primary;
+
+      // stats calculées
+      else
+        s[k] = val * r.computed;
+    }
+  }
+
+  return s;
+}
+
+// ============================================================
+// 📌 BASE PAR SLOT
+// ============================================================
+const BASE_STATS = {
+  head:      { endurance: 1, armor: 2 },
+  chest:     { endurance: 2, armor: 4 },
+  legs:      { endurance: 1, armor: 3 },
+  feet:      { agility: 1, moveSpeed: 0.05 },
+  hands:     { strength: 1, attackPower: 2 },
+  weapon:    { strength: 2, attackPower: 5 },
+  offhand:   { endurance: 1, armor: 3 },
+  ring1:     { agility: 1, criticalChance: 1 },
+  ring2:     { spirit: 1, manaRegen: 1 },
+  trinket1:  { intelligence: 1, spellPower: 3 },
+  trinket2:  { spirit: 1, manaRegen: 2 },
+  neck:      { intelligence: 1, spellPower: 2 }
+};
+
+// ============================================================
+// 📌 GÉNÉRATION DES ITEMS D'ÉQUIPEMENT
+// ============================================================
+function buildEquipmentItems() {
+  const items: any[] = [];
+
+  for (const slot of Object.keys(BASE_STATS)) {
+    for (const rarity of Object.keys(RARITIES) as (keyof typeof RARITIES)[]) {
+
+      const itemId = `eq_${slot}_${rarity}`;
+      const name = `${slot.toUpperCase()} (${rarity})`;
+
+      const stats = applyRarity(BASE_STATS[slot], rarity);
+
+      items.push({
+        itemId,
+        name,
+        type: "equipment",
+        equipSlot: slot,
+        icon: `icons/${slot}.png`,
+        stats
+      });
+    }
+  }
+
+  return items;
+}
+
+// ============================================================
+// 📌 ITEMS NORMAUX (consommables / matériaux / box / quêtes)
+// ============================================================
 const NORMAL_ITEMS = [
   {
     itemId: "consum_hp_potion",
@@ -43,6 +100,15 @@ const NORMAL_ITEMS = [
     effects: { hp: +50 },
     stackable: true,
     maxStack: 20
+  },
+  {
+    itemId: "consum_big_hp_potion",
+    name: "Grande potion de soin",
+    type: "consumable",
+    icon: "icons/potion_big_hp.png",
+    effects: { hp: +150 },
+    stackable: true,
+    maxStack: 10
   },
   {
     itemId: "mat_iron_ore",
@@ -59,7 +125,7 @@ const NORMAL_ITEMS = [
     icon: "icons/lootbox.png",
     rewards: [
       { itemId: "mat_iron_ore", min: 1, max: 3, weight: 70 },
-      { itemId: "consum_hp_potion", min: 1, max: 1, weight: 30 }
+      { itemId: "consum_hp_potion", min: 1, max: 2, weight: 30 }
     ]
   },
   {
@@ -87,41 +153,45 @@ const NORMAL_ITEMS = [
   }
 ];
 
-// ===========================================
-// 📌 3) ITEM PERSONNEL
-// ===========================================
+// ============================================================
+// 📌 ITEM PERSONNEL
+// ============================================================
 const PERSONAL_ITEM = {
   itemId: "personal_family_ring",
   name: "Bague Familiale",
   type: "quest",
   icon: "icons/family_ring.png",
   stackable: false,
-  personalOnly: true // ⚠️ Non stocké en DB mais utile pour ton usage backend
+  personal: true
 };
 
-// ===========================================
-// 📌 LANCEMENT
-// ===========================================
+// ============================================================
+// 🚀 SEED MAIN
+// ============================================================
 
 async function seedItems() {
   try {
     console.log("Connexion MongoDB...");
     await mongoose.connect(MONGO_URI);
 
+    const equipment = buildEquipmentItems();
+
     const ITEMS = [
-      ...EQUIPMENT_ITEMS,
+      ...equipment,
       ...NORMAL_ITEMS,
       PERSONAL_ITEM
     ];
 
+    console.log(`→ ${ITEMS.length} items à créer...`);
+
     for (const item of ITEMS) {
       await Item.deleteOne({ itemId: item.itemId });
       await Item.create(item);
-      console.log(`→ Item ${item.itemId} créé.`);
+      console.log(`→ Item ${item.itemId} OK`);
     }
 
     await mongoose.disconnect();
-    console.log("🎉 Tous les items ont été créés !");
+    console.log("🎉 SEED ITEMS TERMINÉ !");
     process.exit(0);
 
   } catch (err) {
