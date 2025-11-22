@@ -72,12 +72,10 @@ export class InventoryManager {
 
             case "inv_equip":
                 await this.equipmentManager.equip(player, msg.fromSlot);
-                await this.syncStats(player);
                 return true;
 
             case "inv_unequip":
                 await this.equipmentManager.unequip(player, msg.equipSlot);
-                await this.syncStats(player);
                 return true;
 
             case "inv_open":
