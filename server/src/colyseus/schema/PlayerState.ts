@@ -1,5 +1,4 @@
 // server/src/colyseus/schema/PlayerState.ts
-
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
@@ -17,11 +16,6 @@ export class PlayerState extends Schema {
   // ===== INFO =====
   @type("string") characterName: string = "";
   @type("number") level: number = 1;
-
-  // ===== XP / LEVEL =====
-  @type("number") xp: number = 0;
-  @type("number") nextLevelXp: number = 100;
-
   @type("string") class: string = "";
   @type("string") race: string = "";
   @type(SkinState)
@@ -111,7 +105,9 @@ export class PlayerState extends Schema {
   @type("number") potionHP: number = 10;
   @type("number") food: number = 20;
 
-  // ===== SERVER ONLY CACHE =====
+  // --------------------------------------------------------------------
+  // 🔥 ITEM CACHE (SERVER ONLY, NON SYNCHRONISÉ)
+  // --------------------------------------------------------------------
   itemCache: { [itemId: string]: { stats: any } } = {};
 
   constructor(
@@ -141,7 +137,9 @@ export class PlayerState extends Schema {
   // INVENTORY LOAD
   // ===========================================================
   loadInventoryFromProfile(data: any) {
-    if (data) this.inventory.loadFromProfile(data);
+    if (data) {
+      this.inventory.loadFromProfile(data);
+    }
   }
 
   // ===========================================================
@@ -157,46 +155,97 @@ export class PlayerState extends Schema {
   updateCombatTimers(dt: number) {
     if (this.isDead || this.isAFK) return;
 
-    this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
-    this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
-    this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
+    if (this.gcdRemaining > 0)
+      this.gcdRemaining = Math.max(0, this.gcdRemaining - dt);
 
-    if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
-    if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
+    if (this.castLockRemaining > 0) {
+      this.castLockRemaining = Math.max(0, this.castLockRemaining - dt);
+      if (this.castLockRemaining === 0) this.currentCastingSkillId = "";
+    }
+
+    if (this.animationLockRemaining > 0) {
+      this.animationLockRemaining = Math.max(0, this.animationLockRemaining - dt);
+      if (this.animationLockRemaining === 0) this.currentAnimationLockType = "none";
+    }
 
     if (this.autoAttackTimer < this.attackSpeed * 1000)
       this.autoAttackTimer += dt;
   }
 
-// ===========================================================
-// LOAD STATS
-// ===========================================================
-loadStatsFromProfile(stats: any) {
-  if (!stats) return;
-
-  // XP & LEVEL
-  if (stats.xp !== undefined) this.xp = stats.xp;
-  if (stats.nextLevelXp !== undefined) this.nextLevelXp = stats.nextLevelXp;
-  if (stats.level !== undefined) this.level = stats.level;
-
-  // Apply real stat fields
-  const fields = [
-    "hp", "maxHp",
-    "resource", "maxResource",
-    "manaRegen", "rageRegen", "energyRegen",
-    "attackPower", "spellPower", "attackSpeed",
-    "criticalChance", "criticalDamage",
-    "damageReduction", "armor", "magicResistance",
-    "precision", "evasion", "penetration", "tenacity",
-    "lifesteal", "spellPenetration"
-  ];
-
-  for (const f of fields) {
-    if (stats[f] !== undefined) {
-      (this as any)[f] = stats[f];   // ✔ FIX TS
-    }
+  // ===========================================================
+  // LOAD STATS
+  // ===========================================================
+  loadStatsFromProfile(stats: any) {
+    if (!stats) return;
+    Object.assign(this, stats);
   }
-}
+
+  // ===========================================================
+  // LOAD QUESTS
+  // ===========================================================
+  loadQuestsFromProfile(data: any) {
+    if (!data) {
+      this.quests = new QuestState();
+      return;
+    }
+
+    this.quests = new QuestState();
+
+    data.completed?.forEach((id: string) => this.quests.completed.push(id));
+
+    this.quests.activeMain = data.activeMain || "";
+    this.quests.activeSecondary = data.activeSecondary || "";
+
+    data.activeRepeatables?.forEach((id: string) =>
+      this.quests.activeRepeatables.push(id)
+    );
+
+    Object.entries(data.questStep || {}).forEach(([k, v]) =>
+      this.quests.questStep.set(k, v as number)
+    );
+
+    Object.entries(data.questStartedAt || {}).forEach(([k, v]) =>
+      this.quests.questStartedAt.set(k, v as number)
+    );
+
+    Object.entries(data.dailyCooldown || {}).forEach(([k, v]) =>
+      this.quests.dailyCooldown.set(k, v as number)
+    );
+
+    Object.entries(data.weeklyCooldown || {}).forEach(([k, v]) =>
+      this.quests.weeklyCooldown.set(k, v as number)
+    );
+
+    Object.entries(data.questObjectives || {}).forEach(([questId, raw]) => {
+      const objMap = new QuestObjectiveMap();
+      Object.entries(raw || {}).forEach(([objId, count]) => {
+        objMap.objectives.set(objId, count ?? 0);
+      });
+      this.quests.questObjectives.set(questId, objMap);
+    });
+  }
+
+  // ===========================================================
+  // SAVE QUESTS
+  // ===========================================================
+  saveQuestsToProfile() {
+    return {
+      completed: [...this.quests.completed],
+      activeMain: this.quests.activeMain,
+      activeSecondary: this.quests.activeSecondary,
+      activeRepeatables: [...this.quests.activeRepeatables],
+      questStep: Object.fromEntries(this.quests.questStep),
+      questStartedAt: Object.fromEntries(this.quests.questStartedAt),
+      questObjectives: Object.fromEntries(
+        [...this.quests.questObjectives].map(([qid, objMap]) => [
+          qid,
+          Object.fromEntries(objMap.objectives)
+        ])
+      ),
+      dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
+      weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
+    };
+  }
 
   // ===========================================================
   // SAVE STATS
@@ -223,76 +272,7 @@ loadStatsFromProfile(stats: any) {
       penetration: this.penetration,
       tenacity: this.tenacity,
       lifesteal: this.lifesteal,
-      spellPenetration: this.spellPenetration,
-      xp: this.xp,
-      nextLevelXp: this.nextLevelXp,
-      level: this.level
-    };
-  }
-
-  // ===========================================================
-  // LOAD QUESTS
-  // ===========================================================
-  loadQuestsFromProfile(data: any) {
-    if (!data) {
-      this.quests = new QuestState();
-      return;
-    }
-
-    this.quests = new QuestState();
-
-    data.completed?.forEach((id: string) => this.quests.completed.push(id));
-    this.quests.activeMain = data.activeMain || "";
-    this.quests.activeSecondary = data.activeSecondary || "";
-
-    data.activeRepeatables?.forEach((id: string) =>
-      this.quests.activeRepeatables.push(id)
-    );
-
-    Object.entries(data.questStep || {}).forEach(([k, v]) =>
-      this.quests.questStep.set(k, v as number)
-    );
-
-    Object.entries(data.questStartedAt || {}).forEach(([k, v]) =>
-      this.quests.questStartedAt.set(k, v as number)
-    );
-
-    Object.entries(data.dailyCooldown || {}).forEach(([k, v]) =>
-      this.quests.dailyCooldown.set(k, v as number)
-    );
-
-    Object.entries(data.weeklyCooldown || {}).forEach(([k, v]) =>
-      this.quests.weeklyCooldown.set(k, v as number)
-    );
-
-    Object.entries(data.questObjectives || {}).forEach(([qid, raw]) => {
-      const objMap = new QuestObjectiveMap();
-      Object.entries(raw || {}).forEach(([objId, count]) => {
-        objMap.objectives.set(objId, count ?? 0);
-      });
-      this.quests.questObjectives.set(qid, objMap);
-    });
-  }
-
-  // ===========================================================
-  // SAVE QUESTS
-  // ===========================================================
-  saveQuestsToProfile() {
-    return {
-      completed: [...this.quests.completed],
-      activeMain: this.quests.activeMain,
-      activeSecondary: this.quests.activeSecondary,
-      activeRepeatables: [...this.quests.activeRepeatables],
-      questStep: Object.fromEntries(this.quests.questStep),
-      questStartedAt: Object.fromEntries(this.quests.questStartedAt),
-      questObjectives: Object.fromEntries(
-        [...this.quests.questObjectives].map(([qid, objMap]) => [
-          qid,
-          Object.fromEntries(objMap.objectives)
-        ])
-      ),
-      dailyCooldown: Object.fromEntries(this.quests.dailyCooldown),
-      weeklyCooldown: Object.fromEntries(this.quests.weeklyCooldown),
+      spellPenetration: this.spellPenetration
     };
   }
 }
