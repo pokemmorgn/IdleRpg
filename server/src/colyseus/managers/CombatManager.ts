@@ -7,7 +7,7 @@ import { MonsterCombatSystem } from "./combat/MonsterCombatSystem";
 
 import { CombatEventCallbacks } from "./combat/CombatEventCallbacks";
 import { CombatNetworkEmitter } from "./combat/CombatNetworkEmitter";
-
+import { LevelManager } from "./LevelManager";
 import { QuestObjectiveManager } from "./QuestObjectiveManager";
 
 export class CombatManager implements CombatEventCallbacks {
@@ -15,14 +15,14 @@ export class CombatManager implements CombatEventCallbacks {
     private onlineSystem: OnlineCombatSystem;
     private monsterSystem: MonsterCombatSystem;
     private net: CombatNetworkEmitter;
-
+    private levelManager: LevelManager;
     constructor(
         private readonly gameState: GameState,
         private readonly broadcast: (sessionId: string, type: string, data: any) => void,
         private readonly questObjectiveManager?: QuestObjectiveManager
     ) {
         this.net = new CombatNetworkEmitter(gameState, broadcast);
-
+        this.levelManager = new LevelManager(broadcast);
         this.onlineSystem = new OnlineCombatSystem(
             this.gameState,
             this
