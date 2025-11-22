@@ -19,10 +19,10 @@ const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TalentTester";
 
 // CORRIGÉ: On force la classe pour qu'elle corresponde à notre talent de test
-const FORCED_CHARACTER_CLASS = "warrior";
+const FORCED_CHARACTER_CLASS = "priest";
 const FORCED_CHARACTER_RACE = "human_elion"; // On suppose que c'est une race valide pour le guerrier
 
-const TALENT_TO_LEARN_ID = "warrior_fury_critical_strike";
+const TALENT_TO_LEARN_ID = "priest_holy_smite";
 const XP_AMOUNT_TO_LEVEL_UP = 1000;
 
 function sleep(ms: number) {
