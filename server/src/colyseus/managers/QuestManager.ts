@@ -1,3 +1,4 @@
+// server/src/colyseus/managers/QuestManager.ts
 import { Client } from "colyseus";
 import { MapSchema } from "@colyseus/schema";
 
@@ -7,6 +8,8 @@ import { PlayerState } from "../schema/PlayerState";
 import Quest, { IQuest } from "../../models/Quest";
 import { QuestState } from "../schema/QuestState";
 import { QuestObjectiveMap } from "../schema/QuestObjectiveMap";
+// AJOUT: Importer le LevelManager
+import { LevelManager } from "./LevelManager";
 
 /**
  * QuestManager
@@ -20,15 +23,20 @@ export class QuestManager {
   public questCache: Map<string, IQuest> = new Map();
 
   private onSavePlayer?: (player: PlayerState) => Promise<void>;
+  // AJOUT: Déclarer une propriété pour le LevelManager
+  private levelManager: LevelManager;
 
+  // MODIFIÉ: Ajouter LevelManager au constructeur
   constructor(
     serverId: string,
     gameState: GameState,
-    onSavePlayer?: (player: PlayerState) => Promise<void>
+    onSavePlayer?: (player: PlayerState) => Promise<void>,
+    levelManager: LevelManager // N'est plus optionnel, car requis pour les récompenses
   ) {
     this.serverId = serverId;
     this.gameState = gameState;
     this.onSavePlayer = onSavePlayer;
+    this.levelManager = levelManager;
   }
 
   /* ===========================================================
@@ -192,7 +200,7 @@ export class QuestManager {
   /* ===========================================================
      RENDRE LA QUÊTE
      =========================================================== */
-  turnInQuest(client: Client, player: PlayerState, questId: string): void {
+  async turnInQuest(client: Client, player: PlayerState, questId: string): Promise<void> { // Rendu async
     const quest = this.getQuest(questId);
     if (!quest) {
       client.send("error", { message: "Quest not found" });
@@ -219,7 +227,9 @@ export class QuestManager {
     qs.questStartedAt.delete(questId);
     qs.questObjectives.delete(questId);
 
-    this.applyRewards(client, player, quest);
+    // MODIFIÉ: Appliquer les récompenses de manière asynchrone
+    await this.applyRewards(client, player, quest);
+    
     this.onSavePlayer?.(player);
 
     client.send("quest_turned_in", { questId });
@@ -228,10 +238,17 @@ export class QuestManager {
   /* ===========================================================
      RÉCOMPENSES
      =========================================================== */
-  private applyRewards(client: Client, player: PlayerState, quest: IQuest): void {
+  // MODIFIÉ: La méthode est maintenant async pour gérer le gain d'XP
+  private async applyRewards(client: Client, player: PlayerState, quest: IQuest): Promise<void> {
     const r = quest.rewards;
 
-    if (r.xp) client.send("xp_gained", { amount: r.xp });
+    // MODIFIÉ: Utiliser LevelManager pour donner l'XP de manière centralisée
+    if (r.xp && r.xp > 0) {
+      console.log(`[QuestManager] Giving ${r.xp} XP to ${player.characterName} for quest ${quest.questId}`);
+      await this.levelManager.giveXP(player, r.xp);
+    }
+
+    // Les autres récompenses restent des notifications directes pour l'instant
     if (r.gold) client.send("gold_gained", { amount: r.gold });
     if (r.items?.length) client.send("items_gained", { items: r.items });
     if (r.reputation?.length)
