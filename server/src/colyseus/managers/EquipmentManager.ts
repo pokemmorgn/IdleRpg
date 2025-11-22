@@ -15,53 +15,64 @@ export class EquipmentManager {
     // ============================================================
     // EQUIP
     // ============================================================
-    async equip(player: PlayerState, fromSlotIndex: number) {
-
-        const inv = player.inventory;
-        const s = inv.slots[fromSlotIndex];
-        if (!s || !s.itemId) return;
-
-        const model = await ItemModel.findOne({ itemId: s.itemId });
-        if (!model || model.type !== "equipment") return;
-
-        const equipSlot = String(model.equipSlot);
-
-        // récupérer ancien équipement
-        const oldSlot = inv.equipment.get(equipSlot);
-
-        // si déjà équipé → remettre dans inventaire
-        if (oldSlot && oldSlot.itemId) {
-            const free = this.findFreeBagSlot(inv);
-            if (free === -1) return;
-            inv.slots[free].setItem(oldSlot.itemId, oldSlot.amount);
-        }
-
-        // créer un nouveau slot d’équipement
-        const newSlot = new InventorySlot();
-        newSlot.setItem(s.itemId, 1);
-
-        // 💥 copier les stats depuis ItemModel dans le slot
-        if (model.stats) {
-            for (const [stat, value] of Object.entries(model.stats)) {
-                newSlot.stats.set(stat, value as number);
-            }
-        }
-
-        // placer dans la MapSchema d’équipement
-        inv.equipment.set(equipSlot, newSlot);
-
-        // retirer du sac
-        s.amount -= 1;
-        if (s.amount <= 0) s.clear();
-
-        // recalcul
-        const newStats = await computeFullStats(player);
-        player.loadStatsFromProfile(newStats);
-
-        this.emit(player.sessionId, "stats_update", newStats);
-        this.sync(player);
-        await this.savePlayer(player);
+async equip(player: PlayerState, fromSlotIndex: number) {
+    const inv = player.inventory;
+    const s = inv.slots[fromSlotIndex];
+    if (!s || !s.itemId) {
+        console.log("❌ Slot vide ou sans itemId");
+        return;
     }
+
+    const model = await ItemModel.findOne({ itemId: s.itemId });
+    if (!model || model.type !== "equipment") {
+        console.log("❌ Item non trouvé ou n'est pas un équipement");
+        return;
+    }
+
+    const equipSlot = String(model.equipSlot);
+    console.log(`📝 Équipement de ${s.itemId} dans le slot ${equipSlot}`);
+
+    // récupérer ancien équipement
+    const oldSlot = inv.equipment.get(equipSlot);
+
+    // si déjà équipé → remettre dans inventaire
+    if (oldSlot && oldSlot.itemId) {
+        const free = this.findFreeBagSlot(inv);
+        if (free === -1) {
+            console.log("❌ Pas de slot libre dans l'inventaire");
+            return;
+        }
+        inv.slots[free].setItem(oldSlot.itemId, oldSlot.amount);
+    }
+
+    // créer un nouveau slot d'équipement
+    const newSlot = new InventorySlot();
+    newSlot.setItem(s.itemId, 1);
+
+    // 💥 copier les stats depuis ItemModel dans le slot
+    if (model.stats) {
+        for (const [stat, value] of Object.entries(model.stats)) {
+            newSlot.stats.set(stat, value as number);
+            console.log(`📊 Ajout de la stat ${stat}: ${value}`);
+        }
+    }
+
+    // placer dans la MapSchema d'équipement
+    inv.equipment.set(equipSlot, newSlot);
+    console.log(`✅ ${s.itemId} équipé dans ${equipSlot}`);
+
+    // retirer du sac
+    s.amount -= 1;
+    if (s.amount <= 0) s.clear();
+
+    // recalcul
+    const newStats = await computeFullStats(player);
+    player.loadStatsFromProfile(newStats);
+
+    this.emit(player.sessionId, "stats_update", newStats);
+    this.sync(player);
+    await this.savePlayer(player);
+}
 
     // ============================================================
     // UNEQUIP
