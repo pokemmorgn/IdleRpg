@@ -18,6 +18,7 @@ import { TestManager } from "../test/TestManager";
 import { SkinManager } from "../managers/SkinManager";
 import { InventoryManager } from "../managers/InventoryManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
+import { LevelManager } from "../managers/LevelManager";
 
 import ServerProfile from "../../models/ServerProfile";
 import ItemModel from "../../models/Item";
@@ -35,7 +36,7 @@ export class WorldRoom extends Room<GameState> {
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
   private inventoryManager!: InventoryManager;
-
+  private levelManager!: LevelManager;
   private testManager?: TestManager;
 
   // ===========================================================
@@ -97,7 +98,16 @@ export class WorldRoom extends Room<GameState> {
       },
       this.savePlayerData.bind(this)
     );
-
+    
+    this.levelManager = new LevelManager(
+      this.state,
+      (sessionId, type, data) => {
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, data);
+      },
+      this.savePlayerData.bind(this)
+    );
+    
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
