@@ -150,15 +150,23 @@ function pickSkinFromClass(playerClass: string): string {
 // =====================================================================
 async function waitForStatsUpdate(
     previousStats: any,
-    lastStatsRef: { value: any }
+    lastStatsRef: { value: any },
+    timeoutMs: number = 5000
 ): Promise<any> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         const check = setInterval(() => {
             if (lastStatsRef.value && lastStatsRef.value !== previousStats) {
                 clearInterval(check);
+                clearTimeout(timeout);
                 resolve(lastStatsRef.value);
             }
         }, 50);
+        
+        const timeout = setTimeout(() => {
+            clearInterval(check);
+            console.error("⏱️ Timeout en attente des stats_update");
+            resolve(null); // Résoudre avec null en cas de timeout
+        }, timeoutMs);
     });
 }
 
@@ -179,54 +187,61 @@ function diff(a: any, b: any) {
 // =====================================================================
 // TEST SKINS
 // =====================================================================
-async function testSkinSystem(room: Colyseus.Room, skinId: string) {
-
+async function testSkinSystem(room: Colyseus.Room, skinId: string, lastStatsRef: { value: any }) {
     console.log("\n🔥 DÉBUT DU TEST SKINS\n");
-
-    // lastStatsRef doit avoir un type explicite
-    let lastStatsRef: { value: any } = { value: null };
-
-    room.onMessage("stats_update", (msg) => {
-        lastStatsRef.value = msg;
-        console.log("📈 STATS UPDATE:", msg);
-    });
-
-    room.onMessage("skin_unlocked", (msg) => console.log("🟩 SKIN UNLOCKED:", msg));
-    room.onMessage("skin_equipped", (msg) => console.log("🎽 SKIN EQUIPPED:", msg));
-    room.onMessage("skin_level_up", (msg) => console.log("⬆️  SKIN LEVEL UP:", msg));
-    room.onMessage("skin_error", (msg) => console.error("❌ SKIN ERROR:", msg));
 
     console.log("⏳ En attente des premières stats...");
     while (!lastStatsRef.value) await sleep(100);
 
     let before: any = structuredClone(lastStatsRef.value);
+    console.log("📊 Stats initiales:", before);
 
     // --- UNLOCK ---
     console.log("\n--- ÉTAPE 1 : UNLOCK ---");
+    console.log(`📤 Envoi de skin_unlock pour ${skinId}`);
     room.send("skin_unlock", { skinId });
     let afterUnlock: any = await waitForStatsUpdate(before, lastStatsRef);
-    console.log("📊 DIFF →", diff(before, afterUnlock));
+    if (afterUnlock) {
+        console.log("📊 DIFF →", diff(before, afterUnlock));
+    } else {
+        console.log("❌ Pas de réponse pour skin_unlock");
+    }
 
     // --- EQUIP ---
-    before = afterUnlock;
+    before = afterUnlock || before;
     console.log("\n--- ÉTAPE 2 : EQUIP ---");
+    console.log(`📤 Envoi de skin_equip pour ${skinId}`);
     room.send("skin_equip", { skinId });
     let afterEquip: any = await waitForStatsUpdate(before, lastStatsRef);
-    console.log("📊 DIFF →", diff(before, afterEquip));
+    if (afterEquip) {
+        console.log("📊 DIFF →", diff(before, afterEquip));
+    } else {
+        console.log("❌ Pas de réponse pour skin_equip");
+    }
 
     // --- LEVEL 1 ---
-    before = afterEquip;
+    before = afterEquip || before;
     console.log("\n--- ÉTAPE 3 : LEVEL UP (1) ---");
+    console.log(`📤 Envoi de skin_level_up pour ${skinId}`);
     room.send("skin_level_up", { skinId });
     let afterL1: any = await waitForStatsUpdate(before, lastStatsRef);
-    console.log("📊 DIFF →", diff(before, afterL1));
+    if (afterL1) {
+        console.log("📊 DIFF →", diff(before, afterL1));
+    } else {
+        console.log("❌ Pas de réponse pour skin_level_up (1)");
+    }
 
     // --- LEVEL 2 ---
-    before = afterL1;
+    before = afterL1 || before;
     console.log("\n--- ÉTAPE 4 : LEVEL UP (2) ---");
+    console.log(`📤 Envoi de skin_level_up pour ${skinId}`);
     room.send("skin_level_up", { skinId });
     let afterL2: any = await waitForStatsUpdate(before, lastStatsRef);
-    console.log("📊 DIFF →", diff(before, afterL2));
+    if (afterL2) {
+        console.log("📊 DIFF →", diff(before, afterL2));
+    } else {
+        console.log("❌ Pas de réponse pour skin_level_up (2)");
+    }
 
     console.log("\n🎉 FIN DU TEST SKINS\n");
 }
@@ -235,30 +250,53 @@ async function testSkinSystem(room: Colyseus.Room, skinId: string) {
 // MAIN
 // =====================================================================
 (async () => {
+    try {
+        await register();
+        const token = await login();
+        let profile = await getProfile(token);
 
-    await register();
-    const token = await login();
-    let profile = await getProfile(token);
+        if (!profile) {
+            const creation = await getCreationData(token);
+            const race = creation.races[0].raceId;
+            const classId = creation.byRace[race][0].classId;
+            profile = await createCharacter(token, race, classId);
+        }
 
-    if (!profile) {
-        const creation = await getCreationData(token);
-        const race = creation.races[0].raceId;
-        const classId = creation.byRace[race][0].classId;
-        profile = await createCharacter(token, race, classId);
+        const mm = await reserveSeat(token);
+        const client = new Colyseus.Client(WS_URL);
+        const room = await client.consumeSeatReservation(mm);
+
+        console.log("🔌 CONNECTÉ AU SERVEUR !");
+
+        // Référence partagée pour les stats
+        let lastStatsRef: { value: any } = { value: null };
+
+        // Enregistrement des écouteurs de messages immédiatement après la connexion
+        console.log("📡 Enregistrement des écouteurs de messages...");
+        
+        room.onMessage("stats_update", (msg) => {
+            console.log("📈 STATS UPDATE REÇU:", msg);
+            lastStatsRef.value = msg;
+        });
+
+        room.onMessage("skin_unlocked", (msg) => console.log("🟩 SKIN UNLOCKED:", msg));
+        room.onMessage("skin_equipped", (msg) => console.log("🎽 SKIN EQUIPPED:", msg));
+        room.onMessage("skin_level_up", (msg) => console.log("⬆️  SKIN LEVEL UP:", msg));
+        room.onMessage("skin_error", (msg) => console.error("❌ SKIN ERROR:", msg));
+        room.onMessage("welcome", (msg) => console.log("👋 WELCOME:", msg));
+
+        // Attendre un peu pour s'assurer que les écouteurs sont bien enregistrés
+        console.log("⏳ Attente de l'initialisation...");
+        await sleep(2000);
+
+        const SKIN_ID = pickSkinFromClass(profile.class);
+        console.log("🎽 SKIN CHOISI :", SKIN_ID);
+
+        await testSkinSystem(room, SKIN_ID, lastStatsRef);
+
+        process.exit(0);
+    } catch (error) {
+        console.error("❌ Erreur dans le script principal:", error);
+        process.exit(1);
     }
-
-    const mm = await reserveSeat(token);
-    const client = new Colyseus.Client(WS_URL);
-    const room = await client.consumeSeatReservation(mm);
-
-    console.log("🔌 CONNECTÉ AU SERVEUR !");
-
-    await sleep(1000);
-
-    const SKIN_ID = pickSkinFromClass(profile.class);
-    console.log("🎽 SKIN CHOISI :", SKIN_ID);
-
-    await testSkinSystem(room, SKIN_ID);
-
-    process.exit(0);
 })();
