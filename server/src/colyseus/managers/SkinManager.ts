@@ -8,8 +8,7 @@ import {
   getSkinsByClass
 } from "../../config/skins/skins.config";
 import { Client } from "colyseus";
-import { PlayerStatsCalculator } from "./stats/PlayerStatsCalculator";
-import { IClassStats } from "../../models/ClassStats";
+import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
 export let SkinManagerInstance: SkinManager | null = null;
 
@@ -56,11 +55,8 @@ export class SkinManager {
   // RE-CALCUL DES STATS DU JOUEUR
   // ===========================================================================
   private recalcStats(player: PlayerState, client: Client) {
-    const classStats = require("../../config/classes.config").getStatsForClass(
-      player.class
-    ) as IClassStats;
 
-    const computed = PlayerStatsCalculator.compute(player, classStats);
+    const computed = computeFullStats(player);
     player.loadStatsFromProfile(computed);
 
     client.send("stats_update", {
@@ -218,7 +214,7 @@ export class SkinManager {
       const config = getSkinById(skinId);
       if (!config) continue;
 
-      const levelMultiplier = progress.level; // ✔ 5% × level
+      const levelMultiplier = progress.level;
 
       if (config.statsModifiers.primaryPercent) {
         for (const [stat, value] of Object.entries(config.statsModifiers.primaryPercent)) {
@@ -238,9 +234,6 @@ export class SkinManager {
     return result;
   }
 
-  // ===========================================================================
-  // LISTE DES SKINS POUR UNE CLASSE
-  // ===========================================================================
   getAvailableSkinsForPlayer(player: PlayerState) {
     return getSkinsByClass(player.class);
   }
