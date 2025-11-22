@@ -218,7 +218,10 @@ export class WorldRoom extends Room<GameState> {
     // STATS
     const computed = computeFullStats(player);
     player.loadStatsFromProfile(computed);
-
+    // 🔥 FORCE TEST ZONE
+    if (this.serverId === "test") {
+        player.zoneId = "start_zone";
+    }
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
   }
