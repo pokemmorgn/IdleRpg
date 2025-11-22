@@ -20,7 +20,8 @@ export class PlayerState extends Schema {
   @type("string") race: string = "";
   @type(SkinState)
   skins: SkinState = new SkinState();
-
+  @type("number") xp: number = 0;
+  @type("number") nextLevelXp: number = 100;
   // ===== INVENTAIRE =====
   @type(InventoryState)
   inventory: InventoryState = new InventoryState();
@@ -131,6 +132,8 @@ export class PlayerState extends Schema {
     this.race = characterRace;
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
+    this.xp = 0;
+    this.nextLevelXp = this.computeNextLevelXp(level);
   }
 
   // ===========================================================
@@ -252,6 +255,9 @@ export class PlayerState extends Schema {
   // ===========================================================
   saveStatsToProfile() {
     return {
+      level: this.level,
+      xp: this.xp,
+      nextLevelXp: this.nextLevelXp,
       hp: this.hp,
       maxHp: this.maxHp,
       resource: this.resource,
