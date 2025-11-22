@@ -10,15 +10,10 @@ class TalentScriptRegistry {
   private scripts: Map<string, ITalentScript> = new Map();
   private isInitialized = false;
 
-  // L'instance unique de la classe (Singleton)
   private static instance: TalentScriptRegistry;
 
-  // Le constructeur est privé pour forcer l'utilisation du singleton.
   private constructor() {}
 
-  /**
-   * Récupère l'instance unique du registre.
-   */
   public static getInstance(): TalentScriptRegistry {
     if (!TalentScriptRegistry.instance) {
       TalentScriptRegistry.instance = new TalentScriptRegistry();
@@ -26,10 +21,6 @@ class TalentScriptRegistry {
     return TalentScriptRegistry.instance;
   }
 
-  /**
-   * Scanne le dossier des talents et charge tous les scripts .ts trouvés.
-   * Cette méthode doit être appelée une seule fois au démarrage du serveur.
-   */
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
       console.log("🔧 [TalentScriptRegistry] Déjà initialisé.");
@@ -37,7 +28,10 @@ class TalentScriptRegistry {
     }
 
     console.log("🔧 [TalentScriptRegistry] Initialisation...");
-    const talentsDir = path.join(__dirname); // Le dossier actuel est .../colyseus/talents
+    
+    // CORRIGÉ: On s'assure que le chemin pointe bien vers le dossier source, pas le dossier compilé.
+    // On part de __filename (le fichier actuel) et on remonte jusqu'au dossier des talents.
+    const talentsDir = path.resolve(__dirname);
 
     try {
       await this.loadScriptsFromDirectory(talentsDir);
@@ -50,9 +44,6 @@ class TalentScriptRegistry {
     this.isInitialized = true;
   }
 
-  /**
-   * Charge récursivement les scripts depuis un répertoire.
-   */
   private async loadScriptsFromDirectory(dirPath: string): Promise<void> {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
@@ -67,12 +58,10 @@ class TalentScriptRegistry {
     }
   }
 
-  /**
-   * Charge un script de talent et l'ajoute au registre.
-   */
   private async loadScript(scriptPath: string): Promise<void> {
     try {
-      const module = await import(scriptPath);
+      // CORRIGÉ: On utilise path.resolve pour s'assurer que le chemin est absolu et correct
+      const module = await import(path.resolve(scriptPath));
       const TalentClass = module.default;
 
       if (!TalentClass) {
@@ -90,11 +79,6 @@ class TalentScriptRegistry {
     }
   }
 
-  /**
-   * Récupère une instance de script de talent par son nom.
-   * @param scriptName Le nom du script (ex: "critical_strike")
-   * @returns L'instance du script ou undefined si non trouvé.
-   */
   public get(scriptName: string): ITalentScript | undefined {
     if (!this.isInitialized) {
       console.warn("⚠️ [TalentScriptRegistry] Tentative d'accès à un script avant l'initialisation.");
@@ -104,5 +88,4 @@ class TalentScriptRegistry {
   }
 }
 
-// Export de l'instance unique via la méthode getInstance()
 export const talentScriptRegistry = TalentScriptRegistry.getInstance();
