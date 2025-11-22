@@ -18,12 +18,12 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "TalentTester";
 
-// On n'a plus besoin de ces constantes en dur, elles seront récupérées dynamiquement
-// const CHARACTER_CLASS = "warrior";
-// const CHARACTER_RACE = "human_elion";
+// CORRIGÉ: On force la classe pour qu'elle corresponde à notre talent de test
+const FORCED_CHARACTER_CLASS = "warrior";
+const FORCED_CHARACTER_RACE = "human_elion"; // On suppose que c'est une race valide pour le guerrier
 
 const TALENT_TO_LEARN_ID = "warrior_fury_critical_strike";
-const XP_AMOUNT_TO_LEVEL_UP = 1000; // Assez pour monter de niveau 1 à 2
+const XP_AMOUNT_TO_LEVEL_UP = 1000;
 
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -34,8 +34,7 @@ function sleep(ms: number) {
 // =====================================================================
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: TEST_USERNAME, email: TEST_EMAIL, password: TEST_PASSWORD })
     });
     const j = await r.json();
@@ -66,16 +65,10 @@ async function getCreationData(token: string) {
     return j;
 }
 
-// MODIFIÉ: La fonction prend maintenant race et classId en paramètres
 async function createCharacter(token: string, race: string, classId: string) {
     const r = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
         method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-            characterSlot: CHARACTER_SLOT,
-            characterName: CHARACTER_NAME,
-            characterClass: classId, // Utilise la valeur dynamique
-            characterRace: race // Utilise la valeur dynamique
-        })
+        body: JSON.stringify({ characterSlot: CHARACTER_SLOT, characterName: CHARACTER_NAME, characterClass: classId, characterRace: race })
     });
     const j = await r.json();
     if (!r.ok) { console.error("❌ Erreur create:", j); return null; }
@@ -103,13 +96,9 @@ function diff(a: any, b: any) {
     return changes;
 }
 
-// =====================================================================
-// WAIT FOR SPECIFIC MESSAGE (VERSION SIMPLE ET ROBUSTE)
-// =====================================================================
 async function waitForMessage(room: Colyseus.Room, messageType: string, timeoutMs: number = 5000): Promise<any> {
     return new Promise((resolve, reject) => {
         let resolved = false;
-
         const messageListener = (type: string | number, payload: any) => {
             if (type === messageType && !resolved) {
                 resolved = true;
@@ -117,9 +106,7 @@ async function waitForMessage(room: Colyseus.Room, messageType: string, timeoutM
                 resolve(payload);
             }
         };
-
         room.onMessage("*", messageListener);
-        
         const timeout = setTimeout(() => {
             if (!resolved) {
                 resolved = true;
@@ -135,8 +122,9 @@ async function waitForMessage(room: Colyseus.Room, messageType: string, timeoutM
 async function testTalentSystem(room: Colyseus.Room) {
     console.log("\n🔥 DÉBUT DU TEST SYSTÈME DE TALENTS\n");
 
-    // --- ÉTAPE 1 : Attendre les stats initiales ---
-    console.log("⏳ En attente des stats initiales...");
+    // --- ÉTAPE 1 : Demander les stats initiales ---
+    console.log("⏳ Demande des stats initiales au serveur...");
+    room.send("stats_request", {}); // CORRIGÉ: On demande explicitement les stats
     const initialStats = await waitForMessage(room, "stats_update");
     console.log("📊 Stats initiales:", initialStats);
     console.log(`👉 Points de talent disponibles: ${initialStats.availableSkillPoints}`);
@@ -184,14 +172,14 @@ async function testTalentSystem(room: Colyseus.Room) {
         let profile = await getProfile(token);
 
         if (!profile) {
-            // CORRIGÉ: On récupère les données de création dynamiquement
-            const creation = await getCreationData(token);
-            if (!creation || !creation.races || creation.races.length === 0) {
-                throw new Error("Impossible de récupérer les données de création du personnage.");
-            }
-            const race = creation.races[0].raceId;
-            const classId = creation.byRace[race][0].classId;
+            // CORRIGÉ: On force la race et la classe pour notre test
+            const race = FORCED_CHARACTER_RACE;
+            const classId = FORCED_CHARACTER_CLASS;
             profile = await createCharacter(token, race, classId);
+        } else {
+            // Si le personnage existe déjà mais n'est pas un guerrier, le test échouera.
+            // On peut choisir de le recréer ou d'arrêter le test. Pour l'instant, on continue.
+            console.warn(`⚠️ Le personnage existant est un ${profile.class}. Le test pourrait échouer si ce n'est pas un ${FORCED_CHARACTER_CLASS}.`);
         }
 
         const mm = await reserveSeat(token);
@@ -199,7 +187,7 @@ async function testTalentSystem(room: Colyseus.Room) {
         const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTÉ AU SERVEUR !");
-        await sleep(1000);
+        await sleep(1000); // Petite pause pour être sûr que tout est prêt
 
         await testTalentSystem(room);
 
