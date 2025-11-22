@@ -113,6 +113,7 @@ export class WorldRoom extends Room<GameState> {
         const c = this.clients.find(cl => cl.sessionId === sessionId);
         if (c) c.send(type, data);
       },
+      this.levelManager,  
       this.questObjectiveManager
     );
 
