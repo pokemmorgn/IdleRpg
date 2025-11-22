@@ -168,33 +168,35 @@ export class PlayerState extends Schema {
       this.autoAttackTimer += dt;
   }
 
-  // ===========================================================
-  // LOAD STATS
-  // ===========================================================
-  loadStatsFromProfile(stats: any) {
-    if (!stats) return;
+// ===========================================================
+// LOAD STATS
+// ===========================================================
+loadStatsFromProfile(stats: any) {
+  if (!stats) return;
 
-    // XP & LEVEL
-    if (stats.xp !== undefined) this.xp = stats.xp;
-    if (stats.nextLevelXp !== undefined) this.nextLevelXp = stats.nextLevelXp;
-    if (stats.level !== undefined) this.level = stats.level;
+  // XP & LEVEL
+  if (stats.xp !== undefined) this.xp = stats.xp;
+  if (stats.nextLevelXp !== undefined) this.nextLevelXp = stats.nextLevelXp;
+  if (stats.level !== undefined) this.level = stats.level;
 
-    // Apply all real stat fields
-    const fields = [
-      "hp", "maxHp",
-      "resource", "maxResource",
-      "manaRegen", "rageRegen", "energyRegen",
-      "attackPower", "spellPower", "attackSpeed",
-      "criticalChance", "criticalDamage",
-      "damageReduction", "armor", "magicResistance",
-      "precision", "evasion", "penetration", "tenacity",
-      "lifesteal", "spellPenetration"
-    ];
+  // Apply real stat fields
+  const fields = [
+    "hp", "maxHp",
+    "resource", "maxResource",
+    "manaRegen", "rageRegen", "energyRegen",
+    "attackPower", "spellPower", "attackSpeed",
+    "criticalChance", "criticalDamage",
+    "damageReduction", "armor", "magicResistance",
+    "precision", "evasion", "penetration", "tenacity",
+    "lifesteal", "spellPenetration"
+  ];
 
-    for (const f of fields) {
-      if (stats[f] !== undefined) this[f] = stats[f];
+  for (const f of fields) {
+    if (stats[f] !== undefined) {
+      (this as any)[f] = stats[f];   // ✔ FIX TS
     }
   }
+}
 
   // ===========================================================
   // SAVE STATS
