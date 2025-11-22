@@ -89,44 +89,61 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
   }
 
   // ==========================================================
-  // 5) COMPUTED BASE (avant ajout équipement)
+  // 5) ARME ÉQUIPÉE → BASE WEAPON ATTACK SPEED
   // ==========================================================
-let computed: IPlayerComputedStats = {
-  maxHp: 100 + primary.endurance * 5,
-  hp: 0,
+  let weaponSpeed = 2.5; // fallback si aucune arme
 
-  maxResource: 0,
-  resource: 0,
-  manaRegen: 0,
-  rageRegen: 0,
-  energyRegen: 0,
+  for (const eq of player.inventory.equipment.values()) {
+    if (eq.equipSlot === "weapon" && eq.itemId) {
+      const weapon = await ItemModel.findOne({ itemId: eq.itemId });
 
-  attackPower: primary.strength * 2,
-  spellPower: primary.intelligence * 2,
+      if (weapon?.stats?.attackSpeed) {
+        weaponSpeed = weapon.stats.attackSpeed; // valeur définie dans item.stats.attackSpeed
+      }
+    }
+  }
 
-  // ✔ FIX : utiliser baseAttackSpeed de la classe
-  attackSpeed: Math.max(0.3, classStats.baseAttackSpeed - primary.agility * 0.02),
-
-  criticalChance: primary.agility * 0.1,
-  criticalDamage: 150,
-
-  damageReduction: primary.endurance * 0.5,
-  armor: primary.endurance,
-  magicResistance: primary.intelligence * 0.2,
-
-  moveSpeed: classStats.baseMoveSpeed,
-
-  precision: 0,
-  evasion: primary.agility * 0.5,
-  penetration: 0,
-  tenacity: 0,
-  lifesteal: 0,
-  spellPenetration: 0
-};
-
+  // Attack speed finale : weaponSpeed modifiée par l'agilité
+  const baseAttackSpeed = weaponSpeed - primary.agility * 0.02;
+  const finalAttackSpeed = Math.max(0.3, baseAttackSpeed); // clamp min 0.3
 
   // ==========================================================
-  // 6) COMPUTED BONUS DES ÉQUIPEMENTS
+  // 6) COMPUTED BASE
+  // ==========================================================
+  let computed: IPlayerComputedStats = {
+    maxHp: 100 + primary.endurance * 5,
+    hp: 0,
+
+    maxResource: 0,
+    resource: 0,
+    manaRegen: 0,
+    rageRegen: 0,
+    energyRegen: 0,
+
+    attackPower: primary.strength * 2,
+    spellPower: primary.intelligence * 2,
+
+    attackSpeed: finalAttackSpeed,
+
+    criticalChance: primary.agility * 0.1,
+    criticalDamage: 150,
+
+    damageReduction: primary.endurance * 0.5,
+    armor: primary.endurance,
+    magicResistance: primary.intelligence * 0.2,
+
+    moveSpeed: classStats.baseMoveSpeed,
+
+    precision: 0,
+    evasion: primary.agility * 0.5,
+    penetration: 0,
+    tenacity: 0,
+    lifesteal: 0,
+    spellPenetration: 0
+  };
+
+  // ==========================================================
+  // 7) COMPUTED BONUS DES ÉQUIPEMENTS
   // ==========================================================
   for (const eq of player.inventory.equipment.values()) {
     if (!eq.itemId) continue;
@@ -135,15 +152,20 @@ let computed: IPlayerComputedStats = {
     if (!model?.stats) continue;
 
     for (const [key, raw] of Object.entries(model.stats)) {
+      const value = Number(raw);
 
-      // Skip primary (deja appliqué)
+      // Skip primary (déjà appliqué)
       if (["strength", "agility", "intelligence", "endurance", "spirit"].includes(key)) {
         continue;
       }
 
-      const value = Number(raw);
-      const k = key as keyof IPlayerComputedStats;
+      // 🟢 Bonus direct attackSpeed ADDITIF
+      if (key === "attackSpeed") {
+        computed.attackSpeed = Math.max(0.3, computed.attackSpeed + value);
+        continue;
+      }
 
+      const k = key as keyof IPlayerComputedStats;
       if (typeof computed[k] === "number") {
         computed[k] += value;
       }
@@ -151,7 +173,7 @@ let computed: IPlayerComputedStats = {
   }
 
   // ==========================================================
-  // 7) APPLY COMPUTED BONUS %
+  // 8) APPLY COMPUTED BONUS % (race + skin)
   // ==========================================================
   for (const [stat, percent] of Object.entries(computedPercent)) {
     const k = stat as keyof IPlayerComputedStats;
@@ -161,7 +183,7 @@ let computed: IPlayerComputedStats = {
   }
 
   // ==========================================================
-  // 8) FINALIZATION
+  // 9) FINALIZATION
   // ==========================================================
   computed.hp = computed.maxHp;
   computed.resource = computed.maxResource;
