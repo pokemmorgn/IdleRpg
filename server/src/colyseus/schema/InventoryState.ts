@@ -1,76 +1,93 @@
-import { Schema, type, MapSchema } from "@colyseus/schema";
+// server/src/colyseus/schema/InventoryState.ts
+
+import { Schema, type, ArraySchema, MapSchema } from "@colyseus/schema";
 import { InventorySlot } from "./InventorySlot";
 
 export class InventoryState extends Schema {
 
-    @type({ map: InventorySlot })
-    slots = new MapSchema<InventorySlot>();
+    // Nombre de slots dans l’inventaire
+    @type("number") maxSlots: number = 20;
 
+    // Slots de l’inventaire
+    @type([InventorySlot])
+    slots = new ArraySchema<InventorySlot>();
+
+    // Emplacements d’équipement (head, chest, ring1, ring2, etc.)
     @type({ map: InventorySlot })
     equipment = new MapSchema<InventorySlot>();
 
     constructor() {
         super();
 
-        // 20 slots par défaut
-        for (let i = 0; i < 20; i++) {
-            this.slots.set(String(i), new InventorySlot());
+        // Initialiser les slots vides
+        for (let i = 0; i < this.maxSlots; i++) {
+            this.slots.push(new InventorySlot());
         }
 
-        // Equipment slots
+        // Initialiser les équipements
         const equipSlots = [
-            "head", "neck", "shoulders", "chest", "legs", "feet", "hands",
-            "ring1", "ring2", "trinket1", "trinket2", "weapon", "offhand"
+            "head", "chest", "legs", "feet", "hands",
+            "weapon", "offhand",
+            "ring1", "ring2",
+            "trinket1", "trinket2",
+            "neck"
         ];
 
-        for (const k of equipSlots) {
-            this.equipment.set(k, new InventorySlot());
+        for (const slot of equipSlots) {
+            this.equipment.set(slot, new InventorySlot());
         }
     }
 
-    // ============================================================
-    // LOAD FROM PROFILE
-    // ============================================================
+    /* ==============================================
+       LOAD FROM PROFILE (Mongo → Serveur)
+       ============================================== */
     loadFromProfile(data: any) {
+        if (!data || typeof data !== "object") return;
 
-        if (!data) return;
+        // maxSlots
+        this.maxSlots = data.maxSlots || 20;
 
-        // --- SLOTS ---
-        for (const [k, raw] of Object.entries(data.slots || {})) {
-            const v = raw as { itemId?: string; amount?: number };
-            const slot = this.slots.get(k);
-            if (!slot) continue;
-
-            slot.itemId = v.itemId || "";
-            slot.amount = v.amount || 0;
+        // Rebuild inventory slots
+        this.slots = new ArraySchema<InventorySlot>();
+        for (let i = 0; i < this.maxSlots; i++) {
+            const slot = new InventorySlot();
+            const raw = data.slots?.[i];
+            if (raw && typeof raw === "object") {
+                slot.itemId = raw.itemId ?? "";
+                slot.amount = raw.amount ?? 0;
+            }
+            this.slots.push(slot);
         }
 
-        // --- EQUIPMENT ---
-        for (const [k, raw] of Object.entries(data.equipment || {})) {
-            const v = raw as { itemId?: string; amount?: number };
-            const slot = this.equipment.get(k);
-            if (!slot) continue;
-
-            slot.itemId = v.itemId || "";
-            slot.amount = v.amount || 0;
+        // Rebuild equipment
+        this.equipment = new MapSchema<InventorySlot>();
+        for (const [slotName, raw] of Object.entries<any>(data.equipment || {})) {
+            const slot = new InventorySlot();
+            if (raw && typeof raw === "object") {
+                slot.itemId = raw.itemId ?? "";
+                slot.amount = raw.amount ?? 0;
+            }
+            this.equipment.set(slotName, slot);
         }
     }
 
-    // ============================================================
-    // SAVE TO PROFILE
-    // ============================================================
+    /* ==============================================
+       SAVE TO PROFILE (Serveur → Mongo)
+       ============================================== */
     saveToProfile() {
         return {
-            slots: Object.fromEntries(
-                [...this.slots].map(([k, s]) => [
-                    k,
-                    { itemId: s.itemId, amount: s.amount }
-                ])
-            ),
+            maxSlots: this.maxSlots,
+            slots: this.slots.map(s => ({
+                itemId: s.itemId,
+                amount: s.amount
+            })),
             equipment: Object.fromEntries(
-                [...this.equipment].map(([k, s]) => [
+                [...this.equipment.entries()].map(([k, v]) => [
                     k,
-                    { itemId: s.itemId, amount: s.amount }
+                    {
+                        itemId: v.itemId,
+                        amount: v.amount
+                    }
                 ])
             )
         };
