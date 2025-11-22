@@ -2,6 +2,7 @@ import { PlayerState } from "../../schema/PlayerState";
 import { getRaceById } from "../../../config/races.config";
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../../../models/ServerProfile";
 import { SkinManagerInstance } from "../SkinManager";
+import { getStatsForClass } from "../../../config/classes.config"; // ✔ IMPORTANT
 
 // ==========================================================
 // TYPE BONUS SKIN
@@ -16,11 +17,15 @@ type SkinBonus = {
 // ==========================================================
 export function computeFullStats(player: PlayerState): IPlayerComputedStats {
 
+  // ==========================================================
   // 1) Stats de classe
+  // ==========================================================
   const classStats = getStatsForClass(player.class);
   const level = player.level;
 
+  // ==========================================================
   // 2) Bonus race + skin fusionnés
+  // ==========================================================
   const race = getRaceById(player.race);
 
   const skinBonus: SkinBonus =
@@ -151,7 +156,7 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
     }
   }
 
-  // Final
+  // FINAL
   computed.hp = computed.maxHp;
   computed.resource = computed.maxResource;
 
