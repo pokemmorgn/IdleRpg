@@ -1,7 +1,3 @@
-/**
- * TEST SKINS — Unlock / Equip / Level-Up
- */
-
 import * as Colyseus from "colyseus.js";
 
 const API_URL = "http://localhost:3000";
@@ -19,9 +15,9 @@ function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ========================================================
+// =====================================================================
 // AUTH
-// ========================================================
+// =====================================================================
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
@@ -129,9 +125,9 @@ async function reserveSeat(token: string) {
     return j;
 }
 
-// ========================================================
-// PICK SKIN AUTOMATIQUE SELON LA CLASSE
-// ========================================================
+// =====================================================================
+// SKIN PICK PAR CLASSE
+// =====================================================================
 function pickSkinFromClass(playerClass: string): string {
     const mapping: Record<string, string> = {
         "warrior": "warrior_basic01",
@@ -145,14 +141,20 @@ function pickSkinFromClass(playerClass: string): string {
     return mapping[playerClass] || "warrior_basic01";
 }
 
-// ========================================================
+// =====================================================================
 // TEST SKINS
-// ========================================================
+// =====================================================================
 async function testSkinSystem(room: Colyseus.Room, skinId: string) {
 
     console.log("\n🔥 DÉBUT DU TEST SKINS\n");
 
-    // LISTENERS
+    let lastStats: any = null;
+
+    room.onMessage("stats_update", (msg) => {
+        console.log("📈 STATS UPDATE →", msg);
+        lastStats = msg;
+    });
+
     room.onMessage("skin_unlocked", (msg) => {
         console.log("🟩 SKIN UNLOCKED →", msg);
     });
@@ -165,42 +167,78 @@ async function testSkinSystem(room: Colyseus.Room, skinId: string) {
         console.log("⬆️  SKIN LEVEL UP →", msg);
     });
 
-    room.onMessage("stats_update", (msg) => {
-        console.log("📈 STATS UPDATE →", msg);
-    });
-
     room.onMessage("skin_error", (msg) => {
         console.error("❌ SKIN ERROR →", msg);
     });
 
-    await sleep(800);
+    await sleep(1000);
 
-    // --- Étape 1: Unlock ---
+    console.log("🔍 Capture des stats AVANT");
+    let before = structuredClone(lastStats);
+
+    // ---------------------------------------------------------
+    // 1) UNLOCK
+    // ---------------------------------------------------------
     console.log("\n--- ÉTAPE 1 : UNLOCK ---");
     room.send("skin_unlock", { skinId });
-    await sleep(1000);
+    await sleep(800);
 
-    // --- Étape 2: Equip ---
+    let afterUnlock = structuredClone(lastStats);
+    console.log("📊 DIFF →", diff(before, afterUnlock));
+
+    // ---------------------------------------------------------
+    // 2) EQUIP
+    // ---------------------------------------------------------
     console.log("\n--- ÉTAPE 2 : EQUIP ---");
     room.send("skin_equip", { skinId });
-    await sleep(1000);
+    await sleep(800);
 
-    // --- Étape 3: Level-up ---
+    let afterEquip = structuredClone(lastStats);
+    console.log("📊 DIFF →", diff(afterUnlock, afterEquip));
+
+    // ---------------------------------------------------------
+    // 3) LEVEL 1
+    // ---------------------------------------------------------
     console.log("\n--- ÉTAPE 3 : LEVEL UP (1) ---");
     room.send("skin_level_up", { skinId });
-    await sleep(1000);
+    await sleep(800);
 
-    // --- Étape 4: Level-up 2 ---
+    let afterL1 = structuredClone(lastStats);
+    console.log("📊 DIFF →", diff(afterEquip, afterL1));
+
+    // ---------------------------------------------------------
+    // 4) LEVEL 2
+    // ---------------------------------------------------------
     console.log("\n--- ÉTAPE 4 : LEVEL UP (2) ---");
     room.send("skin_level_up", { skinId });
-    await sleep(1000);
+    await sleep(800);
+
+    let afterL2 = structuredClone(lastStats);
+    console.log("📊 DIFF →", diff(afterL1, afterL2));
 
     console.log("\n🎉 FIN DU TEST SKINS\n");
 }
 
-// ========================================================
+
+// =====================================================================
+// UTILS : DIFF ENTRE STATS
+// =====================================================================
+function diff(a: any, b: any) {
+    if (!a || !b) return "Pas de données.";
+    let changes: Record<string, { from: any, to: any }> = {};
+
+    for (const k in b) {
+        if (a[k] !== b[k]) {
+            changes[k] = { from: a[k], to: b[k] };
+        }
+    }
+    return changes;
+}
+
+
+// =====================================================================
 // MAIN
-// ========================================================
+// =====================================================================
 (async () => {
 
     await register();
