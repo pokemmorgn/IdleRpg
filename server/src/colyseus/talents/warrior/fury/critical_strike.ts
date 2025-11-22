@@ -1,11 +1,11 @@
-import { PlayerState } from "../../../schema/PlayerState"; 
-import { ITalentScript } from "../../ITalentScript"; 
+import { PlayerState } from "../../../schema/PlayerState";
+import { ITalentScript } from "../../ITalentScript";
 
 export default class CriticalStrikeTalent implements ITalentScript {
+  // Chaque rang donne +1.5% de coup critique
   private readonly CRIT_PER_RANK = 1.5;
 
-  // Le type de retour est un peu complexe à importer, on peut le simplifier
-  getStatBonus(player: PlayerState, rank: number): Partial<any> { // Utilisons 'any' pour simplifier, ou créez un type commun
+  getStatBonus(player: PlayerState, rank: number): Partial<any> {
     return {
       criticalChance: this.CRIT_PER_RANK * rank
     };
