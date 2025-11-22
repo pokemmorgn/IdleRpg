@@ -1,5 +1,5 @@
 /**
- * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE + SYNCHRO)
+ * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE + FILE D'ATTENTE)
  */
 
 import * as Colyseus from "colyseus.js";
@@ -26,7 +26,7 @@ function sleep(ms: number) {
 }
 
 /* ======================================================================
-   QUEUE DE MESSAGES — Évite tout écrasement de listeners
+   QUEUE DE MESSAGES — Version robuste avec waitForNext
 ======================================================================== */
 function setupMessageQueue(room: Colyseus.Room) {
     const queues: Record<string, any[]> = {};
@@ -40,7 +40,14 @@ function setupMessageQueue(room: Colyseus.Room) {
         });
     }
 
-    function waitFor(type: string): Promise<any> {
+    // ✅ NOUVELLE FONCTION : Vide la file avant d'attendre le prochain message
+    function waitForNext(type: string): Promise<any> {
+        // 1. Vider tous les anciens messages de la file
+        if (queues[type]) {
+            queues[type] = [];
+        }
+
+        // 2. Attendre le prochain message qui arrive
         return new Promise(resolve => {
             const interval = setInterval(() => {
                 if (queues[type] && queues[type].length > 0) {
@@ -52,7 +59,7 @@ function setupMessageQueue(room: Colyseus.Room) {
         });
     }
 
-    return { on, waitFor };
+    return { on, waitForNext }; // On exporte la nouvelle fonction
 }
 
 /* ======================================================================
@@ -140,16 +147,16 @@ async function reserveSeat(token: string) {
 /* ======================================================================
    PRINT STATS — version queue-safe
 ======================================================================== */
-async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
+async function printStats(waitForNext: any, room: Colyseus.Room, label: string) {
 
     room.send("stats_request");
-    const msg = await waitFor("stats_update");
+    const msg = await waitForNext("stats_update");
 
     console.log(`\n📊 ${label}:`, msg);
 }
 
 /* ======================================================================
-   MAIN - VERSION FINALE CORRIGÉE
+   MAIN - VERSION FINALE ET CORRIGÉE
 ======================================================================== */
 (async () => {
     await register();
@@ -169,7 +176,8 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 
     console.log("🔌 CONNECTÉ AU SERVEUR !");
 
-    const { on, waitFor } = setupMessageQueue(room);
+    // On utilise waitForNext maintenant
+    const { on, waitForNext } = setupMessageQueue(room);
 
     // listeners permanents
     on("welcome", () => console.log("👋 WELCOME!"));
@@ -178,10 +186,10 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
     on("stats_update", msg => console.log("📈 STATS UPDATE:", msg));
 
     // Attendre welcome
-    await waitFor("welcome");
+    await waitForNext("welcome");
 
     await sleep(200);
-    await printStats(waitFor, room, "Stats au login");
+    await printStats(waitForNext, room, "Stats au login");
 
     console.log("\n🔥 AJOUT + AUTO-ÉQUIPEMENT…");
 
@@ -194,14 +202,15 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
     ];
 
     // ==========================================================
-    // BOUCLE FINALE
+    // BOUCLE FINALE AVEC waitForNext
     // ==========================================================
     for (const itemToAdd of EQUIP_ITEMS) {
         console.log(`→ add ${itemToAdd}`);
         room.send("inv_add", { itemId: itemToAdd, amount: 1 });
 
-        // 1. Attendre la mise à jour de l'inventaire.
-        const inventoryMsg = await waitFor("inventory_update");
+        // ✅ UTILISATION DE waitForNext
+        // 1. Attendre le PROCHAIN message de mise à jour de l'inventaire.
+        const inventoryMsg = await waitForNext("inventory_update");
         
         // 2. On cast le message pour que TypeScript connaisse la structure de `slots`
         const inventoryData = inventoryMsg as { slots: SlotData[] };
@@ -215,14 +224,11 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
             continue;
         }
 
-        // ✅ SOLUTION : Attendre un court instant pour éviter la race condition
-        await sleep(50);
-
         console.log(`   → equip ${itemToAdd} depuis slot ${slotIndex}`);
         room.send("inv_equip", { fromSlot: slotIndex });
 
         // 5. Attendre la mise à jour des stats.
-        const newStats = await waitFor("stats_update");
+        const newStats = await waitForNext("stats_update");
         console.log(`📈 DIFF STATS (${itemToAdd}) :`);
         console.log(newStats);
     }
