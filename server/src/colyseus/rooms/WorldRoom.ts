@@ -17,7 +17,9 @@ import { TestManager } from "../test/TestManager";
 
 import { SkinManager } from "../managers/SkinManager";
 import { InventoryManager } from "../managers/InventoryManager";
-import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
+import { computeFullStats } from "./stats/PlayerStatsCalculator";
+// AJOUT: Importer le LevelManager
+import { LevelManager } from "../managers/LevelManager";
 
 import ServerProfile from "../../models/ServerProfile";
 import ItemModel from "../../models/Item";
@@ -35,6 +37,8 @@ export class WorldRoom extends Room<GameState> {
   private questObjectiveManager!: QuestObjectiveManager;
   private dialogueManager!: DialogueManager;
   private inventoryManager!: InventoryManager;
+  // AJOUT: Déclarer le LevelManager
+  private levelManager!: LevelManager;
 
   private testManager?: TestManager;
 
@@ -98,6 +102,14 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
 
+    // AJOUT: Initialiser le LevelManager
+    this.levelManager = new LevelManager(
+      (sessionId, type, data) => {
+        const c = this.clients.find(cl => cl.sessionId === sessionId);
+        if (c) c.send(type, data);
+      }
+    );
+
     await this.npcManager.loadNPCs();
     await this.monsterManager.loadMonsters();
 
@@ -149,12 +161,15 @@ export class WorldRoom extends Room<GameState> {
 
     const p = load.profile;
 
-    // ❗❗ IMPORTANT : On NE retourne PAS p.stats ❗❗
+    // MODIFICATION: Inclure les données XP dans l'objet retourné
     return {
       playerId: p.playerId,
       profileId: p.profileId,
       characterName: p.characterName,
       level: p.level,
+      // AJOUT: Ajouter les données XP
+      xp: p.xp || 0, // Valeur par défaut si non trouvée
+      nextLevelXp: p.nextLevelXp || this.levelManager.computeNextLevelXp(p.level || 1), // Calculer si non trouvé
       characterClass: p.class,
       characterRace: p.race,
       characterSlot: p.characterSlot,
@@ -167,6 +182,7 @@ export class WorldRoom extends Room<GameState> {
   // JOIN
   // ===========================================================
   async onJoin(client: Client, options: any, auth: any) {
+    // MODIFICATION: Passer les nouvelles données XP au constructeur de PlayerState
     const player = new PlayerState(
       client.sessionId,
       auth.playerId,
@@ -175,7 +191,9 @@ export class WorldRoom extends Room<GameState> {
       auth.characterName,
       auth.level,
       auth.characterClass,
-      auth.characterRace
+      auth.characterRace,
+      auth.xp, // AJOUT
+      auth.nextLevelXp // AJOUT
     );
 
     // Load profile data
@@ -225,6 +243,14 @@ export class WorldRoom extends Room<GameState> {
   private async handleMessage(client: Client, type: string, msg: any) {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
+
+    // AJOUT: Message de debug pour donner de l'XP
+    if (type === "debug_give_xp") {
+      const amount = msg.amount || 100;
+      console.log(`[DEBUG] Giving ${amount} XP to ${player.characterName}`);
+      await this.levelManager.giveXP(player, amount);
+      return;
+    }
 
     // Skin manager
     const handledBySkin = require("../managers/SkinManager")
@@ -290,9 +316,13 @@ export class WorldRoom extends Room<GameState> {
       const computed = await computeFullStats(player);
       player.loadStatsFromProfile(computed);
 
+      // MODIFICATION: Ajouter level, xp et nextLevelXp à la sauvegarde
       await ServerProfile.findByIdAndUpdate(player.profileId, {
         $set: {
           lastOnline: new Date(),
+          level: player.level, // AJOUT
+          xp: player.xp, // AJOUT
+          nextLevelXp: player.nextLevelXp, // AJOUT
           stats: computed,
           questData: player.saveQuestsToProfile(),
           inventory: player.inventory.saveToProfile()
