@@ -166,6 +166,16 @@ async function testQuestSystem(room: Colyseus.Room) {
         console.log("🔄 PROGRESSION QUÊTE →", msg);
     });
 
+    // ======== AJOUT DES GESTIONNAIRES MANQUANTS ========
+    room.onMessage("quest_step_complete", (msg) => {
+        console.log("📝 ÉTAPE DE QUÊTE TERMINÉE →", msg);
+    });
+
+    room.onMessage("quest_complete", (msg) => {
+        console.log("🏁 QUÊTE TERMINÉE →", msg);
+    });
+    // ====================================================
+
     room.onMessage("quest_ready_to_turn_in", (msg) => {
         console.log("🏁 QUÊTE PRÊTE À ÊTRE RENDUE →", msg);
     });
