@@ -16,45 +16,44 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
   const level = player.level;
 
   // ==========================================================
-  //  BONUS RACE + SKIN
+  // 1) BONUS RACE + SKIN (PRIMARY + COMPUTED %)
   // ==========================================================
   const race = getRaceById(player.race);
-  const skinBonus: SkinBonus =
-    SkinManagerInstance?.getSkinStatBonus(player) || {};
+  const skinBonus: SkinBonus = SkinManagerInstance?.getSkinStatBonus(player) || {};
 
-  const totalPrimary: Record<string, number> = {};
-  const totalComputed: Record<string, number> = {};
+  const primaryPercent: Record<string, number> = {};
+  const computedPercent: Record<string, number> = {};
 
-  // --- PRIMARY RACE ---
+  // --- RACE PRIMARY %
   if (race?.statsModifiers?.primaryPercent) {
     for (const k in race.statsModifiers.primaryPercent) {
-      totalPrimary[k] = (totalPrimary[k] || 0) + race.statsModifiers.primaryPercent[k];
+      primaryPercent[k] = (primaryPercent[k] || 0) + race.statsModifiers.primaryPercent[k];
     }
   }
 
-  // --- PRIMARY SKIN ---
+  // --- SKIN PRIMARY %
   if (skinBonus.primaryPercent) {
     for (const k in skinBonus.primaryPercent) {
-      totalPrimary[k] = (totalPrimary[k] || 0) + skinBonus.primaryPercent[k];
+      primaryPercent[k] = (primaryPercent[k] || 0) + skinBonus.primaryPercent[k];
     }
   }
 
-  // --- COMPUTED RACE ---
+  // --- RACE COMPUTED %
   if (race?.statsModifiers?.computedPercent) {
     for (const k in race.statsModifiers.computedPercent) {
-      totalComputed[k] = (totalComputed[k] || 0) + race.statsModifiers.computedPercent[k];
+      computedPercent[k] = (computedPercent[k] || 0) + race.statsModifiers.computedPercent[k];
     }
   }
 
-  // --- COMPUTED SKIN ---
+  // --- SKIN COMPUTED %
   if (skinBonus.computedPercent) {
     for (const k in skinBonus.computedPercent) {
-      totalComputed[k] = (totalComputed[k] || 0) + skinBonus.computedPercent[k];
+      computedPercent[k] = (computedPercent[k] || 0) + skinBonus.computedPercent[k];
     }
   }
 
   // ==========================================================
-  // PRIMARY BASE
+  // 2) PRIMARY BASE (LEVEL SCALING)
   // ==========================================================
   let primary: IPlayerPrimaryStats = {
     strength: classStats.baseStats.strength + classStats.statsPerLevel.strength * (level - 1),
@@ -65,39 +64,35 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
   };
 
   // ==========================================================
-  // 🔥 BONUS PRIMARY DES ÉQUIPEMENTS
+  // 3) PRIMARY BONUS DES ÉQUIPEMENTS
   // ==========================================================
-  for (const equipSlot of player.inventory.equipment.values()) {
-    if (!equipSlot.itemId) continue;
+  for (const eq of player.inventory.equipment.values()) {
+    if (!eq.itemId) continue;
 
-    const model = await ItemModel.findOne({ itemId: equipSlot.itemId });
+    const model = await ItemModel.findOne({ itemId: eq.itemId });
     if (!model?.stats) continue;
 
     for (const key of ["strength", "agility", "intelligence", "endurance", "spirit"]) {
-      const k = key as keyof IPlayerPrimaryStats;
       if (typeof model.stats[key] === "number") {
+        const k = key as keyof IPlayerPrimaryStats;
         primary[k] += model.stats[key]!;
       }
     }
   }
 
-  // APPLY PRIMARY BONUS %
-  for (const [stat, percent] of Object.entries(totalPrimary)) {
+  // ==========================================================
+  // 4) APPLY PRIMARY BONUS %
+  // ==========================================================
+  for (const [stat, percent] of Object.entries(primaryPercent)) {
     const k = stat as keyof IPlayerPrimaryStats;
     primary[k] = Math.floor(primary[k] * (1 + percent / 100));
   }
 
-  const STR = primary.strength;
-  const AGI = primary.agility;
-  const INT = primary.intelligence;
-  const END = primary.endurance;
-  const SPI = primary.spirit;
-
   // ==========================================================
-  // COMPUTED BASE
+  // 5) COMPUTED BASE (avant ajout équipement)
   // ==========================================================
   let computed: IPlayerComputedStats = {
-    maxHp: 100 + END * 5,
+    maxHp: 100 + primary.endurance * 5,
     hp: 0,
 
     maxResource: 0,
@@ -106,21 +101,22 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     rageRegen: 0,
     energyRegen: 0,
 
-    attackPower: STR * 2,
-    spellPower: INT * 2,
-    attackSpeed: Math.max(0.3, (player.attackSpeed || 2.5) - AGI * 0.02),
+    attackPower: primary.strength * 2,
+    spellPower: primary.intelligence * 2,
 
-    criticalChance: AGI * 0.1,
+    attackSpeed: Math.max(0.3, (player.attackSpeed || 2.5) - primary.agility * 0.02),
+
+    criticalChance: primary.agility * 0.1,
     criticalDamage: 150,
 
-    damageReduction: END * 0.5,
-    armor: END,
-    magicResistance: INT * 0.2,
+    damageReduction: primary.endurance * 0.5,
+    armor: primary.endurance,
+    magicResistance: primary.intelligence * 0.2,
 
     moveSpeed: classStats.baseMoveSpeed,
 
     precision: 0,
-    evasion: AGI * 0.5,
+    evasion: primary.agility * 0.5,
     penetration: 0,
     tenacity: 0,
     lifesteal: 0,
@@ -128,40 +124,22 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
   };
 
   // ==========================================================
-  // RESOURCE TYPE
+  // 6) COMPUTED BONUS DES ÉQUIPEMENTS
   // ==========================================================
-  switch (classStats.resourceType) {
-    case "mana":
-      computed.maxResource = 100 + INT * 5;
-      computed.manaRegen = SPI * 2;
-      break;
+  for (const eq of player.inventory.equipment.values()) {
+    if (!eq.itemId) continue;
 
-    case "rage":
-      computed.maxResource = 100;
-      break;
-
-    case "energy":
-      computed.maxResource = 100;
-      computed.energyRegen = 10;
-      break;
-  }
-
-  // ==========================================================
-  // 🔥 BONUS COMPUTED DES ÉQUIPEMENTS
-  // ==========================================================
-  for (const equipSlot of player.inventory.equipment.values()) {
-    if (!equipSlot.itemId) continue;
-
-    const model = await ItemModel.findOne({ itemId: equipSlot.itemId });
+    const model = await ItemModel.findOne({ itemId: eq.itemId });
     if (!model?.stats) continue;
 
-    for (const [key, rawValue] of Object.entries(model.stats)) {
+    for (const [key, raw] of Object.entries(model.stats)) {
 
+      // Skip primary (deja appliqué)
       if (["strength", "agility", "intelligence", "endurance", "spirit"].includes(key)) {
-        continue; // déjà dans primary
+        continue;
       }
 
-      const value = Number(rawValue);
+      const value = Number(raw);
       const k = key as keyof IPlayerComputedStats;
 
       if (typeof computed[k] === "number") {
@@ -170,14 +148,19 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     }
   }
 
-  // APPLY COMPUTED BONUS %
-  for (const [stat, percent] of Object.entries(totalComputed)) {
+  // ==========================================================
+  // 7) APPLY COMPUTED BONUS %
+  // ==========================================================
+  for (const [stat, percent] of Object.entries(computedPercent)) {
     const k = stat as keyof IPlayerComputedStats;
     if (typeof computed[k] === "number") {
       computed[k] = Math.floor(computed[k] * (1 + percent / 100));
     }
   }
 
+  // ==========================================================
+  // 8) FINALIZATION
+  // ==========================================================
   computed.hp = computed.maxHp;
   computed.resource = computed.maxResource;
 
