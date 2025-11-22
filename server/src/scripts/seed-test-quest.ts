@@ -11,11 +11,31 @@ dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/idlerpg";
 
+const colors = {
+  reset: "\x1b[0m",
+  green: "\x1b[32m",
+  red: "\x1b[31m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  cyan: "\x1b[36m",
+};
+
+const log = {
+  success: (msg: string) => console.log(`${colors.green}✅ ${msg}${colors.reset}`),
+  error: (msg: string)   => console.log(`${colors.red}❌ ${msg}${colors.reset}`),
+  info: (msg: string)    => console.log(`${colors.blue}ℹ️  ${msg}${colors.reset}`),
+  warning: (msg: string) => console.log(`${colors.yellow}⚠️  ${msg}${colors.reset}`),
+};
+
 async function seedQuests() {
   try {
-    console.log("Connexion MongoDB...");
+    log.info("Connexion à MongoDB...");
     await mongoose.connect(MONGO_URI);
+    log.success("Connecté à MongoDB");
 
+    // ============================================================
+    // LISTE DES QUÊTES — TOUTES EN start_zone
+    // ============================================================
     const quests = [
 
       // 🌟 QUÊTES PRINCIPALES
@@ -31,7 +51,11 @@ async function seedQuests() {
         isActive: true,
         isOneShot: true,
         objectives: [
-          { objectiveId: "talk_instructor", type: "talk", npcId: "npc_instructor" }
+          {
+            objectiveId: "talk_instructor",
+            type: "talk",
+            npcId: "npc_instructor",
+          }
         ],
         rewards: { xp: 50, gold: 0, items: [], reputation: [] },
       },
@@ -53,7 +77,7 @@ async function seedQuests() {
             type: "kill",
             count: 1,
             enemyType: "wolf_basic",
-          },
+          }
         ],
         rewards: { xp: 100, gold: 10, items: [], reputation: [] },
       },
@@ -70,7 +94,11 @@ async function seedQuests() {
         isActive: true,
         isOneShot: true,
         objectives: [
-          { objectiveId: "explore_camp", type: "explore", locationId: "camp_east" }
+          {
+            objectiveId: "explore_camp",
+            type: "explore",
+            locationId: "camp_east",
+          }
         ],
         rewards: { xp: 150, gold: 20, items: [], reputation: [] },
       },
@@ -110,7 +138,11 @@ async function seedQuests() {
         isActive: true,
         isOneShot: true,
         objectives: [
-          { objectiveId: "talk_old_lady", type: "talk", npcId: "npc_old_lady" },
+          {
+            objectiveId: "talk_old_lady",
+            type: "talk",
+            npcId: "npc_old_lady",
+          },
         ],
         rewards: { xp: 30, gold: 40, items: [], reputation: [] },
       },
@@ -135,23 +167,36 @@ async function seedQuests() {
           },
         ],
         rewards: { xp: 60, gold: 15, items: [], reputation: [] },
-      }
+      },
     ];
 
+    // ============================================================
+    // SUPPRESSION + INSERTION
+    // ============================================================
+
     for (const q of quests) {
+      log.info(`Suppression de '${q.questId}'...`);
       await Quest.deleteOne({ questId: q.questId });
+
+      log.info(`Création de '${q.questId}'...`);
       await Quest.create(q);
-      console.log(`→ ${q.questId} créée.`);
+
+      log.success(`→ ${q.questId} créée.`);
     }
 
+    log.success("\n🎉 Toutes les quêtes ont été créées avec succès !");
     await mongoose.disconnect();
-    console.log("Toutes les quêtes ont été créées !");
+    log.success("Déconnecté de MongoDB");
+
     process.exit(0);
 
-  } catch (error) {
+  } catch (error: any) {
+    log.error(`Erreur: ${error.message}`);
     console.error(error);
     process.exit(1);
   }
 }
 
-if (require.main === module) seedQuests();
+if (require.main === module) {
+  seedQuests();
+}
