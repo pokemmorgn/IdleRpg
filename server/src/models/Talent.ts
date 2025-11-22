@@ -1,21 +1,25 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface ITalent extends Document {
-  talentId: string; // Ex: "warrior_crit_01"
+  talentId: string; // ex: "warrior_fury_critical_strike"
   name: string;
   description: string;
-  icon: string; // Chemin vers l'icône
-  
-  // Conditions pour débloquer le talent
-  requiredLevel: number;
-  prerequisiteTalentId?: string; // ID du talent précédent dans l'arbre
-  maxRank: number; // Ex: 5
+  icon: string;
 
-  // Effet du talent par rang
-  effect: {
-    stat: string; // Ex: "criticalChance", "attackPower"
-    valuePerRank: number; // Ex: 1.5 (pour +1.5% par rang)
-  };
+  treeId: string; // ex: "warrior_fury"
+  maxRank: number;
+  requiredLevel: number;
+
+  // Prérequis pour pouvoir apprendre le premier rang
+  prerequisites: {
+    type: 'talent' | 'level';
+    talentId?: string; // requis si type='talent'
+    rank?: number;     // requis si type='talent'
+    level?: number;   // requis si type='level'
+  }[];
+
+  // Le nom du fichier de script à exécuter (sans .ts)
+  scriptName: string; 
 }
 
 const TalentSchema = new Schema<ITalent>({
@@ -23,15 +27,11 @@ const TalentSchema = new Schema<ITalent>({
   name: { type: String, required: true },
   description: { type: String, required: true },
   icon: { type: String, required: true },
-  requiredLevel: { type: Number, required: true, default: 1 },
-  prerequisiteTalentId: { type: String, required: false },
+  treeId: { type: String, required: true, index: true },
   maxRank: { type: Number, required: true, default: 1 },
-  effect: {
-    stat: { type: String, required: true },
-    valuePerRank: { type: Number, required: true }
-  }
-}, {
-  timestamps: true
-});
+  requiredLevel: { type: Number, required: true, default: 1 },
+  prerequisites: [{ type: Schema.Types.Mixed }], // Flexible pour différents types de prérequis
+  scriptName: { type: String, required: true }
+}, { timestamps: true });
 
 export default mongoose.model<ITalent>("Talent", TalentSchema);
