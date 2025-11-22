@@ -1,53 +1,61 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IItemModel extends Document {
-  itemId: string;
+    itemId: string;
+    name: string;
 
-  // category: "equipment" | "consumable" | "material" | "chest"
-  type: string;
+    type: "consumable" | "equipment" | "material" | "container" | "quest";
+    icon: string;
 
-  name: string;
-  description?: string;
+    stackable?: boolean;
+    maxStack?: number;
 
-  iconId?: string;
+    // Consumable
+    effects?: any;
 
-  // Stackable items
-  stackable?: boolean;
-  maxStack?: number;
+    // Equipment
+    equipSlot?: string;
+    stats?: Record<string, number>;
 
-  // Equipment only
-  equipSlot?: string; // head, chest, ring1, ring2...
+    // Container / loot box
+    rewards?: Array<{
+        itemId: string;
+        min: number;
+        max: number;
+        weight: number;
+    }>;
 
-  // Rarity: common/rare/epic/legendary/mythic
-  rarity?: string;
+    // Bag upgrade
+    bagSizeIncrease?: number;
 
-  // Consumables only
-  effects?: any;
-
-  // Alt-shared or not
-  shared?: boolean;
+    // Shared flag (si tu veux plus tard)
+    shared?: boolean;
 }
 
 const ItemSchema = new Schema<IItemModel>({
-  itemId: { type: String, required: true, unique: true },
+    itemId: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    type: { type: String, required: true },
+    icon: { type: String, required: true },
 
-  type: { type: String, required: true }, // equipment / consumable / material / chest
+    stackable: { type: Boolean, default: true },
+    maxStack: { type: Number, default: 99 },
 
-  name: { type: String, required: true },
-  description: { type: String },
+    effects: { type: Object },
 
-  iconId: { type: String },
+    equipSlot: { type: String },
+    stats: { type: Object },
 
-  stackable: { type: Boolean, default: true },
-  maxStack: { type: Number, default: 99 },
+    rewards: [{
+        itemId: String,
+        min: Number,
+        max: Number,
+        weight: Number
+    }],
 
-  equipSlot: { type: String },
+    bagSizeIncrease: Number,
 
-  rarity: { type: String, default: "common" },
-
-  effects: { type: Object },
-
-  shared: { type: Boolean, default: false }
+    shared: { type: Boolean, default: false }
 });
 
 export default mongoose.model<IItemModel>("Item", ItemSchema);
