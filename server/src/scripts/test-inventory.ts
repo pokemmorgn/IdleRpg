@@ -38,9 +38,8 @@ const step = (t: string) => colors.magenta(`\n=== ${t} ===`);
 function createSendAsync(room: Colyseus.Room, waitFor: any) {
     return async (type: string, payload?: any) => {
         room.send(type, payload || {});
-
         try {
-            const msg = await waitFor(type + "_response"); // fallback
+            const msg = await waitFor(type + "_response");
             return msg;
         } catch {
             return null;
@@ -173,7 +172,7 @@ function printInventory(inv: any) {
 }
 
 // ========================================================
-// PRINT DIFF STATS (vieux -> nouveau)
+// PRINT DIFF STATS
 // ========================================================
 function printStatDiff(before: any, after: any, title: string) {
     console.log(colors.bold(`\n📊 ${title}`));
@@ -191,7 +190,7 @@ function printStatDiff(before: any, after: any, title: string) {
             colors.gray("(=)");
 
         console.log(
-            ` - ${key.padEnd(16)}: ${colors.yellow(oldVal)} → ${colors.cyan(newVal)} ${diffTxt}`
+            ` - ${key.padEnd(16)}: ${colors.yellow(String(oldVal))} → ${colors.cyan(String(newVal))} ${diffTxt}`
         );
     }
 }
@@ -217,7 +216,6 @@ function printStatDiff(before: any, after: any, title: string) {
     console.log(ok("Connecté au serveur !"));
 
     const { on, waitFor } = createMessageQueue(room);
-
     const sendAsync = createSendAsync(room, waitFor);
 
     on("welcome", () => console.log(ok("WELCOME reçu")));
@@ -267,7 +265,7 @@ function printStatDiff(before: any, after: any, title: string) {
         await sleep(80);
     }
 
-    // STATS après items
+    // Stats après items
     room.send("stats_request");
     const stats1 = await waitFor("stats_update");
 
@@ -285,7 +283,7 @@ function printStatDiff(before: any, after: any, title: string) {
     printStatDiff(stats1, stats2, "Après équipement");
 
     // --------------------------------------------------------
-    // 4) DÉSÉQUIPER
+    // 4) DÉSÉQUIPEMENT
     // --------------------------------------------------------
     step("DÉSÉQUIPEMENT");
 
@@ -304,7 +302,7 @@ function printStatDiff(before: any, after: any, title: string) {
     // --------------------------------------------------------
     // FIN
     // --------------------------------------------------------
-    console.log(colors.bold.green("\n🎉 FIN DU TEST ULTIMATE !"));
+    console.log(colors.green(colors.bold("\n🎉 FIN DU TEST ULTIMATE !")));
     process.exit(0);
 
 })();
