@@ -1,4 +1,3 @@
-// server/src/colyseus/schema/PlayerState.ts
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
@@ -92,10 +91,6 @@ export class PlayerState extends Schema {
   @type("number") lastMovementTime: number = 0;
 
   // ===== AFK =====
-  @type("number") afkRefX: number = 0;
-  @type("number") afkRefY: number = 0;
-  @type("number") afkRefZ: number = 0;
-
   @type("boolean") isAFK: boolean = false;
   @type("boolean") isDead: boolean = false;
   @type("number") deathTimer: number = 0;
@@ -105,9 +100,9 @@ export class PlayerState extends Schema {
   // ===== QUÊTES =====
   @type(QuestState) quests: QuestState = new QuestState();
 
-  // ===== CONSOMMABLES =====
-  @type("number") potionHP: number = 10;
-  @type("number") food: number = 20;
+  // ===== CONSOMMABLES (SUPPRIMÉS) =====
+  // @type("number") potionHP: number = 10;
+  // @type("number") food: number = 20;
 
   // --------------------------------------------------------------------
   // 🔥 ITEM CACHE (SERVER ONLY, NON SYNCHRONISÉ)
@@ -260,7 +255,6 @@ export class PlayerState extends Schema {
   // ===========================================================
   loadTalentsFromProfile(data: any) {
     if (!data) return;
-    // La MapSchema de Colyseus peut être remplie avec un objet simple
     Object.entries(data).forEach(([talentId, rank]) => {
       this.talents.set(talentId, rank as number);
     });
@@ -270,7 +264,6 @@ export class PlayerState extends Schema {
   // SAVE TALENTS
   // ===========================================================
   saveTalentsToProfile() {
-    // La MapSchema de Colyseus peut être convertie en objet simple
     return Object.fromEntries(this.talents);
   }
   // ===========================================================
