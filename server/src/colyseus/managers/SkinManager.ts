@@ -1,15 +1,11 @@
-// server/src/colyseus/managers/SkinManager.ts
+// src/colyseus/managers/SkinManager.ts
 
 import { PlayerState } from "../schema/PlayerState";
-import { SkinState, SkinProgressState } from "../schema/SkinState";
+import { SkinProgressState } from "../schema/SkinState";
 import { ALL_SKINS, getSkinById, getSkinsByClass } from "../../config/skins/skins.config";
 
 export class SkinManager {
 
-  /**
-   * Charge tous les skins disponibles au lancement serveur
-   * (Déjà importés depuis skins.config.ts)
-   */
   constructor() {
     console.log(`🎨 SkinManager chargé avec ${ALL_SKINS.length} skins.`);
   }
@@ -34,13 +30,13 @@ export class SkinManager {
     const config = getSkinById(skinId);
     if (!config) return false;
 
-    // Classe incorrecte → refus
-    if (config.classId !== player.classId) {
-      console.warn(`❌ Tentative d'unlock skin ${skinId} pour la mauvaise classe.`);
+    // Vérifie que la classe du skin correspond à la classe du joueur
+    if (config.classId !== player.class) {
+      console.warn(`❌ Tentative d'unlock skin ${skinId} pour la mauvaise classe (player.class=${player.class}).`);
       return false;
     }
 
-    // Déjà débloqué → ok mais inutile
+    // Déjà débloqué → on ne fait rien de plus
     if (this.hasSkin(player, skinId)) {
       return true;
     }
@@ -80,8 +76,8 @@ export class SkinManager {
     const config = getSkinById(skinId);
     if (!config) return false;
 
-    // Vérif classe
-    if (config.classId !== player.classId) return false;
+    // Vérif classe encore une fois par sécurité
+    if (config.classId !== player.class) return false;
 
     player.skins.equippedSkinId = skinId;
     return true;
@@ -101,7 +97,7 @@ export class SkinManager {
       const config = getSkinById(skinId);
       if (!config) continue;
 
-      const levelMultiplier = progress.level / config.maxLevel; 
+      const levelMultiplier = progress.level / config.maxLevel;
       // ex: niveau 1/5 = x0.2, niveau 5/5 = x1.0
 
       if (config.statsModifiers.primaryPercent) {
@@ -127,6 +123,6 @@ export class SkinManager {
   // ===========================================================================
 
   getAvailableSkinsForPlayer(player: PlayerState) {
-    return getSkinsByClass(player.classId);
+    return getSkinsByClass(player.class);
   }
 }
