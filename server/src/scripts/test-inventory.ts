@@ -1,5 +1,5 @@
 /**
- * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE + TYPAGE)
+ * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE + SYNCHRO)
  */
 
 import * as Colyseus from "colyseus.js";
@@ -149,7 +149,7 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 }
 
 /* ======================================================================
-   MAIN - VERSION CORRIGÉE
+   MAIN - VERSION FINALE CORRIGÉE
 ======================================================================== */
 (async () => {
     await register();
@@ -194,13 +194,12 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
     ];
 
     // ==========================================================
-    // BOUCLE CORRIGÉE
+    // BOUCLE FINALE
     // ==========================================================
     for (const itemToAdd of EQUIP_ITEMS) {
         console.log(`→ add ${itemToAdd}`);
         room.send("inv_add", { itemId: itemToAdd, amount: 1 });
 
-        // ⬇️ NOUVELLE LOGIQUE ⬇️
         // 1. Attendre la mise à jour de l'inventaire.
         const inventoryMsg = await waitFor("inventory_update");
         
@@ -208,7 +207,6 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
         const inventoryData = inventoryMsg as { slots: SlotData[] };
 
         // 3. Trouver l'index du slot qui contient l'item que nous venons d'ajouter.
-        //    On utilise le type SlotData pour le paramètre `s` de `findIndex`.
         const slotIndex = inventoryData.slots.findIndex((s: SlotData) => s.itemId === itemToAdd);
         
         // 4. Vérification de sécurité.
@@ -216,6 +214,9 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
             console.error(`❌ ERREUR: L'item ${itemToAdd} n'a pas été trouvé dans l'inventaire après ajout !`);
             continue;
         }
+
+        // ✅ SOLUTION : Attendre un court instant pour éviter la race condition
+        await sleep(50);
 
         console.log(`   → equip ${itemToAdd} depuis slot ${slotIndex}`);
         room.send("inv_equip", { fromSlot: slotIndex });
