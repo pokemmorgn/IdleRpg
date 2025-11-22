@@ -280,6 +280,7 @@ export class PlayerState extends Schema {
       level: this.level,
       xp: this.xp,
       nextLevelXp: this.nextLevelXp,
+      availableSkillPoints: this.availableSkillPoints,
       hp: this.hp,
       maxHp: this.maxHp,
       resource: this.resource,
