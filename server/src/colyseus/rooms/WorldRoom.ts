@@ -175,31 +175,33 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   // JOIN
   // ===========================================================
-  async onJoin(client: Client, options: any, auth: any) {
-    console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
+async onJoin(client: Client, options: any, auth: any) {
+  console.log("🚪 onJoin:", { sessionId: client.sessionId, auth });
 
-    const player = new PlayerState(
-      client.sessionId,
-      auth.playerId,
-      auth.profileId,
-      auth.characterSlot,
-      auth.characterName,
-      auth.level,
-      auth.characterClass,
-      auth.characterRace
-    );
+  const player = new PlayerState(
+    client.sessionId,
+    auth.playerId,
+    auth.profileId,
+    auth.characterSlot,
+    auth.characterName,
+    auth.level,
+    auth.characterClass,
+    auth.characterRace
+  );
 
-    if (auth.questData) player.loadQuestsFromProfile(auth.questData);
+  if (auth.questData) player.loadQuestsFromProfile(auth.questData);
 
-    // ALWAYS compute stats freshly using skins + race + class
-    const computed = computeFullStats(player);
-    player.loadStatsFromProfile(computed);
+  const computed = computeFullStats(player);
+  player.loadStatsFromProfile(computed);
 
-    if (this.serverId === "test") player.zoneId = "test_zone";
+  // 🟩 ON ENVOIE LES STATS INITIALES
+  client.send("stats_update", computed);
 
-    this.state.addPlayer(player);
-    client.send("welcome", { ok: true });
-  }
+  if (this.serverId === "test") player.zoneId = "test_zone";
+
+  this.state.addPlayer(player);
+  client.send("welcome", { ok: true });
+}
 
   // ===========================================================
   // LEAVE
