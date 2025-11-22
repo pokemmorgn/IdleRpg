@@ -6,10 +6,11 @@ import { PlayerState } from "../schema/PlayerState";
 
 import Quest, { IQuest } from "../../models/Quest";
 import { QuestState } from "../schema/QuestState";
+import { QuestObjectiveMap } from "../schema/QuestObjectiveMap";
 
 /**
  * QuestManager
- * Aligné avec QuestState utilisant MapSchema<MapSchema<number>>
+ * Aligné avec QuestState utilisant MapSchema<QuestObjectiveMap>
  */
 export class QuestManager {
   private serverId: string;
@@ -177,8 +178,9 @@ export class QuestManager {
     qs.questStep.set(questId, 0);
     qs.questStartedAt.set(questId, Date.now());
 
-    // 🚀 IMPORTANT : MapSchema<MapSchema<number>>
-    qs.questObjectives.set(questId, new MapSchema<number>());
+    // 🚀 IMPORTANT : maintenant on crée un QuestObjectiveMap, pas un MapSchema
+    const objMap = new QuestObjectiveMap();
+    qs.questObjectives.set(questId, objMap);
 
     console.log(`📗 [QuestManager] ${player.characterName} accepte ${questId}`);
     client.send("quest_accepted", { questId });
