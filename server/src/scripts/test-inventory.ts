@@ -5,7 +5,7 @@
 import * as Colyseus from "colyseus.js";
 
 const API_URL = "http://localhost:3000";
-const WS_URL = "ws://localhost:2567";   // ✔✔ CORRECTION ICI — PORT COLYSEUS
+const WS_URL = "ws://localhost:3000";
 
 const TEST_USERNAME = "inv_tester";
 const TEST_PASSWORD = "Test123!";
@@ -158,8 +158,6 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
     }
 
     const mm = await reserveSeat(token);
-
-    // 🔥🔥🔥 Connexion Colyseus EXACTE — identique à la version qui marchait
     const client = new Colyseus.Client(WS_URL);
     const room = await client.consumeSeatReservation(mm);
 
