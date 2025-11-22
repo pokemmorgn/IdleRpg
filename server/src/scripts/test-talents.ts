@@ -97,14 +97,27 @@ function diff(a: any, b: any) {
 
 async function waitForMessage(room: Colyseus.Room, messageType: string, timeoutMs: number = 5000): Promise<any> {
     return new Promise((resolve, reject) => {
-        const onMessage = (type: string, payload: any) => {
-            if (type === messageType) {
-                room.offMessage(onMessage);
+        let hasResolved = false;
+
+        const messageListener = (type: string, payload: any) => {
+            if (type === messageType && !hasResolved) {
+                hasResolved = true;
+                clearTimeout(timeout); // Annuler le timeout
+                room.off("message", messageListener); // Retirer l'écouteur correctement
                 resolve(payload);
             }
         };
-        room.onMessage(onMessage);
-        setTimeout(() => { room.offMessage(onMessage); reject(new Error(`Timeout en attente de ${messageType}`)); }, timeoutMs);
+
+        // S'inscrire pour écouter TOUS les messages
+        room.onMessage("*", messageListener);
+        
+        const timeout = setTimeout(() => {
+            if (!hasResolved) {
+                hasResolved = true;
+                room.off("message", messageListener); // Retirer l'écouteur en cas de timeout
+                reject(new Error(`Timeout en attente de ${messageType}`));
+            }
+        }, timeoutMs);
     });
 }
 
