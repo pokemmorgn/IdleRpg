@@ -1,11 +1,11 @@
 /**
- * Script de seed pour créer les PNJ nécessaires aux quêtes
+ * Script de seed des NPC nécessaires aux quêtes
  * Usage: npx ts-node server/src/scripts/seed-npcs.ts
  */
 
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import NPC from "../models/NPC"; // Assure-toi d'avoir un modèle NPC
+import NPC from "../models/NPC";
 
 dotenv.config();
 
@@ -21,40 +21,62 @@ const colors = {
 };
 
 const log = {
-  success: (msg: string) => console.log(`${colors.green}✅ ${msg}${colors.reset}`),
-  error: (msg: string) => console.log(`${colors.red}❌ ${msg}${colors.reset}`),
-  info: (msg: string) => console.log(`${colors.blue}ℹ️  ${msg}${colors.reset}`),
-  warning: (msg: string) => console.log(`${colors.yellow}⚠️  ${msg}${colors.reset}`),
+  success: (msg: string) =>
+    console.log(`${colors.green}✅ ${msg}${colors.reset}`),
+  error: (msg: string) =>
+    console.log(`${colors.red}❌ ${msg}${colors.reset}`),
+  info: (msg: string) =>
+    console.log(`${colors.blue}ℹ️  ${msg}${colors.reset}`),
+  warning: (msg: string) =>
+    console.log(`${colors.yellow}⚠️  ${msg}${colors.reset}`),
 };
+
+const SERVER_ID = "test"; // même serveur que tes quêtes
 
 const NPCS = [
   {
     npcId: "npc_instructor",
     name: "Maître Instructeur",
-    zoneId: "test_zone",
-    dialogueId: "dialogue_instructor",
-    x: 0, y: 0, z: 0
+    type: "quest_giver",
+    faction: "AURION",
+    zoneId: "start_zone",
+    modelId: "npc_human_instructor_01",
+    position: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 180, z: 0 },
+    questIds: ["main_01", "main_02", "main_03"],
   },
   {
     npcId: "npc_gatherer",
     name: "Collecteur de Baies",
-    zoneId: "test_zone",
-    dialogueId: "dialogue_gatherer",
-    x: 3, y: 0, z: 1
+    type: "quest_giver",
+    faction: "NEUTRAL",
+    zoneId: "start_zone",
+    modelId: "npc_human_gatherer_01",
+    position: { x: 3, y: 0, z: 1 },
+    rotation: { x: 0, y: 90, z: 0 },
+    questIds: ["side_01", "side_02"],
   },
   {
     npcId: "npc_old_lady",
     name: "Vieille Dame",
-    zoneId: "test_zone",
-    dialogueId: "dialogue_old_lady",
-    x: 2, y: 0, z: -1
+    type: "dialogue",
+    faction: "NEUTRAL",
+    zoneId: "start_zone",
+    modelId: "npc_human_oldlady_01",
+    position: { x: 2, y: 0, z: -1 },
+    rotation: { x: 0, y: 45, z: 0 },
+    questIds: [],
   },
   {
     npcId: "npc_farmer",
     name: "Fermier",
-    zoneId: "test_zone",
-    dialogueId: "dialogue_farmer",
-    x: -2, y: 0, z: 1
+    type: "quest_giver",
+    faction: "NEUTRAL",
+    zoneId: "start_zone",
+    modelId: "npc_human_farmer_01",
+    position: { x: -2, y: 0, z: 1 },
+    rotation: { x: 0, y: 270, z: 0 },
+    questIds: ["side_03"],
   }
 ];
 
@@ -66,10 +88,17 @@ async function seedNPCs() {
 
     for (const npc of NPCS) {
       log.info(`Suppression de '${npc.npcId}'...`);
-      await NPC.deleteOne({ npcId: npc.npcId });
+      await NPC.deleteOne({ serverId: SERVER_ID, npcId: npc.npcId });
 
       log.info(`Création de '${npc.npcId}'...`);
-      await NPC.create(npc);
+      await NPC.create({
+        ...npc,
+        serverId: SERVER_ID,
+        level: 1,
+        interactionRadius: 3,
+        isActive: true,
+      });
+
       log.success(`→ ${npc.npcId} créé.`);
     }
 
