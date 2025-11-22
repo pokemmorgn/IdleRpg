@@ -6,6 +6,8 @@ import { PlayerState } from "../schema/PlayerState";
 import { IQuestObjective } from "../../models/Quest";
 import Quest from "../../models/Quest";
 
+import { QuestObjectiveMap } from "../schema/QuestObjectiveMap";
+
 export type QuestNotify = (sessionId: string, type: string, payload: any) => void;
 
 export class QuestObjectiveManager {
@@ -81,12 +83,12 @@ export class QuestObjectiveManager {
 
       if (!this.validateObjectiveMatching(currentObj, payload)) continue;
 
-      // ▶️ Mise à jour progression
+      // ▶️ Progression
       const done = this.incrementObjectiveProgress(player, questId, currentObj);
 
-      // ▶️ Notif progression
-      const progressMap = player.quests.questObjectives.get(questId)!;
-      const progressValue = progressMap.get(currentObj.objectiveId) || 0;
+      // ▶️ Récupération de la progression après incrément
+      const objMap = player.quests.questObjectives.get(questId)!;
+      const progressValue = objMap.objectives.get(currentObj.objectiveId) || 0;
 
       this.notify(player.sessionId, "quest_update", {
         questId,
@@ -157,17 +159,17 @@ export class QuestObjectiveManager {
     const oid = objective.objectiveId;
 
     // ➤ récupérer (ou créer) la map d’objectifs
-    let objectivesMap = player.quests.questObjectives.get(questId);
-    if (!objectivesMap) {
-      objectivesMap = new MapSchema<number>();
-      player.quests.questObjectives.set(questId, objectivesMap);
+    let objMap = player.quests.questObjectives.get(questId);
+    if (!objMap) {
+      objMap = new QuestObjectiveMap();
+      player.quests.questObjectives.set(questId, objMap);
     }
 
-    const current = objectivesMap.get(oid) || 0;
+    const current = objMap.objectives.get(oid) || 0;
     const target = objective.count ?? 1;
 
     const newValue = Math.min(target, current + 1);
-    objectivesMap.set(oid, newValue);
+    objMap.objectives.set(oid, newValue);
 
     return newValue >= target;
   }
