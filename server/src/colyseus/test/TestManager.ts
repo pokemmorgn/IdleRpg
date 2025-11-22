@@ -2,80 +2,92 @@
 
 import { GameState } from "../schema/GameState";
 import { QuestManager } from "../managers/QuestManager";
+import { QuestObjectiveManager } from "../managers/QuestObjectiveManager";
 import { DialogueManager } from "../managers/DialogueManager";
+import { PlayerState } from "../schema/PlayerState";
 
 /**
- * TestManager - Gère tous les éléments de test pour le serveur de test
- * (PNJ, dialogues, monstres)
+ * TestManager
+ * ----------
+ * Permet de SIMULER les actions de gameplay pour tester les quêtes.
  *
- * ⚠️ NOTE : Les quêtes test NE SONT PLUS CRÉÉES ICI.
- * Elles doivent être seedées dans MongoDB.
+ * ⚠️ ACTIVÉ UNIQUEMENT si serverId === "test"
+ * ⚠️ Aucun impact pour Unity ou les serveurs de production.
  */
 export class TestManager {
-  private gameState: GameState;
-  private questManager: QuestManager;
-  private dialogueManager: DialogueManager;
-
   constructor(
-    gameState: GameState,
-    questManager: QuestManager,
-    dialogueManager: DialogueManager
-  ) {
-    this.gameState = gameState;
-    this.questManager = questManager;
-    this.dialogueManager = dialogueManager;
-  }
+    private readonly gameState: GameState,
+    private readonly questManager: QuestManager,
+    private readonly dialogueManager: DialogueManager,
+    private readonly objectiveManager: QuestObjectiveManager
+  ) {}
 
   /**
-   * Point d'entrée principal pour charger tous les éléments de test
+   * Chargement des éléments de test (PNJ + dialogues)
+   * Les quêtes NE SONT PLUS gérées ici → seed via MongoDB
    */
   public loadAll() {
     console.log("🧪 Chargement des éléments de test...");
-    //this.spawnTemporaryTestMonsters();
-    this.spawnTemporaryTestNPC();
-    // ❌ loadTestQuests supprimé (quêtes maintenant seedées dans la BDD)
-    this.loadTestDialogues();
+    this.spawnTestNPC();
+    this.loadTestDialogue();
     console.log("✅ Éléments de test chargés.");
   }
 
-  /* =====================================================================
-      MONSTRES
-     ===================================================================== */
-  private spawnTemporaryTestMonsters() {
-    const MonsterState = require("../schema/MonsterState").MonsterState;
+  // =====================================================================
+  //  SIMULATEURS D’OBJECTIFS (API DE TEST)
+  // =====================================================================
 
-    const m = new MonsterState(
-      "test_dummy_1",
-      "Training Dummy",
-      "dummy",
-      1,
-      50,
-      50,
-      5,
-      0,
-      2,
-      "test_zone",
-      3, 0, 0,
-      0, 0, 0,
-      "aggressive",
-      10,
-      25,
-      2,
-      5,
-      3,
-      true,
-      "dummy_model",
-      true
-    );
-
-    this.gameState.addMonster(m);
-    console.log("👾 Monstre de test 'test_dummy_1' a été spawn.");
+  /** Simule un "parler à un NPC" */
+  public simulateTalk(player: PlayerState, npcId: string) {
+    console.log("🧪 simulateTalk →", npcId);
+    this.objectiveManager.onTalk(player, { npcId });
   }
 
-  /* =====================================================================
-      NPC
-     ===================================================================== */
-  private spawnTemporaryTestNPC() {
+  /** Simule un "collecter une ressource" */
+  public simulateCollect(player: PlayerState, resourceId: string, amount = 1) {
+    console.log("🧪 simulateCollect →", resourceId, "x", amount);
+    for (let i = 0; i < amount; i++) {
+      this.objectiveManager.onCollect(player, { resourceId });
+    }
+  }
+
+  /** Simule un "explorer une zone" */
+  public simulateExplore(player: PlayerState, locationId: string) {
+    console.log("🧪 simulateExplore →", locationId);
+    this.objectiveManager.onExplore(player, { locationId });
+  }
+
+  /** Simule un kill */
+  public simulateKill(player: PlayerState, enemyType: string) {
+    console.log("🧪 simulateKill →", enemyType);
+    this.objectiveManager.onMonsterKilled(player, {
+      enemyType,
+      isBoss: false,
+      zoneId: player.zoneId
+    });
+  }
+
+  /** Simule le kill d’un boss */
+  public simulateBossKill(player: PlayerState, enemyType: string) {
+    console.log("🧪 simulateBossKill →", enemyType);
+    this.objectiveManager.onMonsterKilled(player, {
+      enemyType,
+      isBoss: true,
+      zoneId: player.zoneId
+    });
+  }
+
+  /** Simule un "loot" */
+  public simulateLoot(player: PlayerState, itemId: string, amount = 1) {
+    console.log("🧪 simulateLoot →", itemId, "x", amount);
+    this.objectiveManager.onLoot(player, { itemId, amount });
+  }
+
+  // =====================================================================
+  //  NPC & DIALOGUE DE TEST
+  // =====================================================================
+
+  private spawnTestNPC() {
     const NPCState = require("../schema/NPCState").NPCState;
 
     const npc = new NPCState(
@@ -86,7 +98,7 @@ export class TestManager {
       "neutral",
       "test_zone",
       5, 0, 5,
-      0, 0, 0,
+      0, 180, 0,
       "quest_giver_model",
       "dialogue_test_01",
       "",
@@ -95,28 +107,23 @@ export class TestManager {
     );
 
     this.gameState.addNPC(npc);
-    console.log("🤖 PNJ de test 'npc_test_01' a été spawn.");
+    console.log("🤖 PNJ de test 'npc_test_01' spawné.");
   }
 
-  /* =====================================================================
-      DIALOGUES
-     ===================================================================== */
-  private loadTestDialogues() {
+  private loadTestDialogue() {
     const testDialogue = {
       dialogueId: "dialogue_test_01",
       nodes: [
         {
           nodeId: "start",
-          text: "Bonjour, aventurier ! J'ai une petite quête pour toi si tu es intéressé.",
+          text: "Bonjour aventurier. Ceci est un dialogue de test.",
           choices: []
         }
       ],
-      spamProtection: {
-        enabled: false
-      }
+      spamProtection: { enabled: false }
     };
 
     this.dialogueManager.addTestDialogue("dialogue_test_01", testDialogue);
-    console.log("💬 Dialogue de test 'dialogue_test_01' chargé en mémoire.");
+    console.log("💬 Dialogue test chargé.");
   }
 }
