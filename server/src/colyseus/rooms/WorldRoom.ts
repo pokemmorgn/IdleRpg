@@ -278,13 +278,33 @@ export class WorldRoom extends Room<GameState> {
     // AJOUT: Gestion des messages de talents
     if (type.startsWith("talent_")) {
       if (type === "talent_learn") {
-        await this.talentManager.learnTalent(player, msg.talentId);
+          await this.talentManager.learnTalent(player, msg.talentId);
+      
+          const stats = await computeFullStats(player);
+          player.loadStatsFromProfile(stats);
+      
+          client.send("stats_update", {
+              ...stats,
+              availableSkillPoints: player.availableSkillPoints,
+              talents: player.saveTalentsToProfile()
+          });
+          return;
       }
+      
       if (type === "talent_reset") {
-        await this.talentManager.resetTalents(player);
+          await this.talentManager.resetTalents(player);
+      
+          const stats = await computeFullStats(player);
+          player.loadStatsFromProfile(stats);
+      
+          client.send("stats_update", {
+              ...stats,
+              availableSkillPoints: player.availableSkillPoints,
+              talents: player.saveTalentsToProfile()
+          });
+          return;
       }
-      return;
-    }
+
 
     if (type === "debug_give_xp") {
       const amount = msg.amount || 100;
