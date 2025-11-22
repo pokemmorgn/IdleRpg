@@ -3,76 +3,51 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IItemModel extends Document {
   itemId: string;
 
+  // category: "equipment" | "consumable" | "material" | "chest"
+  type: string;
+
   name: string;
-  description: string;
+  description?: string;
 
-  iconId: string;
+  iconId?: string;
 
-  category:
-    | "material"
-    | "consumable"
-    | "chest"
-    | "collection"
-    | "upgrade"
-    | "bag"
-    | "quest_item"
-    | "other";
+  // Stackable items
+  stackable?: boolean;
+  maxStack?: number;
 
-  rarity: "common" | "rare" | "epic" | "legendary" | "mythic";
+  // Equipment only
+  equipSlot?: string; // head, chest, ring1, ring2...
 
-  maxStack: number;
+  // Rarity: common/rare/epic/legendary/mythic
+  rarity?: string;
 
-  isAccountBound: boolean;
-  isCharacterBound: boolean;
-  isTradable: boolean;
-  isSellable: boolean;
-  sellValue: number;
-
+  // Consumables only
   effects?: any;
+
+  // Alt-shared or not
+  shared?: boolean;
 }
 
-const ItemModelSchema = new Schema<IItemModel>(
-  {
-    itemId: { type: String, required: true, unique: true },
+const ItemSchema = new Schema<IItemModel>({
+  itemId: { type: String, required: true, unique: true },
 
-    name: { type: String, required: true },
-    description: { type: String, default: "" },
+  type: { type: String, required: true }, // equipment / consumable / material / chest
 
-    iconId: { type: String, required: true },
+  name: { type: String, required: true },
+  description: { type: String },
 
-    category: {
-      type: String,
-      required: true,
-      enum: [
-        "material",
-        "consumable",
-        "chest",
-        "collection",
-        "upgrade",
-        "bag",
-        "quest_item",
-        "other"
-      ],
-    },
+  iconId: { type: String },
 
-    rarity: {
-      type: String,
-      required: true,
-      enum: ["common", "rare", "epic", "legendary", "mythic"],
-      default: "common",
-    },
+  stackable: { type: Boolean, default: true },
+  maxStack: { type: Number, default: 99 },
 
-    maxStack: { type: Number, default: 1 },
+  equipSlot: { type: String },
 
-    isAccountBound: { type: Boolean, default: false },
-    isCharacterBound: { type: Boolean, default: false },
-    isTradable: { type: Boolean, default: true },
-    isSellable: { type: Boolean, default: true },
-    sellValue: { type: Number, default: 0 },
+  rarity: { type: String, default: "common" },
 
-    effects: { type: Schema.Types.Mixed, default: null }
-  },
-  { timestamps: true }
-);
+  effects: { type: Object },
 
-export default mongoose.model<IItemModel>("ItemModel", ItemModelSchema);
+  shared: { type: Boolean, default: false }
+});
+
+export default mongoose.model<IItemModel>("Item", ItemSchema);
