@@ -74,6 +74,9 @@ export class QuestObjectiveManager {
       let quest = await Quest.findOne({ questId });
       if (!quest) continue;
 
+      // Vérifier si la quête est déjà terminée
+      if (player.quests.completed.includes(questId)) continue;
+
       const currentObj = quest.objectives[step];
       if (!currentObj) continue;
 
@@ -91,7 +94,9 @@ export class QuestObjectiveManager {
       this.notify(player.sessionId, "quest_update", {
         questId,
         step,
-        progress: progressValue
+        objectiveId: currentObj.objectiveId,
+        progress: progressValue,
+        required: currentObj.count || 1
       });
 
       // ▶️ Étape terminée ?
@@ -156,7 +161,7 @@ export class QuestObjectiveManager {
 
     const oid = objective.objectiveId;
 
-    // ➤ récupérer (ou créer) la map d’objectifs
+    // ➤ récupérer (ou créer) la map d'objectifs
     let objectivesMap = player.quests.questObjectives.get(questId);
     if (!objectivesMap) {
       objectivesMap = new MapSchema<number>();
@@ -187,12 +192,24 @@ export class QuestObjectiveManager {
       step
     });
 
-    const newStep = step + 1;
-    player.quests.questStep.set(questId, newStep);
+    // Vérifier si tous les objectifs de l'étape actuelle sont complétés
+    const allObjectivesCompleted = this.areAllObjectivesInStepCompleted(player, quest, step);
+    
+    if (allObjectivesCompleted) {
+      const newStep = step + 1;
+      player.quests.questStep.set(questId, newStep);
 
-    if (newStep >= quest.objectives.length) {
-      this.finishQuest(player, quest);
+      // Initialiser les objectifs de la nouvelle étape
+      if (newStep < quest.objectives.length) {
+        this.initializeStepObjectives(player, questId, quest.objectives[newStep]);
+      } else {
+        // Toutes les étapes sont terminées
+        this.finishQuest(player, quest);
+      }
     }
+    
+    // Sauvegarder les données du joueur
+    this.onSavePlayer?.(player);
   }
 
   /* =====================================================================
@@ -201,18 +218,15 @@ export class QuestObjectiveManager {
   private finishQuest(player: PlayerState, quest: any) {
     const questId = quest.questId;
 
+    // Marquer la quête comme prête à être rendue
     this.notify(player.sessionId, "quest_ready_to_turn_in", {
       questId,
       questName: quest.name,
       rewards: quest.rewards
     });
 
-    this.onSavePlayer?.(player);
-
-    this.notify(player.sessionId, "quest_complete", {
-      questId,
-      rewards: quest.rewards
-    });
+    // Ne pas envoyer "quest_complete" ici, car la quête n'est pas encore terminée
+    // Elle doit être rendue au PNJ pour être considérée comme terminée
   }
 
   /* =====================================================================
@@ -233,5 +247,44 @@ export class QuestObjectiveManager {
       step: player.quests.questStep.get(questId) || 0,
       objectives: player.quests.questObjectives.get(questId)
     };
+  }
+
+  /**
+   * Vérifie si tous les objectifs d'une étape sont complétés
+   */
+  private areAllObjectivesInStepCompleted(player: PlayerState, quest: any, step: number): boolean {
+    if (!quest.objectives[step]) return false;
+    
+    const objectivesMap = player.quests.questObjectives.get(quest.questId);
+    if (!objectivesMap) return false;
+    
+    for (const objective of quest.objectives[step]) {
+      const progress = objectivesMap.get(objective.objectiveId) || 0;
+      const required = objective.count || 1;
+      
+      if (progress < required) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Initialise les objectifs d'une étape
+   */
+  private initializeStepObjectives(player: PlayerState, questId: string, stepObjectives: any[]) {
+    let objectivesMap = player.quests.questObjectives.get(questId);
+    
+    if (!objectivesMap) {
+      objectivesMap = new MapSchema<number>();
+      player.quests.questObjectives.set(questId, objectivesMap);
+    }
+    
+    for (const objective of stepObjectives) {
+      if (!objectivesMap.has(objective.objectiveId)) {
+        objectivesMap.set(objective.objectiveId, 0);
+      }
+    }
   }
 }
