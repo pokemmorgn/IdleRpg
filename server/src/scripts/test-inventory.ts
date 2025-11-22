@@ -1,5 +1,5 @@
 /**
- * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE)
+ * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE + TYPAGE)
  */
 
 import * as Colyseus from "colyseus.js";
@@ -14,6 +14,12 @@ const TEST_EMAIL = "inv_tester@example.com";
 const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "InvTester";
+
+// Définition d'un type pour la structure des données de slot reçues du serveur
+type SlotData = {
+    itemId: string;
+    amount: number;
+};
 
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -195,22 +201,26 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
         room.send("inv_add", { itemId: itemToAdd, amount: 1 });
 
         // ⬇️ NOUVELLE LOGIQUE ⬇️
-        // 1. Attendre la mise à jour de l'inventaire pour être sûr que le serveur a traité l'ajout.
+        // 1. Attendre la mise à jour de l'inventaire.
         const inventoryMsg = await waitFor("inventory_update");
         
-        // 2. Trouver l'index du slot qui contient l'item que nous venons d'ajouter.
-        const slotIndex = inventoryMsg.slots.findIndex(s => s.itemId === itemToAdd);
+        // 2. On cast le message pour que TypeScript connaisse la structure de `slots`
+        const inventoryData = inventoryMsg as { slots: SlotData[] };
+
+        // 3. Trouver l'index du slot qui contient l'item que nous venons d'ajouter.
+        //    On utilise le type SlotData pour le paramètre `s` de `findIndex`.
+        const slotIndex = inventoryData.slots.findIndex((s: SlotData) => s.itemId === itemToAdd);
         
-        // 3. Vérification de sécurité pour éviter les erreurs si l'item n'est pas trouvé.
+        // 4. Vérification de sécurité.
         if (slotIndex === -1) {
             console.error(`❌ ERREUR: L'item ${itemToAdd} n'a pas été trouvé dans l'inventaire après ajout !`);
-            continue; // Passer à l'item suivant dans la liste
+            continue;
         }
 
         console.log(`   → equip ${itemToAdd} depuis slot ${slotIndex}`);
         room.send("inv_equip", { fromSlot: slotIndex });
 
-        // 4. Attendre la mise à jour des stats qui confirme l'équipement.
+        // 5. Attendre la mise à jour des stats.
         const newStats = await waitFor("stats_update");
         console.log(`📈 DIFF STATS (${itemToAdd}) :`);
         console.log(newStats);
