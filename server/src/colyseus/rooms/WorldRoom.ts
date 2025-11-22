@@ -304,6 +304,7 @@ export class WorldRoom extends Room<GameState> {
           });
           return;
       }
+    }
 
 
     if (type === "debug_give_xp") {
