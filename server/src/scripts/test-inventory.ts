@@ -1,11 +1,8 @@
 /**
- * TEST INVENTORY — Add / Remove / Swap / Equip / Use / Open / Bag Upgrade / Personal
+ * TEST INVENTORY + STATS — Add / Equip / Use / Loot / Bag Upgrade / Personal
  */
 
 import * as Colyseus from "colyseus.js";
-
-// Node 18+ → fetch disponible nativement
-// Aucun import node-fetch
 
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
@@ -22,9 +19,9 @@ function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// =====================================================================
-// AUTH
-// =====================================================================
+// =============================================================
+// AUTH HELPERS
+// =============================================================
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
@@ -74,7 +71,6 @@ async function getProfile(token: string) {
 
     const j = await r.json();
     if (!r.ok) return null;
-
     return j.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) ?? null;
 }
 
@@ -129,15 +125,29 @@ async function reserveSeat(token: string) {
     return j;
 }
 
-// =====================================================================
+// =============================================================
+// PRINT STATS
+// =============================================================
+async function printStats(room: Colyseus.Room, label: string) {
+    return new Promise<void>(resolve => {
+        room.onceMessage("stats_update", (msg) => {
+            console.log(`\n📊 ${label}:`, msg);
+            resolve();
+        });
+
+        room.send("stats_request");
+    });
+}
+
+// =============================================================
 // MAIN TEST
-// =====================================================================
+// =============================================================
 (async () => {
     try {
         await register();
         const token = await login();
-        let profile = await getProfile(token);
 
+        let profile = await getProfile(token);
         if (!profile) {
             const creation = await getCreationData(token);
             const race = creation.races[0].raceId;
@@ -152,7 +162,7 @@ async function reserveSeat(token: string) {
         console.log("🔌 CONNECTÉ AU SERVEUR DE JEU !");
         console.log("⏳ Préparation du test inventaire…");
 
-        // Écouteurs messages inventaire
+        // LISTENERS
         room.onMessage("inventory_update", (msg) => {
             console.log("📦 INVENTORY UPDATE:", msg);
         });
@@ -161,18 +171,27 @@ async function reserveSeat(token: string) {
             console.log("🍾 ITEM USED:", msg);
         });
 
-        room.onMessage("welcome", (msg) =>
-            console.log("👋 WELCOME:", msg)
-        );
+        room.onMessage("stats_update", (msg) => {
+            console.log("📈 STATS UPDATE:", msg);
+        });
 
-        await sleep(2000);
+        room.onMessage("welcome", () => {
+            console.log("👋 WELCOME !");
+        });
+
+        await sleep(1500);
+
+        // ============================================================
+        // STATS INITIALES
+        // ============================================================
+        await printStats(room, "Stats au login");
 
         console.log("\n===============================");
         console.log("🔥 DÉBUT DU TEST INVENTAIRE");
         console.log("===============================\n");
 
         // ============================================================
-        // 1) AJOUTER TOUS LES ITEMS SEEDÉS
+        // 1) AJOUT ITEMS
         // ============================================================
         const ALL_ITEMS = [
             "eq_head", "eq_chest", "eq_legs", "eq_feet", "eq_hands",
@@ -180,7 +199,6 @@ async function reserveSeat(token: string) {
             "eq_ring1", "eq_ring2",
             "eq_trinket1", "eq_trinket2",
             "eq_neck",
-
             "consum_hp_potion",
             "mat_iron_ore",
             "box_small_loot",
@@ -195,64 +213,62 @@ async function reserveSeat(token: string) {
         for (const item of ALL_ITEMS) {
             console.log(`→ Ajout ${item}`);
             room.send("inv_add", { itemId: item, amount: 1 });
-            await sleep(200);
+            await sleep(150);
         }
 
-        await sleep(1000);
+        await sleep(800);
+        await printStats(room, "Stats après ajout objets (non équipés)");
 
         // ============================================================
-        // 2) TEST OUVERTURE LOOTBOX
+        // 2) LOOTBOX
         // ============================================================
         console.log("\n🎁 OUVERTURE LOOTBOX");
-
-        room.send("inv_open", { slot: 5 }); // à adapter selon l'ordre
-        await sleep(1000);
+        room.send("inv_open", { slot: 5 });
+        await sleep(500);
 
         // ============================================================
-        // 3) TEST CONSOMMABLE
+        // 3) CONSOMMABLE
         // ============================================================
         console.log("\n🍺 UTILISATION CONSOMMABLE");
-
         room.send("inv_use", { slot: 6 });
-        await sleep(800);
+        await sleep(500);
 
         // ============================================================
-        // 4) TEST EQUIP
+        // 4) EQUIP
         // ============================================================
         console.log("\n🛡️ TEST ÉQUIPEMENT");
-
         room.send("inv_equip", { fromSlot: 0 });
-        await sleep(800);
+        await sleep(700);
+        await printStats(room, "Stats après équipement tête");
 
         // ============================================================
-        // 5) TEST UNEQUIP
+        // 5) UNEQUIP
         // ============================================================
-        console.log("\n🔧 TEST DÉSÉQUIPEMENT (slot head)");
-
+        console.log("\n🔧 TEST DÉSÉQUIPEMENT");
         room.send("inv_unequip", { equipSlot: "head" });
-        await sleep(800);
+        await sleep(700);
+        await printStats(room, "Stats après déséquipement tête");
 
         // ============================================================
-        // 6) TEST BAG UPGRADE
+        // 6) BAG UPGRADE
         // ============================================================
         console.log("\n🎒 TEST UPGRADE DE SAC");
-
         room.send("inv_upgrade_bag", { slot: 7 });
-        await sleep(800);
+        await sleep(700);
 
         // ============================================================
-        // 7) TEST ITEM PERSONNEL
+        // 7) ITEM PERSONNEL
         // ============================================================
         console.log("\n💍 TEST ITEM PERSONNEL");
-
         room.send("inv_add_personal", { itemId: "personal_family_ring" });
-        await sleep(800);
+        await sleep(700);
+        await printStats(room, "Stats après ajout item personnel");
 
         console.log("\n🎉 FIN DU TEST INVENTAIRE !");
         process.exit(0);
 
-    } catch (error) {
-        console.error("❌ Erreur test-inventory:", error);
+    } catch (err) {
+        console.error("❌ Erreur test-inventory:", err);
         process.exit(1);
     }
 })();
