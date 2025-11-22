@@ -1,5 +1,5 @@
 /**
- * TEST INVENTORY + STATS — Version propre & robuste
+ * TEST INVENTORY + STATS — Version propre & robuste (CORRIGÉE)
  */
 
 import * as Colyseus from "colyseus.js";
@@ -143,7 +143,7 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
 }
 
 /* ======================================================================
-   MAIN
+   MAIN - VERSION CORRIGÉE
 ======================================================================== */
 (async () => {
     await register();
@@ -187,27 +187,33 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
         "eq_neck",
     ];
 
-// ⬇️ NE BLOQUE PLUS
-let previousStats = null;
+    // ==========================================================
+    // BOUCLE CORRIGÉE
+    // ==========================================================
+    for (const itemToAdd of EQUIP_ITEMS) {
+        console.log(`→ add ${itemToAdd}`);
+        room.send("inv_add", { itemId: itemToAdd, amount: 1 });
 
-    let slotIndex = 0;
+        // ⬇️ NOUVELLE LOGIQUE ⬇️
+        // 1. Attendre la mise à jour de l'inventaire pour être sûr que le serveur a traité l'ajout.
+        const inventoryMsg = await waitFor("inventory_update");
+        
+        // 2. Trouver l'index du slot qui contient l'item que nous venons d'ajouter.
+        const slotIndex = inventoryMsg.slots.findIndex(s => s.itemId === itemToAdd);
+        
+        // 3. Vérification de sécurité pour éviter les erreurs si l'item n'est pas trouvé.
+        if (slotIndex === -1) {
+            console.error(`❌ ERREUR: L'item ${itemToAdd} n'a pas été trouvé dans l'inventaire après ajout !`);
+            continue; // Passer à l'item suivant dans la liste
+        }
 
-    for (const item of EQUIP_ITEMS) {
-        console.log(`→ add ${item}`);
-        room.send("inv_add", { itemId: item, amount: 1 });
-        await sleep(100);
-
-        console.log(`   → equip ${item} depuis slot ${slotIndex}`);
+        console.log(`   → equip ${itemToAdd} depuis slot ${slotIndex}`);
         room.send("inv_equip", { fromSlot: slotIndex });
-        await sleep(150);
 
+        // 4. Attendre la mise à jour des stats qui confirme l'équipement.
         const newStats = await waitFor("stats_update");
-
-        console.log(`📈 DIFF STATS (${item}) :`);
+        console.log(`📈 DIFF STATS (${itemToAdd}) :`);
         console.log(newStats);
-
-        previousStats = newStats;
-        slotIndex++;
     }
 
     console.log("\n🎉 TEST INVENTAIRE + AUTO-ÉQUIPEMENT TERMINÉ !");
