@@ -2,71 +2,54 @@ import { PlayerState } from "../../schema/PlayerState";
 import { getRaceById } from "../../../config/races.config";
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../../../models/ServerProfile";
 import { SkinManagerInstance } from "../SkinManager";
+import ItemModel from "../../../models/Item";
 import { getStatsForClass } from "../../../config/classes.config";
 
-// ==========================================================
-// TYPE BONUS SKIN
-// ==========================================================
 type SkinBonus = {
   primaryPercent?: Record<string, number>;
   computedPercent?: Record<string, number>;
 };
 
-// ==========================================================
-// FONCTION PRINCIPALE
-// ==========================================================
-export function computeFullStats(player: PlayerState): IPlayerComputedStats {
+export async function computeFullStats(player: PlayerState): Promise<IPlayerComputedStats> {
 
-  // ==========================================================
-  // 1) Stats de classe
-  // ==========================================================
   const classStats = getStatsForClass(player.class);
   const level = player.level;
 
   // ==========================================================
-  // 2) Bonus race + skin fusionnés
+  //  BONUS RACE + SKIN
   // ==========================================================
   const race = getRaceById(player.race);
-
   const skinBonus: SkinBonus =
     SkinManagerInstance?.getSkinStatBonus(player) || {};
 
   const totalPrimary: Record<string, number> = {};
   const totalComputed: Record<string, number> = {};
 
-  // --- PRIMARY (race)
+  // --- PRIMARY RACE ---
   if (race?.statsModifiers?.primaryPercent) {
-    for (const key in race.statsModifiers.primaryPercent) {
-      totalPrimary[key] =
-        (totalPrimary[key] || 0) +
-        race.statsModifiers.primaryPercent[key];
+    for (const k in race.statsModifiers.primaryPercent) {
+      totalPrimary[k] = (totalPrimary[k] || 0) + race.statsModifiers.primaryPercent[k];
     }
   }
 
-  // --- PRIMARY (skin)
+  // --- PRIMARY SKIN ---
   if (skinBonus.primaryPercent) {
-    for (const key in skinBonus.primaryPercent) {
-      totalPrimary[key] =
-        (totalPrimary[key] || 0) +
-        skinBonus.primaryPercent[key];
+    for (const k in skinBonus.primaryPercent) {
+      totalPrimary[k] = (totalPrimary[k] || 0) + skinBonus.primaryPercent[k];
     }
   }
 
-  // --- COMPUTED (race)
+  // --- COMPUTED RACE ---
   if (race?.statsModifiers?.computedPercent) {
-    for (const key in race.statsModifiers.computedPercent) {
-      totalComputed[key] =
-        (totalComputed[key] || 0) +
-        race.statsModifiers.computedPercent[key];
+    for (const k in race.statsModifiers.computedPercent) {
+      totalComputed[k] = (totalComputed[k] || 0) + race.statsModifiers.computedPercent[k];
     }
   }
 
-  // --- COMPUTED (skin)
+  // --- COMPUTED SKIN ---
   if (skinBonus.computedPercent) {
-    for (const key in skinBonus.computedPercent) {
-      totalComputed[key] =
-        (totalComputed[key] || 0) +
-        skinBonus.computedPercent[key];
+    for (const k in skinBonus.computedPercent) {
+      totalComputed[k] = (totalComputed[k] || 0) + skinBonus.computedPercent[k];
     }
   }
 
@@ -78,29 +61,27 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
     agility: classStats.baseStats.agility + classStats.statsPerLevel.agility * (level - 1),
     intelligence: classStats.baseStats.intelligence + classStats.statsPerLevel.intelligence * (level - 1),
     endurance: classStats.baseStats.endurance + classStats.statsPerLevel.endurance * (level - 1),
-    spirit: classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1),
+    spirit: classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1)
   };
 
   // ==========================================================
-  // 🔥 3) BONUS PRIMARY DES ÉQUIPEMENTS
+  // 🔥 BONUS PRIMARY DES ÉQUIPEMENTS
   // ==========================================================
-  for (const slot of player.inventory.equipment.values()) {
-    if (!slot.itemId) continue;
+  for (const equipSlot of player.inventory.equipment.values()) {
+    if (!equipSlot.itemId) continue;
 
-    const stats = player.itemCache?.[slot.itemId]?.stats;
-    if (!stats) continue;
+    const model = await ItemModel.findOne({ itemId: equipSlot.itemId });
+    if (!model?.stats) continue;
 
     for (const key of ["strength", "agility", "intelligence", "endurance", "spirit"]) {
-      if (typeof stats[key] === "number") {
-        const k = key as keyof IPlayerPrimaryStats;
-        primary[k] += stats[key];
+      const k = key as keyof IPlayerPrimaryStats;
+      if (typeof model.stats[key] === "number") {
+        primary[k] += model.stats[key]!;
       }
     }
   }
 
-  // ==========================================================
   // APPLY PRIMARY BONUS %
-  // ==========================================================
   for (const [stat, percent] of Object.entries(totalPrimary)) {
     const k = stat as keyof IPlayerPrimaryStats;
     primary[k] = Math.floor(primary[k] * (1 + percent / 100));
@@ -154,9 +135,11 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
       computed.maxResource = 100 + INT * 5;
       computed.manaRegen = SPI * 2;
       break;
+
     case "rage":
       computed.maxResource = 100;
       break;
+
     case "energy":
       computed.maxResource = 100;
       computed.energyRegen = 10;
@@ -164,29 +147,30 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
   }
 
   // ==========================================================
-  // 🔥 4) BONUS COMPUTED DES ÉQUIPEMENTS
+  // 🔥 BONUS COMPUTED DES ÉQUIPEMENTS
   // ==========================================================
-  for (const slot of player.inventory.equipment.values()) {
-    if (!slot.itemId) continue;
+  for (const equipSlot of player.inventory.equipment.values()) {
+    if (!equipSlot.itemId) continue;
 
-    const stats = player.itemCache?.[slot.itemId]?.stats;
-    if (!stats) continue;
+    const model = await ItemModel.findOne({ itemId: equipSlot.itemId });
+    if (!model?.stats) continue;
 
-    for (const [key, value] of Object.entries(stats)) {
+    for (const [key, rawValue] of Object.entries(model.stats)) {
+
       if (["strength", "agility", "intelligence", "endurance", "spirit"].includes(key)) {
-        continue; // déjà ajouté dans PRIMARY
+        continue; // déjà dans primary
       }
 
+      const value = Number(rawValue);
       const k = key as keyof IPlayerComputedStats;
+
       if (typeof computed[k] === "number") {
         computed[k] += value;
       }
     }
   }
 
-  // ==========================================================
   // APPLY COMPUTED BONUS %
-  // ==========================================================
   for (const [stat, percent] of Object.entries(totalComputed)) {
     const k = stat as keyof IPlayerComputedStats;
     if (typeof computed[k] === "number") {
@@ -194,7 +178,6 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
     }
   }
 
-  // FINAL
   computed.hp = computed.maxHp;
   computed.resource = computed.maxResource;
 
