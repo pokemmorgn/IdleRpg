@@ -194,10 +194,23 @@ async function printStats(waitFor: any, room: Colyseus.Room, label: string) {
         "personal_family_ring"
     ];
 
-    for (const item of ALL_ITEMS) {
+    // ======================================================================
+    // 🔥 AUTO-ÉQUIPEMENT DIRECT APRÈS ADD SI item = équipement
+    // ======================================================================
+    const EQUIP_PREFIX = "eq_";
+
+    for (let i = 0; i < ALL_ITEMS.length; i++) {
+        const item = ALL_ITEMS[i];
+
         console.log(`→ add ${item}`);
         room.send("inv_add", { itemId: item, amount: 1 });
-        await sleep(100);
+        await sleep(120);
+
+        if (item.startsWith(EQUIP_PREFIX)) {
+            console.log(`⚔ auto-equip: ${item}`);
+            room.send("inv_equip", { fromSlot: i });
+            await sleep(150);
+        }
     }
 
     await printStats(waitFor, room, "Stats après ajout objets");
