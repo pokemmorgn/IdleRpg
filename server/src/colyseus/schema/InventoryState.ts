@@ -5,30 +5,30 @@ import { InventorySlot } from "./InventorySlot";
 
 export class InventoryState extends Schema {
 
-    // Taille totale du sac
+    // Nombre de slots dans l’inventaire
     @type("number") maxSlots: number = 20;
 
-    // Slots d’inventaire (indexés : 0 → maxSlots)
+    // Slots de l’inventaire (objets normaux)
     @type([InventorySlot])
     slots = new ArraySchema<InventorySlot>();
 
-    // Équipement (clé string obligatoire)
+    // Emplacements d’équipement (head, chest, ring1, ring2, etc.)
     @type({ map: InventorySlot })
     equipment = new MapSchema<InventorySlot>();
+
+    // 🔥 NOUVEAU : Items personnels / liés au personnage
+    @type({ map: InventorySlot })
+    personalItems = new MapSchema<InventorySlot>();
 
     constructor() {
         super();
 
-        /* ===============================
-           INIT INVENTORY SLOTS
-        ================================ */
+        // Initialiser les slots d’inventaire
         for (let i = 0; i < this.maxSlots; i++) {
             this.slots.push(new InventorySlot());
         }
 
-        /* ===============================
-           INIT EQUIPMENT SLOTS
-        ================================ */
+        // Initialiser les équipements
         const equipSlots = [
             "head", "chest", "legs", "feet", "hands",
             "weapon", "offhand",
@@ -37,103 +37,90 @@ export class InventoryState extends Schema {
             "neck"
         ];
 
-        for (const slotName of equipSlots) {
-            this.equipment.set(slotName, new InventorySlot());
+        for (const slot of equipSlots) {
+            this.equipment.set(slot, new InventorySlot());
         }
+
+        // Initialiser les items personnels
+        this.personalItems = new MapSchema<InventorySlot>();
     }
 
-    /* ============================================================
+    /* ==============================================
        LOAD FROM PROFILE (Mongo → Serveur)
-    ============================================================ */
+       ============================================== */
     loadFromProfile(data: any) {
         if (!data || typeof data !== "object") return;
 
-        // Charger taille sac
+        // maxSlots
         this.maxSlots = data.maxSlots || 20;
 
-        // Rebuilding slots
-        const newSlots = new ArraySchema<InventorySlot>();
+        // -------- INVENTORY SLOTS --------
+        this.slots = new ArraySchema<InventorySlot>();
         for (let i = 0; i < this.maxSlots; i++) {
-            const s = new InventorySlot();
+            const slot = new InventorySlot();
             const raw = data.slots?.[i];
-
             if (raw && typeof raw === "object") {
-                s.itemId = raw.itemId ?? "";
-                s.amount = raw.amount ?? 0;
+                slot.itemId = raw.itemId ?? "";
+                slot.amount = raw.amount ?? 0;
             }
-            newSlots.push(s);
+            this.slots.push(slot);
         }
-        this.slots = newSlots;
 
-        // Rebuilding equipment
-        const newEquip = new MapSchema<InventorySlot>();
+        // -------- EQUIPMENT --------
+        this.equipment = new MapSchema<InventorySlot>();
         for (const [slotName, raw] of Object.entries<any>(data.equipment || {})) {
-            const s = new InventorySlot();
-
+            const slot = new InventorySlot();
             if (raw && typeof raw === "object") {
-                s.itemId = raw.itemId ?? "";
-                s.amount = raw.amount ?? 0;
+                slot.itemId = raw.itemId ?? "";
+                slot.amount = raw.amount ?? 0;
             }
-            newEquip.set(slotName, s);
+            this.equipment.set(slotName, slot);
         }
-        this.equipment = newEquip;
+
+        // -------- PERSONAL ITEMS (NEW) --------
+        this.personalItems = new MapSchema<InventorySlot>();
+        for (const [slotName, raw] of Object.entries<any>(data.personalItems || {})) {
+            const slot = new InventorySlot();
+            if (raw && typeof raw === "object") {
+                slot.itemId = raw.itemId ?? "";
+                slot.amount = raw.amount ?? 0;
+            }
+            this.personalItems.set(slotName, slot);
+        }
     }
 
-    /* ============================================================
+    /* ==============================================
        SAVE TO PROFILE (Serveur → Mongo)
-    ============================================================ */
+       ============================================== */
     saveToProfile() {
         return {
             maxSlots: this.maxSlots,
+
             slots: this.slots.map(s => ({
                 itemId: s.itemId,
                 amount: s.amount
             })),
+
             equipment: Object.fromEntries(
-                [...this.equipment.entries()].map(([slotName, s]) => [
-                    slotName,
+                [...this.equipment.entries()].map(([k, v]) => [
+                    k,
                     {
-                        itemId: s.itemId,
-                        amount: s.amount
+                        itemId: v.itemId,
+                        amount: v.amount
+                    }
+                ])
+            ),
+
+            // 🔥 EXPORT PERSONAL ITEMS
+            personalItems: Object.fromEntries(
+                [...this.personalItems.entries()].map(([k, v]) => [
+                    k,
+                    {
+                        itemId: v.itemId,
+                        amount: v.amount
                     }
                 ])
             )
         };
-    }
-
-    /* ============================================================
-       EXPORT (vers client)
-    ============================================================ */
-    exportSlots() {
-        return this.slots.map(s => ({
-            itemId: s.itemId,
-            amount: s.amount
-        }));
-    }
-
-    exportEquipment() {
-        const obj: Record<string, any> = {};
-        for (const [slotName, slot] of this.equipment.entries()) {
-            obj[slotName] = {
-                itemId: slot.itemId,
-                amount: slot.amount
-            };
-        }
-        return obj;
-    }
-
-    /* ============================================================
-       UTILITAIRE : vider inventaire
-    ============================================================ */
-    clearAll() {
-        for (const s of this.slots) {
-            s.itemId = "";
-            s.amount = 0;
-        }
-        for (const [k, s] of this.equipment.entries()) {
-            s.itemId = "";
-            s.amount = 0;
-            this.equipment.set(k, s);
-        }
     }
 }
