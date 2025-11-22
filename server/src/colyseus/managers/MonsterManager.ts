@@ -55,8 +55,8 @@ export class MonsterManager {
           monster.xpReward,
           monster.respawnTime,
           monster.respawnOnDeath,
-          monster.rarity || "common", // MODIFIÉ: Ajout de la rareté
-          monster.isBoss || false,   // MODIFIÉ: Ajout du statut de boss
+          monster.type,             // Le type ("normal", "elite", "boss") est utilisé comme "rarity"
+          monster.type === "boss",  // On déduit si c'est un boss en comparant le type
           monster.modelId,
           monster.isActive
         );
