@@ -2,7 +2,7 @@ import { PlayerState } from "../../schema/PlayerState";
 import { getRaceById } from "../../../config/races.config";
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../../../models/ServerProfile";
 import { SkinManagerInstance } from "../SkinManager";
-import { getStatsForClass } from "../../../config/classes.config"; // ✔ IMPORTANT
+import { getStatsForClass } from "../../../config/classes.config";
 
 // ==========================================================
 // TYPE BONUS SKIN
@@ -78,8 +78,25 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
     agility: classStats.baseStats.agility + classStats.statsPerLevel.agility * (level - 1),
     intelligence: classStats.baseStats.intelligence + classStats.statsPerLevel.intelligence * (level - 1),
     endurance: classStats.baseStats.endurance + classStats.statsPerLevel.endurance * (level - 1),
-    spirit: classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1)
+    spirit: classStats.baseStats.spirit + classStats.statsPerLevel.spirit * (level - 1),
   };
+
+  // ==========================================================
+  // 🔥 3) BONUS PRIMARY DES ÉQUIPEMENTS
+  // ==========================================================
+  for (const slot of player.inventory.equipment.values()) {
+    if (!slot.itemId) continue;
+
+    const stats = player.itemCache?.[slot.itemId]?.stats;
+    if (!stats) continue;
+
+    for (const key of ["strength", "agility", "intelligence", "endurance", "spirit"]) {
+      if (typeof stats[key] === "number") {
+        const k = key as keyof IPlayerPrimaryStats;
+        primary[k] += stats[key];
+      }
+    }
+  }
 
   // ==========================================================
   // APPLY PRIMARY BONUS %
@@ -144,6 +161,27 @@ export function computeFullStats(player: PlayerState): IPlayerComputedStats {
       computed.maxResource = 100;
       computed.energyRegen = 10;
       break;
+  }
+
+  // ==========================================================
+  // 🔥 4) BONUS COMPUTED DES ÉQUIPEMENTS
+  // ==========================================================
+  for (const slot of player.inventory.equipment.values()) {
+    if (!slot.itemId) continue;
+
+    const stats = player.itemCache?.[slot.itemId]?.stats;
+    if (!stats) continue;
+
+    for (const [key, value] of Object.entries(stats)) {
+      if (["strength", "agility", "intelligence", "endurance", "spirit"].includes(key)) {
+        continue; // déjà ajouté dans PRIMARY
+      }
+
+      const k = key as keyof IPlayerComputedStats;
+      if (typeof computed[k] === "number") {
+        computed[k] += value;
+      }
+    }
   }
 
   // ==========================================================
