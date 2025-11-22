@@ -196,6 +196,30 @@ export class WorldRoom extends Room<GameState> {
 
     this.state.addPlayer(player);
     client.send("welcome", { ok: true });
+
+        // === ENVOI DES STATS INITIALES ===
+    const classStats = require("../../config/classes.config").getStatsForClass(
+      player.class
+    );
+    const computed = PlayerStatsCalculator.compute(player, classStats);
+    
+    player.loadStatsFromProfile(computed);
+    
+    client.send("stats_update", {
+      hp: player.hp,
+      maxHp: player.maxHp,
+      resource: player.resource,
+      maxResource: player.maxResource,
+      manaRegen: player.manaRegen,
+      attackPower: player.attackPower,
+      spellPower: player.spellPower,
+      armor: player.armor,
+      magicResistance: player.magicResistance,
+      criticalChance: player.criticalChance,
+      attackSpeed: player.attackSpeed,
+      damageReduction: player.damageReduction
+    });
+
   }
 
   // ===========================================================
