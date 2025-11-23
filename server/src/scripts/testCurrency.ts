@@ -1,15 +1,25 @@
 /**
- * TEST CURRENCY SYSTEM — Gold / Diamonds / Bound Diamonds
- * Version stable, optimisée, compatible avec ton WorldRoom actuel.
+ * TEST CURRENCY SYSTEM — SECURE MODE
+ * Compatible avec SecurityVerifier (HMAC + timestamp + nonce)
  */
 
 import * as Colyseus from "colyseus.js";
+import crypto from "crypto";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // ======================
 // CONFIG
 // ======================
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
+
+const PX42_KEY = process.env.PX42_KEY!;
+if (!PX42_KEY) {
+    console.error("❌ ERROR: Missing PX42_KEY in .env");
+    process.exit(1);
+}
 
 const TEST_USERNAME = "currency_tester";
 const TEST_PASSWORD = "Test123!";
@@ -19,12 +29,13 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "CurrencyTester";
 
+// Sleep util
 function sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(res => setTimeout(res, ms));
 }
 
 // =====================================================================
-// AUTH HELPERS
+// AUTH HELPERS (unchanged)
 // =====================================================================
 async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
@@ -128,7 +139,7 @@ async function reserveSeat(token: string) {
 }
 
 // =====================================================================
-// UTILS
+// UTIL — DIFF
 // =====================================================================
 function diffCurrencies(before: any, after: any) {
     const out: any = {};
@@ -141,12 +152,33 @@ function diffCurrencies(before: any, after: any) {
 }
 
 // =====================================================================
-// CURRENCY TEST SUITE
+// 🔐 SECURE PAYLOAD GENERATOR
+// =====================================================================
+function buildSecurePayload(action: string, type: string, amount: number) {
+    const data = { action, type, amount };
+    const timestamp = Date.now();
+    const nonce = crypto.randomUUID();
+
+    const signature = crypto
+        .createHmac("sha256", PX42_KEY)
+        .update(JSON.stringify(data) + timestamp + nonce)
+        .digest("hex");
+
+    return {
+        data,
+        timestamp,
+        nonce,
+        signature,
+    };
+}
+
+// =====================================================================
+// 🔥 TEST CURRENCY SYSTEM
 // =====================================================================
 async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
-    console.log("\n🔥 TEST CURRENCIES");
+    console.log("\n🔥 TEST CURRENCIES (SECURE MODE)");
 
-    // Wait initial sync
+    // Wait for initial sync
     while (!lastCurrencyRef.value) await sleep(20);
 
     let before = structuredClone(lastCurrencyRef.value);
@@ -159,21 +191,19 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
         { action: "remove", type: "gold", amount: 30 },
         { action: "remove", type: "diamonds", amount: 5 },
 
-        { action: "set", type: "gold", amount: 777 },
+        { action: "set", type: "gold", amount: 777 }, // Should trigger cheat warning
         { action: "set", type: "diamonds_bound", amount: 42 }
     ];
 
     for (const op of ops) {
         console.log(`\n💰 ${op.action.toUpperCase()} → ${op.type} (${op.amount})`);
 
-        // ❗ Ici on renvoie EXACTEMENT le même format qu’avant
-        room.send("currency", {
-            action: op.action,
-            type: op.type,
-            amount: op.amount
-        });
+        // Build secure payload
+        const payload = buildSecurePayload(op.action, op.type, op.amount);
 
-        await sleep(200);
+        room.send("currency", payload);
+
+        await sleep(300);
 
         const after = structuredClone(lastCurrencyRef.value);
         console.log("📊 DIFF:", diffCurrencies(before, after));
@@ -203,16 +233,12 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
 
         const client = new Colyseus.Client(WS_URL);
 
-        // ❗ ICI : AUCUNE MODIFICATION → pas de token dans consumeSeatReservation
         const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTED");
 
         let lastCurrencyRef: { value: any } = { value: null };
 
-        // =========================
-        // LISTENERS
-        // =========================
         room.onMessage("welcome", msg => console.log("👋 WELCOME:", msg));
 
         room.onMessage("currency_full_update", msg => {
@@ -228,8 +254,6 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
         room.onMessage("currency_error", msg =>
             console.error("❌ CURRENCY ERROR:", msg)
         );
-
-        room.onMessage("*", (t, d) => console.warn("⚠ Unknown msg:", t, d));
 
         console.log("📈 Giving test XP...");
         room.send("debug_give_xp", { amount: 99999 });
