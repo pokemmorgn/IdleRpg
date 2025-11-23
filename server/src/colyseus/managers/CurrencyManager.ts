@@ -6,7 +6,7 @@ import { SecurityVerifier } from "../../security/SecurityVerifier";
 
 export class CurrencyManager {
 
-    private static VALID_TYPES = ["gold", "diamonds", "diamonds_bound"];
+    private static VALID_TYPES = ["gold", "diamondBound", "diamondUnbound"];
     private static MAX_DELTA = 5000;
 
     private lastOpTimestamp: Map<string, number> = new Map();
@@ -56,10 +56,10 @@ export class CurrencyManager {
             return;
         }
 
-        const current = player.currencies.values.get(type) || 0;
+        const current = player.sharedCurrencies[type] || 0;
         const newAmount = current + amount;
 
-        player.currencies.values.set(type, newAmount);
+        player.sharedCurrencies[type] = newAmount;
 
         this.sendUpdate(client, type, newAmount);
     }
@@ -79,7 +79,7 @@ export class CurrencyManager {
             return false;
         }
 
-        const current = player.currencies.values.get(type) || 0;
+        const current = player.sharedCurrencies[type] || 0;
 
         if (current < amount) {
             client.send("currency_error", {
@@ -90,8 +90,7 @@ export class CurrencyManager {
         }
 
         const newAmount = current - amount;
-
-        player.currencies.values.set(type, newAmount);
+        player.sharedCurrencies[type] = newAmount;
 
         this.sendUpdate(client, type, newAmount);
         return true;
@@ -109,46 +108,32 @@ export class CurrencyManager {
     }
 
     // =======================================================
-    // 🔥 MESSAGE ROUTER WITH SIGNATURE + HASH VERIFICATION
+    // 🔥 MESSAGE ROUTER + SECURITY VERIFICATION
     // =======================================================
     handleMessage(type: string, client: Client, player: PlayerState, payload: any): boolean {
 
-        if (type !== "currency")
-            return false;
+        if (type !== "currency") return false;
 
-        // ---------------------------------------------------
-        // 1) FULL SECURITY VERIFICATION
-        // ---------------------------------------------------
-        // ➜ Includes HMAC, timestamp, nonce, AND state hash verification
         if (!SecurityVerifier.verify(payload, player)) {
             console.warn("⛔ SECURITY: INVALID OR TAMPERED PAYLOAD BLOCKED", {
                 player: player.playerId,
                 payload
             });
-            return true; // block silently
+            return true;
         }
 
         const { action, type: currencyType, amount } = payload.data;
 
-        // ---------------------------------------------------
-        // 2) Type validation
-        // ---------------------------------------------------
         if (!CurrencyManager.VALID_TYPES.includes(currencyType)) {
             console.warn("⚠️ CHEAT: INVALID CURRENCY TYPE", currencyType);
             return true;
         }
 
-        // ---------------------------------------------------
-        // 3) Anti-flood
-        // ---------------------------------------------------
         if (this.isFlooding(player)) {
             console.warn("⚠️ FLOOD DETECTED FROM PLAYER", player.playerId);
             return true;
         }
 
-        // ---------------------------------------------------
-        // 4) Execute action
-        // ---------------------------------------------------
         switch (action) {
             case "add":
                 this.add(player, client, currencyType, amount);
