@@ -6,10 +6,14 @@ import { TitleState } from "../schema/TitleState";
 import { Client } from "colyseus";
 import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
+// 🟩 INSTANCE SINGLETON
+export let TitleManagerInstance: TitleManager | null = null;
+
 export class TitleManager {
 
   constructor() {
     console.log(`🏷️ TitleManager chargé avec ${ALL_TITLES.length} titres.`);
+    TitleManagerInstance = this;
   }
 
   // ========================================================================
@@ -41,10 +45,10 @@ export class TitleManager {
   }
 
   // ========================================================================
-  // RE-CALCUL DES STATS DU JOUEUR
+  // RECALCUL STATS
   // ========================================================================
-  private recalcStats(player: PlayerState, client: Client) {
-    const computed = computeFullStats(player);
+  private async recalcStats(player: PlayerState, client: Client) {
+    const computed = await computeFullStats(player);
     player.loadStatsFromProfile(computed);
 
     client.send("stats_update", {
@@ -116,7 +120,7 @@ export class TitleManager {
   }
 
   // ========================================================================
-  // CALCUL DES BONUS
+  // BONUS STATS
   // ========================================================================
   getTitleStatBonus(player: PlayerState) {
     const result = {
