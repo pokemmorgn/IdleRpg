@@ -2,9 +2,11 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 import { MAX_CHARACTERS_PER_SERVER } from "../config/character.config";
 
 import { VALID_CLASS_IDS } from "../config/classes.config";
-import { ALL_RACES } from "../config/races.config"; // ⬅️ Important : on utilise maintenant ALL_RACES
+import { ALL_RACES } from "../config/races.config";
 
-// ===== Interfaces =====
+// =======================================================
+// ▶ INTERFACES
+// =======================================================
 
 export interface IPlayerPrimaryStats {
   strength: number;
@@ -49,14 +51,23 @@ export interface IPlayerComputedStats {
 export interface IServerProfile extends Document {
   playerId: Types.ObjectId;
   serverId: string;
+
   characterSlot: number;
   characterName: string;
+
   level: number;
   xp: number;
-  nextLevelXp: number; 
-  availableSkillPoints: number; 
-  talents: { [talentId: string]: number }; 
-  gold: number;
+  nextLevelXp: number;
+
+  availableSkillPoints: number;
+  talents: { [talentId: string]: number };
+
+  currencies: {
+    gold: number;
+    diamondBound: number;
+    diamondUnbound: number;
+  };
+
   class: string;
   race: string;
 
@@ -67,9 +78,12 @@ export interface IServerProfile extends Document {
   lastOnline: Date;
 }
 
-// ====== Schemas ======
+// =======================================================
+// ▶ SCHEMAS
+// =======================================================
 
-const PlayerPrimaryStatsSchema = new Schema({
+// ------- PRIMARY STATS -------
+const PlayerPrimaryStatsSchema = new Schema<IPlayerPrimaryStats>({
   strength: { type: Number, required: true, min: 0, default: 10 },
   agility: { type: Number, required: true, min: 0, default: 10 },
   intelligence: { type: Number, required: true, min: 0, default: 10 },
@@ -77,7 +91,9 @@ const PlayerPrimaryStatsSchema = new Schema({
   spirit: { type: Number, required: true, min: 0, default: 10 }
 }, { _id: false });
 
-const PlayerComputedStatsSchema = new Schema({
+
+// ------- COMPUTED STATS -------
+const PlayerComputedStatsSchema = new Schema<IPlayerComputedStats>({
   hp: { type: Number, required: true, default: 100 },
   maxHp: { type: Number, required: true, default: 100 },
 
@@ -106,8 +122,21 @@ const PlayerComputedStatsSchema = new Schema({
   penetration: { type: Number, required: true, default: 0 },
   tenacity: { type: Number, required: true, default: 0 },
   lifesteal: { type: Number, required: true, default: 0 },
-  spellPenetration: { type: Number, required: true, default: 0 }
+  spellPenetration: { type: Number, required: true, default: 0 },
 }, { _id: false });
+
+
+// ------- CURRENCIES -------
+const CurrencySchema = new Schema({
+  gold: { type: Number, default: 0, min: 0 },
+  diamondBound: { type: Number, default: 0, min: 0 },
+  diamondUnbound: { type: Number, default: 0, min: 0 }
+}, { _id: false });
+
+
+// =======================================================
+// ▶ MAIN PROFILE SCHEMA
+// =======================================================
 
 const ServerProfileSchema = new Schema<IServerProfile>({
   playerId: { type: Schema.Types.ObjectId, ref: "Player", required: true, index: true },
@@ -127,9 +156,11 @@ const ServerProfileSchema = new Schema<IServerProfile>({
   level: { type: Number, default: 1, min: 1 },
   xp: { type: Number, default: 0, min: 0 },
   nextLevelXp: { type: Number, default: 100, min: 1 },
-  availableSkillPoints: { type: Number, default: 0, min: 0 },
+
+  availableSkillPoints: { type: Number, default: 0 },
   talents: { type: Map, of: Number, default: {} },
-  gold: { type: Number, default: 0, min: 0 },
+
+  currencies: { type: CurrencySchema, default: {} },
 
   class: {
     type: String,
@@ -138,7 +169,6 @@ const ServerProfileSchema = new Schema<IServerProfile>({
     default: "warrior"
   },
 
-  // 💥 ICI : on remplace VALID_RACE_IDS par ALL_RACES.map(...) 💥
   race: {
     type: String,
     required: true,
@@ -155,6 +185,7 @@ const ServerProfileSchema = new Schema<IServerProfile>({
   timestamps: true
 });
 
+// UNIQUE COMBINATION → one profile per (playerId, server, slot)
 ServerProfileSchema.index({ playerId: 1, serverId: 1, characterSlot: 1 }, { unique: true });
 ServerProfileSchema.index({ playerId: 1, serverId: 1 });
 
