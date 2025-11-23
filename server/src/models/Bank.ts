@@ -1,5 +1,4 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
-import { ItemSubSchema } from "./Item";
 
 export interface IBankItem {
   itemId: string;
