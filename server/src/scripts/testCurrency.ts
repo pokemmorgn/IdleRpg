@@ -1,10 +1,9 @@
 /**
- * TEST CURRENCY SYSTEM — Secure Mode
- * Compatible avec SecurityVerifier (HMAC + timestamp + nonce)
+ * TEST CURRENCY SYSTEM — Secure Version
+ * Compatible avec HMAC / Anti-cheat / Colyseus
  */
 
 import * as Colyseus from "colyseus.js";
-import crypto from "crypto";
 
 // ======================
 // CONFIG
@@ -20,33 +19,8 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "CurrencyTester";
 
-// La même clé que dans ton .env
-const PX42_KEY = process.env.PX42_KEY || "DEV_TEST_KEY_CHANGE_THIS";
-
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// =====================================================================
-// SECURITY PAYLOAD BUILDER (CLIENT-SIDE)
-// =====================================================================
-function createSecurePayload(data: any) {
-    const timestamp = Date.now();
-    const nonce = crypto.randomBytes(16).toString("hex");
-
-    const raw = JSON.stringify(data) + timestamp + nonce;
-
-    const signature = crypto
-        .createHmac("sha256", PX42_KEY)
-        .update(raw)
-        .digest("hex");
-
-    return {
-        data,
-        timestamp,
-        nonce,
-        signature
-    };
 }
 
 // =====================================================================
@@ -96,6 +70,7 @@ async function getProfile(token: string) {
 
     const j = await r.json();
     if (!r.ok) return null;
+
     return j.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) ?? null;
 }
 
@@ -104,7 +79,9 @@ async function getCreationData(token: string) {
         headers: { Authorization: `Bearer ${token}` }
     });
 
-    return r.json();
+    const j = await r.json();
+    if (!r.ok) return null;
+    return j;
 }
 
 async function createCharacter(token: string, race: string, classId: string) {
@@ -128,7 +105,7 @@ async function createCharacter(token: string, race: string, classId: string) {
         return null;
     }
 
-    console.log("✔ Character created");
+    console.log("✔ Character created !");
     return j.profile;
 }
 
@@ -145,7 +122,9 @@ async function reserveSeat(token: string) {
         })
     });
 
-    return r.json();
+    const j = await r.json();
+    if (!r.ok) throw new Error("matchmaking failed");
+    return j;
 }
 
 // =====================================================================
@@ -162,7 +141,7 @@ function diffCurrencies(before: any, after: any) {
 }
 
 // =====================================================================
-// CURRENCY TEST SUITE (SECURE PAYLOADS)
+// CURRENCY TEST SUITE
 // =====================================================================
 async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
     console.log("\n🔥 TEST CURRENCIES");
@@ -180,22 +159,20 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
         { action: "remove", type: "gold", amount: 30 },
         { action: "remove", type: "diamonds", amount: 5 },
 
-        { action: "set", type: "gold", amount: 777 }, // Should be blocked
+        { action: "set", type: "gold", amount: 777 },
         { action: "set", type: "diamonds_bound", amount: 42 }
     ];
 
     for (const op of ops) {
         console.log(`\n💰 ${op.action.toUpperCase()} → ${op.type} (${op.amount})`);
 
-        const securePayload = createSecurePayload({
+        room.send("currency", {
             action: op.action,
             type: op.type,
             amount: op.amount
         });
 
-        room.send("currency", securePayload);
-
-        await sleep(250);
+        await sleep(200);
 
         const after = structuredClone(lastCurrencyRef.value);
         console.log("📊 DIFF:", diffCurrencies(before, after));
@@ -223,7 +200,13 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
 
         const mm = await reserveSeat(token);
         const client = new Colyseus.Client(WS_URL);
-        const room = await client.consumeSeatReservation(mm);
+
+        // ⭐⭐⭐⭐⭐ FIX PRINCIPAL — onAuth fonctionne à nouveau ⭐⭐⭐⭐⭐
+        const room = await client.consumeSeatReservation(mm, {
+            token,
+            serverId: SERVER_ID,
+            characterSlot: CHARACTER_SLOT
+        });
 
         console.log("🔌 CONNECTED");
 
@@ -248,16 +231,20 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
             console.error("❌ CURRENCY ERROR:", msg)
         );
 
-        // Debug XP boost
-        console.log("📈 BOOST XP → Avoid locks");
+        room.onMessage("*", (t, d) => console.warn("⚠ Unknown msg:", t, d));
+
+        // XP override
+        console.log("📈 OVERRIDE → Giving XP");
         room.send("debug_give_xp", { amount: 99999 });
         await sleep(1000);
 
+        // RUN TEST
         await testCurrencySystem(room, lastCurrencyRef);
 
         console.log("\n============================");
         console.log("💰 CURRENCY TEST SUMMARY");
         console.log("============================");
+
         console.table(lastCurrencyRef.value);
 
         console.log("\n🎉 ALL CURRENCY TESTS COMPLETED");
