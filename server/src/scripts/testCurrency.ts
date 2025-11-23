@@ -151,17 +151,18 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
 
     let before = structuredClone(lastCurrencyRef.value);
 
-    const ops = [
-        { action: "add", type: "gold", amount: 100 },
-        { action: "add", type: "diamonds", amount: 20 },
-        { action: "add", type: "diamonds_premium", amount: 5 },
+const ops = [
+    { action: "add", type: "gold", amount: 100 },
+    { action: "add", type: "diamonds", amount: 20 },          // premium
+    { action: "add", type: "diamonds_bound", amount: 5 },     // bound
 
-        { action: "remove", type: "gold", amount: 30 },
-        { action: "remove", type: "diamonds", amount: 5 },
+    { action: "remove", type: "gold", amount: 30 },
+    { action: "remove", type: "diamonds", amount: 5 },
 
-        { action: "set", type: "gold", amount: 777 },
-        { action: "set", type: "diamonds_premium", amount: 42 }
-    ];
+    { action: "set", type: "gold", amount: 777 },
+    { action: "set", type: "diamonds_bound", amount: 42 }
+];
+
 
     for (const op of ops) {
         console.log(`\n💰 ${op.action.toUpperCase()} → ${op.type} (${op.amount})`);
