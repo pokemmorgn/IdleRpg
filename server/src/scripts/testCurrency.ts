@@ -6,9 +6,6 @@ import dotenv from "dotenv";
 dotenv.config();
 import * as Colyseus from "colyseus.js";
 import crypto from "crypto";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 // ======================
 // CONFIG
