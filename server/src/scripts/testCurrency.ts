@@ -1,6 +1,6 @@
 /**
- * TEST CURRENCY SYSTEM — Secure Version
- * Compatible avec HMAC / Anti-cheat / Colyseus
+ * TEST CURRENCY SYSTEM — Gold / Diamonds / Bound Diamonds
+ * Version stable, optimisée, compatible avec ton WorldRoom actuel.
  */
 
 import * as Colyseus from "colyseus.js";
@@ -166,6 +166,7 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
     for (const op of ops) {
         console.log(`\n💰 ${op.action.toUpperCase()} → ${op.type} (${op.amount})`);
 
+        // ❗ Ici on renvoie EXACTEMENT le même format qu’avant
         room.send("currency", {
             action: op.action,
             type: op.type,
@@ -199,14 +200,11 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
         }
 
         const mm = await reserveSeat(token);
+
         const client = new Colyseus.Client(WS_URL);
 
-        // ⭐⭐⭐⭐⭐ FIX PRINCIPAL — onAuth fonctionne à nouveau ⭐⭐⭐⭐⭐
-        const room = await client.consumeSeatReservation(mm, {
-            token,
-            serverId: SERVER_ID,
-            characterSlot: CHARACTER_SLOT
-        });
+        // ❗ ICI : AUCUNE MODIFICATION → pas de token dans consumeSeatReservation
+        const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTED");
 
@@ -233,12 +231,10 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
 
         room.onMessage("*", (t, d) => console.warn("⚠ Unknown msg:", t, d));
 
-        // XP override
-        console.log("📈 OVERRIDE → Giving XP");
+        console.log("📈 Giving test XP...");
         room.send("debug_give_xp", { amount: 99999 });
         await sleep(1000);
 
-        // RUN TEST
         await testCurrencySystem(room, lastCurrencyRef);
 
         console.log("\n============================");
