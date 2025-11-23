@@ -95,7 +95,10 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
     await this.questManager.loadAllQuestsFromDB();
-
+    // ===== CURRENCIES =====
+    this.onMessage("currency", (client, msg) =>
+        this.handleMessage(client, "currency", msg)
+    );
     this.questObjectiveManager = new QuestObjectiveManager(
       this.state,
       (sessionId, type, payload) => {
