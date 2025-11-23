@@ -6,16 +6,23 @@ import { MountState } from "../schema/MountState";
 import { Client } from "colyseus";
 import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
+// 🟩 INSTANCE SINGLETON
+export let MountManagerInstance: MountManager | null = null;
+
 export class MountManager {
 
   constructor() {
     console.log(`🐎 MountManager chargé avec ${ALL_MOUNTS.length} montures.`);
+    MountManagerInstance = this;
   }
 
+  // ========================================================================
+  // ROUTER MESSAGES
   // ========================================================================
   handleMessage(type: string, client: Client, player: PlayerState, msg: any): boolean {
     try {
       switch (type) {
+
         case "mount_unlock":
           if (!msg?.mountId) return true;
           this.handleUnlock(player, client, msg.mountId);
@@ -26,6 +33,7 @@ export class MountManager {
           this.handleEquip(player, client, msg.mountId);
           return true;
       }
+
     } catch (e) {
       console.error("❌ Erreur MountManager.handleMessage:", e);
     }
@@ -33,8 +41,10 @@ export class MountManager {
   }
 
   // ========================================================================
-  private recalcStats(player: PlayerState, client: Client) {
-    const computed = computeFullStats(player);
+  // RECALCUL STATS
+  // ========================================================================
+  private async recalcStats(player: PlayerState, client: Client) {
+    const computed = await computeFullStats(player);
     player.loadStatsFromProfile(computed);
 
     client.send("stats_update", {
@@ -53,6 +63,8 @@ export class MountManager {
     });
   }
 
+  // ========================================================================
+  // UNLOCK
   // ========================================================================
   private handleUnlock(player: PlayerState, client: Client, mountId: string) {
     const config = getMountById(mountId);
@@ -76,6 +88,8 @@ export class MountManager {
   }
 
   // ========================================================================
+  // EQUIP
+  // ========================================================================
   private handleEquip(player: PlayerState, client: Client, mountId: string) {
     if (!this.hasMount(player, mountId)) {
       client.send("mount_error", { error: "not_unlocked", mountId });
@@ -91,6 +105,8 @@ export class MountManager {
   }
 
   // ========================================================================
+  // API
+  // ========================================================================
   hasMount(player: PlayerState, mountId: string): boolean {
     return player.mounts.unlockedMounts.has(mountId);
   }
@@ -102,6 +118,8 @@ export class MountManager {
     return true;
   }
 
+  // ========================================================================
+  // BONUS STATS
   // ========================================================================
   getMountStatBonus(player: PlayerState) {
     const result = {
