@@ -20,6 +20,7 @@ import { TitleManager } from "../managers/TitleManager";
 import { MountManager } from "../managers/MountManager";
 import { CurrencyManager } from "../managers/CurrencyManager";
 import { CurrencyHandler } from "../handlers/CurrencyHandler";
+
 import { InventoryManager } from "../managers/InventoryManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 import { LevelManager } from "../managers/LevelManager";
@@ -48,25 +49,30 @@ export class WorldRoom extends Room<GameState> {
   private talentManager!: TalentManager;
   private currencyManager!: CurrencyManager;
   private currencyHandler!: CurrencyHandler;
+
   private testManager?: TestManager;
 
   // ===========================================================
   // onCreate
   // ===========================================================
   async onCreate(options: { serverId: string }) {
+
     this.serverId = options.serverId;
-    console.log(`🟢 onCreate(serverId=${this.serverId})`);
+
+    console.log(`🟢 [WorldRoom] onCreate(serverId=${this.serverId})`);
 
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
 
-    // Initialize cosmetic managers
+    // Cosmetics
     new SkinManager();
     new TitleManager();
     new MountManager();
-    // === CURRENCIES ===
+
+    // Currency system
     this.currencyManager = new CurrencyManager();
     this.currencyHandler = new CurrencyHandler(this.currencyManager);
+
     // Talents
     await talentScriptRegistry.initialize();
     this.talentManager = new TalentManager(
@@ -95,10 +101,12 @@ export class WorldRoom extends Room<GameState> {
       this.savePlayerData.bind(this)
     );
     await this.questManager.loadAllQuestsFromDB();
-    // ===== CURRENCIES =====
+
+    // Listen currency messages
     this.onMessage("currency", (client, msg) =>
-        this.handleMessage(client, "currency", msg)
+      this.handleMessage(client, "currency", msg)
     );
+
     this.questObjectiveManager = new QuestObjectiveManager(
       this.state,
       (sessionId, type, payload) => {
@@ -159,25 +167,32 @@ export class WorldRoom extends Room<GameState> {
 
     console.log("📥 WORLD ROOM READY");
 
-    // COSMETICS MESSAGES
+    // Cosmetics messages
     this.onMessage("skin_unlock", (client, msg) =>
-      this.handleMessage(client, "skin_unlock", msg));
+      this.handleMessage(client, "skin_unlock", msg)
+    );
     this.onMessage("skin_equip", (client, msg) =>
-      this.handleMessage(client, "skin_equip", msg));
+      this.handleMessage(client, "skin_equip", msg)
+    );
     this.onMessage("skin_level_up", (client, msg) =>
-      this.handleMessage(client, "skin_level_up", msg));
+      this.handleMessage(client, "skin_level_up", msg)
+    );
 
     this.onMessage("title_unlock", (client, msg) =>
-      this.handleMessage(client, "title_unlock", msg));
+      this.handleMessage(client, "title_unlock", msg)
+    );
     this.onMessage("title_equip", (client, msg) =>
-      this.handleMessage(client, "title_equip", msg));
+      this.handleMessage(client, "title_equip", msg)
+    );
 
     this.onMessage("mount_unlock", (client, msg) =>
-      this.handleMessage(client, "mount_unlock", msg));
+      this.handleMessage(client, "mount_unlock", msg)
+    );
     this.onMessage("mount_equip", (client, msg) =>
-      this.handleMessage(client, "mount_equip", msg));
+      this.handleMessage(client, "mount_equip", msg)
+    );
 
-    // CATCH-ALL message router:
+    // Catch-all
     this.onMessage("*", (client, type, msg) => {
       this.handleMessage(client, String(type), msg);
     });
@@ -190,14 +205,31 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // AUTH
+  // AUTH DEBUG
   // ===========================================================
   async onAuth(client: Client, options: any) {
-    if (!options.token) return false;
-    if (options.serverId !== this.serverId) return false;
+
+    console.log("🔵 [onAuth] options received:", options);
+
+    if (!options.token) {
+      console.log("❌ onAuth: missing token");
+      return false;
+    }
+
+    if (options.serverId !== this.serverId) {
+      console.log(`❌ onAuth: incorrect serverId (got=${options.serverId}, expected=${this.serverId})`);
+      return false;
+    }
 
     const valid = await validateToken(options.token);
-    if (!valid.valid) return false;
+    console.log("🔵 validateToken() result:", valid);
+
+    if (!valid.valid) {
+      console.log("❌ onAuth: validateToken returned invalid");
+      return false;
+    }
+
+    console.log("🔵 Loading character data…");
 
     const load = await loadPlayerCharacter(
       valid.playerId!,
@@ -205,12 +237,19 @@ export class WorldRoom extends Room<GameState> {
       options.characterSlot
     );
 
-    if (!load.success || !load.profile) return false;
+    console.log("🔵 loadPlayerCharacter() result:", load);
 
-    if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
-      console.log("❌ Player already connected");
+    if (!load.success || !load.profile) {
+      console.log("❌ onAuth: no profile found");
       return false;
     }
+
+    if (isCharacterAlreadyConnected(this.state.players, load.profile.profileId)) {
+      console.log("❌ onAuth: character already connected");
+      return false;
+    }
+
+    console.log("🟢 onAuth success for", load.profile.characterName);
 
     const p = load.profile;
 
@@ -221,10 +260,8 @@ export class WorldRoom extends Room<GameState> {
       level: p.level,
       xp: p.xp || 0,
       nextLevelXp: p.nextLevelXp || this.levelManager.computeNextLevelXp(p.level || 1),
-
       availableSkillPoints: p.availableSkillPoints || 0,
       talents: p.talents || {},
-
       characterClass: p.class,
       characterRace: p.race,
       characterSlot: p.characterSlot,
@@ -234,122 +271,86 @@ export class WorldRoom extends Room<GameState> {
   }
 
   // ===========================================================
-  // JOIN
+  // JOIN DEBUG
   // ===========================================================
-async onJoin(client: Client, options: any, auth: any) {
+  async onJoin(client: Client, options: any, auth: any) {
+
+    console.log("🟣 [onJoin] auth payload:", auth);
 
     const player = new PlayerState(
-        client.sessionId,
-        auth.playerId,
-        auth.profileId,
-        auth.characterSlot,
-        auth.characterName,
-        auth.level,
-        auth.characterClass,
-        auth.characterRace,
-        auth.xp,
-        auth.nextLevelXp
+      client.sessionId,
+      auth.playerId,
+      auth.profileId,
+      auth.characterSlot,
+      auth.characterName,
+      auth.level,
+      auth.characterClass,
+      auth.characterRace,
+      auth.xp,
+      auth.nextLevelXp
     );
 
-    // ============================
-    // 🔥 LOAD DATA FROM PROFILE
-    // ============================
-
     if (auth.questData)
-        player.loadQuestsFromProfile(auth.questData);
+      player.loadQuestsFromProfile(auth.questData);
 
     if (auth.inventory)
-        player.inventory.loadFromProfile(auth.inventory);
+      player.inventory.loadFromProfile(auth.inventory);
 
     if (auth.talents)
-        player.loadTalentsFromProfile(auth.talents);
+      player.loadTalentsFromProfile(auth.talents);
 
-    // Skill points
     player.availableSkillPoints = auth.availableSkillPoints || 0;
-
-    // ============================
-    // 🔥 LOAD ITEM CACHE
-    // ============================
 
     player.itemCache = {};
 
     for (const [slot, invSlot] of player.inventory.equipment.entries()) {
-        if (!invSlot.itemId) continue;
-        const model = await ItemModel.findOne({ itemId: invSlot.itemId });
-        if (model) player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
+      if (!invSlot.itemId) continue;
+      const model = await ItemModel.findOne({ itemId: invSlot.itemId });
+      if (model) player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
     }
 
-    for (const [itemId] of Object.keys(player.inventory.personalItems)) {
-        const model = await ItemModel.findOne({ itemId });
-        if (model) player.itemCache[itemId] = { stats: model.stats || {} };
+    for (const itemId of Object.keys(player.inventory.personalItems)) {
+      const model = await ItemModel.findOne({ itemId });
+      if (model) player.itemCache[itemId] = { stats: model.stats || {} };
     }
-
-    // ============================
-    // 🔥 COMPUTE FULL STATS
-    // ============================
 
     const stats = await computeFullStats(player);
     player.loadStatsFromProfile(stats);
 
-    // TEST SERVER = spawn obligatoire
-    if (this.serverId === "test") {
-        player.zoneId = "start_zone";
-    }
-
-    // ============================
-    // 🔥 SEND WELCOME
-    // ============================
+    if (this.serverId === "test") player.zoneId = "start_zone";
 
     client.send("welcome", { ok: true });
 
-    // ============================
-    // 💰 SEND ALL CURRENCIES FIRST
-    // ============================
-
     client.send("currency_full_update", {
-        values: Object.fromEntries(player.currencies.values)
+      values: Object.fromEntries(player.currencies.values)
     });
-
-    // ============================
-    // 🔥 ADD PLAYER TO GAME STATE
-    // ============================
 
     this.state.addPlayer(player);
 
-    // ============================
-    // 🔥 SEND PLAYER DATA
-    // ============================
-
     client.send("player_update", {
-        level: player.level,
-        xp: player.xp,
-        nextLevelXp: player.nextLevelXp,
-        stats,
-        availableSkillPoints: player.availableSkillPoints,
-        talents: player.saveTalentsToProfile()
+      level: player.level,
+      xp: player.xp,
+      nextLevelXp: player.nextLevelXp,
+      stats,
+      availableSkillPoints: player.availableSkillPoints,
+      talents: player.saveTalentsToProfile()
     });
-}
 
-
-  // ===========================================================
-  // LEAVE
-  // ===========================================================
-  async onLeave(client: Client) {
-    const player = this.state.players.get(client.sessionId);
-    if (player) await this.savePlayerData(player);
-    this.state.removePlayer(client.sessionId);
+    console.log(`🟢 Player joined: ${player.characterName}`);
   }
 
   // ===========================================================
-  // HANDLE MESSAGES
+  // HANDLE MESSAGE
   // ===========================================================
   private async handleMessage(client: Client, type: string, msg: any) {
+
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
-    // ===== CURRENCIES =====
+
+    // Currency
     if (this.currencyHandler.handle(type, client, player, msg)) return;
-    
-    // ===== COSMETICS (SKINS + TITLES + MOUNTS) =====
+
+    // Cosmetics
     if (handleCosmeticsMessage(type, client, player, msg)) return;
 
     // Inventory
@@ -358,30 +359,28 @@ async onJoin(client: Client, options: any, auth: any) {
       return;
     }
 
-    // TALENT
+    // Talents
     if (type === "talent_learn") {
       await this.talentManager.learnTalent(player, msg.talentId);
       return;
     }
-
     if (type === "talent_reset") {
       await this.talentManager.resetTalents(player);
       return;
     }
 
-    // DEBUG XP
+    // Debug XP
     if (type === "debug_give_xp") {
       const amount = msg.amount || 100;
-      console.log(`[DEBUG] Giving ${amount} XP to ${player.characterName}`);
+      console.log(`[DEBUG] Giving XP: ${amount}`);
       await this.levelManager.giveXP(player, amount);
       return;
     }
 
-    // STATS REQUEST
+    // Stats request
     if (type === "stats_request") {
       const stats = await computeFullStats(player);
       player.loadStatsFromProfile(stats);
-
       client.send("player_update", {
         level: player.level,
         xp: player.xp,
@@ -399,15 +398,14 @@ async onJoin(client: Client, options: any, auth: any) {
       return;
     }
 
-    // Quests
+    // Quests / Dialogues
     if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
     if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
     if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
 
     if (type === "dialogue_choice") {
       return this.dialogueManager.handleDialogueChoice(
-        client, player,
-        msg.npcId, msg.currentNodeId, msg.choiceId
+        client, player, msg.npcId, msg.currentNodeId, msg.choiceId
       );
     }
 
@@ -434,39 +432,32 @@ async onJoin(client: Client, options: any, auth: any) {
   // ===========================================================
   // SAVE PLAYER
   // ===========================================================
-private async savePlayerData(player: PlayerState): Promise<void> {
-  try {
-    const stats = await computeFullStats(player);
-    player.loadStatsFromProfile(stats);
+  private async savePlayerData(player: PlayerState): Promise<void> {
+    try {
+      const stats = await computeFullStats(player);
+      player.loadStatsFromProfile(stats);
 
-    await ServerProfile.findByIdAndUpdate(player.profileId, {
-      $set: {
-        lastOnline: new Date(),
-        level: player.level,
-        xp: player.xp,
-        nextLevelXp: player.nextLevelXp,
-        availableSkillPoints: player.availableSkillPoints,
+      await ServerProfile.findByIdAndUpdate(player.profileId, {
+        $set: {
+          lastOnline: new Date(),
+          level: player.level,
+          xp: player.xp,
+          nextLevelXp: player.nextLevelXp,
+          availableSkillPoints: player.availableSkillPoints,
+          talents: player.saveTalentsToProfile(),
+          currencies: player.currencies,
+          questData: player.saveQuestsToProfile(),
+          inventory: player.inventory.saveToProfile(),
+        }
+      });
 
-        // Talents persistants
-        talents: player.saveTalentsToProfile(),
-
-        // 💰 Currency persistante
-        currencies: player.currencies,
-
-        // Quêtes
-        questData: player.saveQuestsToProfile(),
-
-        // Inventaire
-        inventory: player.inventory.saveToProfile(),
-      }
-    });
-  } catch (error) {
-    console.error("❌ Save error:", error);
+    } catch (err) {
+      console.error("❌ Save error:", err);
+    }
   }
-}
 
   // ===========================================================
-  // TEST MONSTER
+  // SPAWN TEST MONSTER
   // ===========================================================
   private spawnTestMonster(msg: any) {
     const MonsterState = require("../schema/MonsterState").MonsterState;
@@ -484,7 +475,9 @@ private async savePlayerData(player: PlayerState): Promise<void> {
       "aggressive",
       12, 20,
       2, 5, 3,
-      false, "dummy", true
+      false,
+      "dummy",
+      true
     );
 
     this.state.addMonster(m);
