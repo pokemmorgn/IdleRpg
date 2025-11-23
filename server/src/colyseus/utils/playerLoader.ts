@@ -2,6 +2,7 @@
 
 import ServerProfile from "../../models/ServerProfile";
 import Server from "../../models/Server";
+import PlayerServerProfile from "../../models/PlayerServerProfile";
 import { isValidCharacterSlot } from "../../config/character.config";
 
 export async function loadPlayerCharacter(
@@ -14,6 +15,7 @@ export async function loadPlayerCharacter(
   error?: string;
 }> {
   try {
+    // Vérifie que le serveur existe
     const server = await Server.findOne({ serverId });
     if (!server) {
       return { success: false, error: `Server ${serverId} not found` };
@@ -27,6 +29,7 @@ export async function loadPlayerCharacter(
       return { success: false, error: `Invalid character slot: ${characterSlot}` };
     }
 
+    // Récupère le profil du personnage
     const profile = await ServerProfile.findOne({
       playerId: playerId,
       serverId: serverId,
@@ -38,6 +41,16 @@ export async function loadPlayerCharacter(
         success: false,
         error: `No character found in slot ${characterSlot} on server ${serverId}`
       };
+    }
+
+    // Récupère les données globales du joueur sur ce serveur (banque, monnaie, shared quests)
+    const psp = await PlayerServerProfile.findOne({
+      playerId: playerId,
+      serverId: serverId
+    });
+
+    if (!psp) {
+      return { success: false, error: "PlayerServerProfile missing, corrupted data." };
     }
 
     console.log(
@@ -52,16 +65,23 @@ export async function loadPlayerCharacter(
         serverId: profile.serverId,
         characterSlot: profile.characterSlot,
         characterName: profile.characterName,
+
         level: profile.level,
         xp: profile.xp,
+        nextLevelXp: profile.nextLevelXp,
 
-        // 🔥 NOUVEAU SYSTEME DE MONNAIE
-        gold: profile.currencies.gold,
-        diamondBound: profile.currencies.diamondBound,
-        diamondUnbound: profile.currencies.diamondUnbound,
+        // ⭐ NOUVEAU → monnaies globales dans PlayerServerProfile
+        gold: psp.sharedCurrencies.gold,
+        diamondBound: psp.sharedCurrencies.diamondBound,
+        diamondUnbound: psp.sharedCurrencies.diamondUnbound,
 
         class: profile.class,
-        race: profile.race
+        race: profile.race,
+
+        primaryStats: profile.primaryStats,
+        computedStats: profile.computedStats,
+
+        lastOnline: profile.lastOnline
       }
     };
 
