@@ -125,6 +125,19 @@ export class PlayerState extends Schema {
   // --------------------------------------------------------------------
   itemCache: { [itemId: string]: { stats: any } } = {};
 
+  // --------------------------------------------------------------------
+  // 🔥 SHARED CURRENCIES (SERVER ONLY, NON SYNCHRONISÉ)
+  // --------------------------------------------------------------------
+  sharedCurrencies: {
+    gold: number;
+    diamondBound: number;
+    diamondUnbound: number;
+  } = {
+    gold: 0,
+    diamondBound: 0,
+    diamondUnbound: 0
+  };
+  
   constructor(
     sessionId: string,
     playerId: string,
