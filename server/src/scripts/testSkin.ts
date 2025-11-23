@@ -1,6 +1,6 @@
 /**
  * TEST COSMETICS — Skins / Titles / Mounts
- * Version PRO optimisée (stable, silencieuse, fiable)
+ * Version stable, optimisée, et 100% compatible Colyseus
  */
 
 import * as Colyseus from "colyseus.js";
@@ -11,15 +11,13 @@ import * as Colyseus from "colyseus.js";
 const API_URL = "http://localhost:3000";
 const WS_URL = "ws://localhost:3000";
 
-const USERNAME = "cosmetic_tester";
-const PASSWORD = "Test123!";
-const EMAIL = "cosmetic_tester@example.com";
+const TEST_USERNAME = "cosmetic_tester";
+const TEST_PASSWORD = "Test123!";
+const TEST_EMAIL = "cosmetic_tester@example.com";
 
 const SERVER_ID = "test";
-const SLOT = 1;
+const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "CosmeticTester";
-
-const TEST_LEVEL = 6;
 
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -32,26 +30,34 @@ async function register() {
     const r = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: USERNAME, email: EMAIL, password: PASSWORD })
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD
+        })
     });
 
     if (r.ok) return console.log("✔ Account created");
 
     const j = await r.json();
-    if (j.error === "Username already taken") return console.log("ℹ Account already exists");
+    if (j.error === "Username already taken")
+        return console.log("ℹ Account already exists");
 
     console.error("❌ register error:", j);
 }
 
-async function login() {
+async function login(): Promise<string> {
     const r = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+        body: JSON.stringify({
+            username: TEST_USERNAME,
+            password: TEST_PASSWORD
+        })
     });
 
     const j = await r.json();
-    if (!r.ok) throw new Error("login error");
+    if (!r.ok) throw new Error("login failed");
 
     console.log("✔ Logged in");
     return j.token;
@@ -61,19 +67,21 @@ async function getProfile(token: string) {
     const r = await fetch(`${API_URL}/profile/${SERVER_ID}`, {
         headers: { Authorization: `Bearer ${token}` }
     });
-    const j = await r.json();
 
+    const j = await r.json();
     if (!r.ok) return null;
-    return j.profiles.find((p: any) => p.characterSlot === SLOT) || null;
+
+    return j.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) ?? null;
 }
 
 async function getCreationData(token: string) {
     const r = await fetch(`${API_URL}/game-data/creation`, {
         headers: { Authorization: `Bearer ${token}` }
     });
-    const j = await r.json();
 
-    return r.ok ? j : null;
+    const j = await r.json();
+    if (!r.ok) return null;
+    return j;
 }
 
 async function createCharacter(token: string, race: string, classId: string) {
@@ -84,7 +92,7 @@ async function createCharacter(token: string, race: string, classId: string) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            characterSlot: SLOT,
+            characterSlot: CHARACTER_SLOT,
             characterName: CHARACTER_NAME,
             characterClass: classId,
             characterRace: race
@@ -97,7 +105,7 @@ async function createCharacter(token: string, race: string, classId: string) {
         return null;
     }
 
-    console.log("✔ Character created");
+    console.log("✔ Character created !");
     return j.profile;
 }
 
@@ -110,142 +118,146 @@ async function reserveSeat(token: string) {
         },
         body: JSON.stringify({
             serverId: SERVER_ID,
-            characterSlot: SLOT
+            characterSlot: CHARACTER_SLOT
         })
     });
 
     const j = await r.json();
     if (!r.ok) throw new Error("matchmaking failed");
-
     return j;
 }
 
 // =====================================================================
-// UTILS — DIFF
+// UTILS
 // =====================================================================
-function diff(a: any, b: any) {
-    if (!a || !b) return "No data";
-
-    const out: Record<string, { from: number; to: number }> = {};
-
-    for (const k in b) {
-        const from = a[k] ?? 0;
-        const to = b[k] ?? 0;
-
-        if (from !== to) {
-            out[k] = { from, to };
-        }
-    }
-
-    return out;
-}
-
-// =====================================================================
-// WAIT FOR REAL stats_update ONLY
-// =====================================================================
-async function waitForStats(previous: any, ref: { value: any }) {
+async function waitForStatsUpdate(
+    previousStats: any,
+    lastStatsRef: { value: any },
+    timeoutMs: number = 5000
+): Promise<any> {
     return new Promise(resolve => {
         const interval = setInterval(() => {
-            if (ref.value && ref.value !== previous) {
+            if (lastStatsRef.value && lastStatsRef.value !== previousStats) {
                 clearInterval(interval);
                 clearTimeout(timeout);
-                resolve(ref.value);
+                resolve(lastStatsRef.value);
             }
         }, 50);
 
         const timeout = setTimeout(() => {
             clearInterval(interval);
-            console.error("⏱ Timeout waiting for stats_update");
+            console.error("⏱️ Timeout waiting for stats_update");
             resolve(null);
-        }, 5000);
+        }, timeoutMs);
     });
 }
 
+// DIFF CLEAN — undefined → 0
+function diff(a: any, b: any) {
+    if (!a || !b) return "No data";
+
+    let changes: Record<string, { from: number; to: number }> = {};
+
+    for (const k in b) {
+        const oldVal = (a[k] === undefined ? 0 : a[k]);
+        const newVal = (b[k] === undefined ? 0 : b[k]);
+
+        if (oldVal !== newVal) {
+            changes[k] = { from: oldVal, to: newVal };
+        }
+    }
+
+    return changes;
+}
+
 // =====================================================================
-// DATA PICKERS
+// SKINS
 // =====================================================================
 function pickSkinFromClass(profile: any) {
-    const map = {
+    const SKIN_MAP: Record<string, string> = {
         warrior: "warrior_basic01",
         priest: "priest_basic01",
         mage: "mage_basic01",
         rogue: "rogue_basic01",
         paladin: "paladin_basic01",
-        druid: "druid_basic01",
-    } as Record<string, string>;
+        druid: "druid_basic01"
+    };
 
-    return map[String(profile.class)] || "warrior_basic01";
+    const classId = String(profile.class);
+    return SKIN_MAP[classId] ?? "warrior_basic01";
 }
 
-
-// =====================================================================
-// TEST BLOCKS
-// =====================================================================
-async function testSkins(room: Colyseus.Room, skinId: string, ref: any) {
+async function testSkinSystem(room: Colyseus.Room, skinId: string, lastStatsRef: any) {
     console.log("\n🔥 TEST SKINS");
 
-    while (!ref.value) await sleep(50);
-    let before = structuredClone(ref.value);
+    while (!lastStatsRef.value) await sleep(30);
+    let before = structuredClone(lastStatsRef.value);
 
     console.log("🔓 Unlock:", skinId);
     room.send("skin_unlock", { skinId });
-    let after = await waitForStats(before, ref);
+    let after = await waitForStatsUpdate(before, lastStatsRef);
     console.log("📊 DIFF:", diff(before, after));
     before = after || before;
 
     console.log("🎽 Equip:", skinId);
     room.send("skin_equip", { skinId });
 
-    console.log("⬆ Level 1");
+    console.log("⬆️ LevelUp 1");
     room.send("skin_level_up", { skinId });
-    after = await waitForStats(before, ref);
+    after = await waitForStatsUpdate(before, lastStatsRef);
     console.log("📊 DIFF:", diff(before, after));
     before = after || before;
 
-    console.log("⬆ Level 2");
+    console.log("⬆️ LevelUp 2");
     room.send("skin_level_up", { skinId });
-    after = await waitForStats(before, ref);
+    after = await waitForStatsUpdate(before, lastStatsRef);
     console.log("📊 DIFF:", diff(before, after));
 }
 
-async function testTitles(room: Colyseus.Room, titles: string[], ref: any) {
+// =====================================================================
+// TITLES
+// =====================================================================
+async function testTitleSystem(room: Colyseus.Room, titles: any[], lastStatsRef: any) {
     console.log("\n🔥 TEST TITLES");
 
-    while (!ref.value) await sleep(50);
-    let before = structuredClone(ref.value);
+    while (!lastStatsRef.value) await sleep(30);
+    let before = structuredClone(lastStatsRef.value);
 
-    for (const id of titles) {
-        console.log("🔓 Unlock:", id);
-        room.send("title_unlock", { titleId: id });
-        let after = await waitForStats(before, ref);
+    for (const t of titles) {
+        console.log("🔓 Unlock:", t.titleId);
+        room.send("title_unlock", { titleId: t.titleId });
+        let after = await waitForStatsUpdate(before, lastStatsRef);
         console.log("📊 DIFF:", diff(before, after));
         before = after || before;
 
-        console.log("🏷 Equip:", id);
-        room.send("title_equip", { titleId: id });
-    }
-}
-
-async function testMounts(room: Colyseus.Room, mounts: string[], ref: any) {
-    console.log("\n🔥 TEST MOUNTS");
-
-    while (!ref.value) await sleep(50);
-    let before = structuredClone(ref.value);
-
-    for (const id of mounts) {
-        console.log("🔓 Unlock:", id);
-        room.send("mount_unlock", { mountId: id });
-        let after = await waitForStats(before, ref);
-        console.log("📊 DIFF:", diff(before, after));
-        before = after || before;
-
-        console.log("🐎 Equip:", id);
-        room.send("mount_equip", { mountId: id });
+        console.log("🏷️ Equip:", t.titleId);
+        room.send("title_equip", { titleId: t.titleId });
     }
 }
 
 // =====================================================================
-// MAIN EXECUTION
+// MOUNTS
+// =====================================================================
+async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef: any) {
+    console.log("\n🔥 TEST MOUNTS");
+
+    while (!lastStatsRef.value) await sleep(30);
+    let before = structuredClone(lastStatsRef.value);
+
+    for (const m of mounts) {
+        console.log("🔓 Unlock:", m.mountId);
+        room.send("mount_unlock", { mountId: m.mountId });
+        let after = await waitForStatsUpdate(before, lastStatsRef);
+        console.log("📊 DIFF:", diff(before, after));
+        before = after || before;
+
+        console.log("🐎 Equip:", m.mountId);
+        room.send("mount_equip", { mountId: m.mountId });
+    }
+}
+
+// =====================================================================
+// MAIN
 // =====================================================================
 (async () => {
     try {
@@ -253,6 +265,7 @@ async function testMounts(room: Colyseus.Room, mounts: string[], ref: any) {
         const token = await login();
 
         let profile = await getProfile(token);
+
         if (!profile) {
             const creation = await getCreationData(token);
             const race = creation.races[0].raceId;
@@ -260,94 +273,104 @@ async function testMounts(room: Colyseus.Room, mounts: string[], ref: any) {
             profile = await createCharacter(token, race, classId);
         }
 
-        const seat = await reserveSeat(token);
+        const mm = await reserveSeat(token);
         const client = new Colyseus.Client(WS_URL);
-        const room = await client.consumeSeatReservation(seat);
+        const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTED");
 
-        // Stats reference
-        const lastStats = { value: null };
+        let lastStatsRef: { value: any } = { value: null };
 
-        // -----------------------------
-        // LISTENERS
-        // -----------------------------
+        // =========================
+        // LISTENERS — IMPORTANT
+        // =========================
         room.onMessage("welcome", msg => console.log("👋 WELCOME:", msg));
 
-        // Ignored → snapshot incomplet
         room.onMessage("player_update", msg => {
-            console.log("📥 PLAYER UPDATE (ignored stats)");
+            console.log("📥 PLAYER UPDATE");
+            lastStatsRef.value = msg.stats;
         });
 
-        // XP gain never touches stats here
-        room.onMessage("xp_gain", msg => {
-            console.log("📈 XP GAIN:", msg);
-        });
-
-        // REAL snapshot = stats_update ONLY
         room.onMessage("stats_update", msg => {
-            lastStats.value = msg;
+            lastStatsRef.value = msg;
         });
 
-        // Cosmetic logs
         room.onMessage("skin_unlocked", msg => console.log("🟩 SKIN UNLOCKED:", msg));
         room.onMessage("skin_equipped", msg => console.log("🎽 SKIN EQUIPPED:", msg));
-        room.onMessage("skin_level_up", msg => console.log("⬆️ SKIN LEVEL:", msg));
+        room.onMessage("skin_level_up", msg => console.log("⬆️ SKIN LVL:", msg));
+        room.onMessage("skin_error", msg => console.error("❌ SKIN ERROR:", msg));
 
-        room.onMessage("title_unlocked", msg => console.log("🏷 TITLE UNLOCKED:", msg));
-        room.onMessage("title_equipped", msg => console.log("🏷 TITLE EQUIPPED:", msg));
+        room.onMessage("title_unlocked", msg => console.log("🏷️ TITLE UNLOCKED:", msg));
+        room.onMessage("title_equipped", msg => console.log("🏷️ TITLE EQUIPPED:", msg));
+        room.onMessage("title_error", msg => console.error("❌ TITLE ERROR:", msg));
 
         room.onMessage("mount_unlocked", msg => console.log("🐎 MOUNT UNLOCKED:", msg));
         room.onMessage("mount_equipped", msg => console.log("🐎 MOUNT EQUIPPED:", msg));
+        room.onMessage("mount_error", msg => console.error("❌ MOUNT ERROR:", msg));
 
-        // -----------------------------
-        // FORCE LEVEL
-        // -----------------------------
-        console.log(`📈 OVERRIDE → Setting level to ${TEST_LEVEL}`);
+        room.onMessage("*", (t, d) =>
+            console.warn("⚠ Unknown msg:", t, d)
+        );
+
+        // Give XP to reach lvl 6
+        console.log("📈 OVERRIDE → Setting level to 6");
         room.send("debug_give_xp", { amount: 999999 });
 
-        console.log("⏳ Waiting XP settle...");
-        await sleep(600);
+        await sleep(1500);
 
-        // -----------------------------
-        // LIST COSMETICS
-        // -----------------------------
+        // =========================
+        // DATA
+        // =========================
         console.log("\n======================");
         console.log("📜 COSMETICS AVAILABLE");
         console.log("======================");
 
-        const skin = pickSkinFromClass(profile);
-        console.log("🎽 Skins:", [skin]);
+        console.log("🎽 Skins:", [ pickSkinFromClass(profile) ]);
         console.log("🏷 Titles:", ["title_beginner", "title_brave_warrior"]);
         console.log("🐎 Mounts:", ["mount_pony", "mount_wolf"]);
 
-        // -----------------------------
-        // TEST PIPELINE
-        // -----------------------------
-        await testSkins(room, skin, lastStats);
-        await testTitles(room, ["title_beginner", "title_brave_warrior"], lastStats);
-        await testMounts(room, ["mount_pony", "mount_wolf"], lastStats);
+        // =========================
+        // RUN TEST SUITES
+        // =========================
+        const skinId = pickSkinFromClass(profile);
+        await testSkinSystem(room, skinId, lastStatsRef);
 
-        // -----------------------------
-        // SUMMARY
-        // -----------------------------
+        await testTitleSystem(room, [
+            { titleId: "title_beginner" },
+            { titleId: "title_brave_warrior" }
+        ], lastStatsRef);
+
+        await testMountSystem(room, [
+            { mountId: "mount_pony" },
+            { mountId: "mount_wolf" }
+        ], lastStatsRef);
+
+        // =========================
+        // FINAL SUMMARY
+        // =========================
         console.log("\n============================");
         console.log("📘 COSMETICS TEST SUMMARY");
         console.log("============================");
 
-        console.log("🎽 Skins unlocked:", [skin]);
-        console.log("🏷 Titles unlocked:", ["title_beginner", "title_brave_warrior"]);
-        console.log("🐎 Mounts unlocked:", ["mount_pony", "mount_wolf"]);
+        console.log("🎽 Skins unlocked:", [ skinId ]);
+        console.log("🏷 Titles unlocked:", [
+            "title_beginner",
+            "title_brave_warrior"
+        ]);
+        console.log("🐎 Mounts unlocked:", [
+            "mount_pony",
+            "mount_wolf"
+        ]);
 
         console.log("\n📊 FINAL STATS:");
-        console.table(lastStats.value || {});
+        console.table(lastStatsRef.value || {});
 
         console.log("\n🎉 ALL COSMETIC TESTS COMPLETED");
 
         process.exit(0);
 
-    } catch (err) {
-        console.error("❌ ERROR:", err);
+    } catch (e) {
+        console.error("❌ ERROR:", e);
         process.exit(1);
     }
 })();
