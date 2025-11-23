@@ -3,6 +3,8 @@ import { QuestState } from "./QuestState";
 import { SkinState } from "./SkinState";
 import { QuestObjectiveMap } from "./QuestObjectiveMap";
 import { InventoryState } from "./InventoryState";
+import { TitleState } from "./TitleState";
+import { MountState } from "./MountState";
 
 export class PlayerState extends Schema {
 
@@ -17,8 +19,16 @@ export class PlayerState extends Schema {
   @type("number") level: number = 1;
   @type("string") class: string = "";
   @type("string") race: string = "";
+      // ===== SKINS =====
   @type(SkinState)
   skins: SkinState = new SkinState();
+    // ===== TITRES =====
+  @type(TitleState)
+  titles: TitleState = new TitleState();
+  // ===== MONTURES =====
+  @type(MountState)
+  mounts: MountState = new MountState();
+    // ===== XP =====
   @type("number") xp: number = 0;
   @type("number") nextLevelXp: number = 100;
   // ===== TALENTS (À AJOUTER) =====
