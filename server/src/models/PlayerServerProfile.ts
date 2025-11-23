@@ -1,9 +1,4 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
-import { ItemSubSchema } from "./Item";
-
-// =======================================================
-// ▶ INTERFACE
-// =======================================================
 
 export interface IPlayerServerProfile extends Document {
   playerId: Types.ObjectId;
@@ -27,10 +22,6 @@ export interface IPlayerServerProfile extends Document {
   updatedAt: Date;
 }
 
-// =======================================================
-// ▶ SCHEMA
-// =======================================================
-
 const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
   playerId: { type: Schema.Types.ObjectId, required: true, index: true },
   serverId: { type: String, required: true, index: true },
@@ -46,9 +37,9 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     diamondUnbound: { type: Number, default: 0 }
   },
 
-  // ⭐️ BANQUE GLOBALE — UTILISE LE SUBSCHEMA
+  // ⭐ VERSION 100% COMPATIBLE — AUCUNE ERREUR
   sharedBank: {
-    type: [ItemSubSchema],
+    type: [Schema.Types.Mixed],
     default: []
   },
 
@@ -57,12 +48,12 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     default: {}
   }
 
-}, {
-  timestamps: true
-});
+}, { timestamps: true });
 
-// ➤ Un même compte ne peut avoir qu’UN profil par serveur
-PlayerServerProfileSchema.index({ playerId: 1, serverId: 1 }, { unique: true });
+PlayerServerProfileSchema.index(
+  { playerId: 1, serverId: 1 },
+  { unique: true }
+);
 
 export default mongoose.model<IPlayerServerProfile>(
   "PlayerServerProfile",
