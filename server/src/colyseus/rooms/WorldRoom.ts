@@ -18,7 +18,8 @@ import { TestManager } from "../test/TestManager";
 import { SkinManager } from "../managers/SkinManager";
 import { TitleManager } from "../managers/TitleManager";
 import { MountManager } from "../managers/MountManager";
-
+import { CurrencyManager } from "../managers/CurrencyManager";
+import { CurrencyHandler } from "../handlers/CurrencyHandler";
 import { InventoryManager } from "../managers/InventoryManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 import { LevelManager } from "../managers/LevelManager";
@@ -45,7 +46,8 @@ export class WorldRoom extends Room<GameState> {
   private inventoryManager!: InventoryManager;
   private levelManager!: LevelManager;
   private talentManager!: TalentManager;
-
+  private currencyManager!: CurrencyManager;
+  private currencyHandler!: CurrencyHandler;
   private testManager?: TestManager;
 
   // ===========================================================
@@ -62,7 +64,9 @@ export class WorldRoom extends Room<GameState> {
     new SkinManager();
     new TitleManager();
     new MountManager();
-
+    // === CURRENCIES ===
+    this.currencyManager = new CurrencyManager();
+    this.currencyHandler = new CurrencyHandler(this.currencyManager);
     // Talents
     await talentScriptRegistry.initialize();
     this.talentManager = new TalentManager(
@@ -300,7 +304,9 @@ export class WorldRoom extends Room<GameState> {
   private async handleMessage(client: Client, type: string, msg: any) {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
-
+    // ===== CURRENCIES =====
+    if (this.currencyHandler.handle(type, client, player, msg)) return;
+    
     // ===== COSMETICS (SKINS + TITLES + MOUNTS) =====
     if (handleCosmeticsMessage(type, client, player, msg)) return;
 
@@ -386,28 +392,36 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   // SAVE PLAYER
   // ===========================================================
-  private async savePlayerData(player: PlayerState): Promise<void> {
-    try {
-      const stats = await computeFullStats(player);
-      player.loadStatsFromProfile(stats);
+private async savePlayerData(player: PlayerState): Promise<void> {
+  try {
+    const stats = await computeFullStats(player);
+    player.loadStatsFromProfile(stats);
 
-      await ServerProfile.findByIdAndUpdate(player.profileId, {
-        $set: {
-          lastOnline: new Date(),
-          level: player.level,
-          xp: player.xp,
-          nextLevelXp: player.nextLevelXp,
-          availableSkillPoints: player.availableSkillPoints,
-          talents: player.saveTalentsToProfile(),
-          stats,
-          questData: player.saveQuestsToProfile(),
-          inventory: player.inventory.saveToProfile()
-        }
-      });
-    } catch (error) {
-      console.error("❌ Save error:", error);
-    }
+    await ServerProfile.findByIdAndUpdate(player.profileId, {
+      $set: {
+        lastOnline: new Date(),
+        level: player.level,
+        xp: player.xp,
+        nextLevelXp: player.nextLevelXp,
+        availableSkillPoints: player.availableSkillPoints,
+
+        // Talents persistants
+        talents: player.saveTalentsToProfile(),
+
+        // 💰 Currency persistante
+        currencies: player.currencies,
+
+        // Quêtes
+        questData: player.saveQuestsToProfile(),
+
+        // Inventaire
+        inventory: player.inventory.saveToProfile(),
+      }
+    });
+  } catch (error) {
+    console.error("❌ Save error:", error);
   }
+}
 
   // ===========================================================
   // TEST MONSTER
