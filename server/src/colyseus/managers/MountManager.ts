@@ -2,7 +2,6 @@
 
 import { PlayerState } from "../schema/PlayerState";
 import { MountConfig, getMountById, ALL_MOUNTS } from "../../config/mounts/mounts.config";
-import { MountState } from "../schema/MountState";
 import { Client } from "colyseus";
 import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
@@ -51,9 +50,9 @@ export class MountManager {
   }
 
   // ========================================================================
-  // UNLOCK
+  // UNLOCK  (✔ PATCH : recalc AVANT l'envoi du message)
   // ========================================================================
-  private handleUnlock(player: PlayerState, client: Client, mountId: string) {
+  private async handleUnlock(player: PlayerState, client: Client, mountId: string) {
     const config = getMountById(mountId);
     if (!config) {
       client.send("mount_error", { error: "invalid_mount", mountId });
@@ -70,12 +69,15 @@ export class MountManager {
       return;
     }
 
+    // 🟩 FIX : recalcul AVANT de renvoyer mount_unlocked
+    await this.recalcStats(player, client);
+
+    // Seulement après recalcul :
     client.send("mount_unlocked", { mountId });
-    this.recalcStats(player, client);
   }
 
   // ========================================================================
-  // EQUIP
+  // EQUIP (visuel uniquement)
   // ========================================================================
   private handleEquip(player: PlayerState, client: Client, mountId: string) {
     if (!this.hasMount(player, mountId)) {
@@ -106,7 +108,7 @@ export class MountManager {
   }
 
   // ========================================================================
-  // BONUS STATS
+  // BONUS STATS (✔ BONUS POUR TOUTES LES MONTURES DÉBLOQUÉES)
   // ========================================================================
   getMountStatBonus(player: PlayerState) {
     const result = {
@@ -114,6 +116,8 @@ export class MountManager {
       computedPercent: {} as Record<string, number>
     };
 
+    // ✔ Toutes les montures débloquées donnent leurs bonus
+    //   Equip ne change que le visuel
     for (const [mountId] of player.mounts.unlockedMounts.entries()) {
       const config = getMountById(mountId);
       if (!config) continue;
