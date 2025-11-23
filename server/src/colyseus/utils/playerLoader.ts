@@ -3,6 +3,7 @@
 import ServerProfile from "../../models/ServerProfile";
 import Server from "../../models/Server";
 import PlayerServerProfile from "../../models/PlayerServerProfile";
+import Bank from "../../models/Bank";
 import { isValidCharacterSlot } from "../../config/character.config";
 
 export async function loadPlayerCharacter(
@@ -43,14 +44,55 @@ export async function loadPlayerCharacter(
       };
     }
 
-    // Récupère les données globales du joueur sur ce serveur (banque, monnaie, shared quests)
-    const psp = await PlayerServerProfile.findOne({
+    // ----------------------------------------------------------
+    // 🔥 AUTO-CREATE PlayerServerProfile IF MISSING
+    // ----------------------------------------------------------
+    let psp = await PlayerServerProfile.findOne({
       playerId: playerId,
       serverId: serverId
     });
 
     if (!psp) {
-      return { success: false, error: "PlayerServerProfile missing, corrupted data." };
+      console.warn(`⚠️ Missing PlayerServerProfile for ${playerId} on ${serverId}, creating...`);
+
+      // 🔹 Créer banque globale
+      const bank = await Bank.create({
+        playerId: playerId,
+        items: [],
+        slots: 100
+      });
+
+      // 🔹 Créer PlayerServerProfile basique
+      psp = await PlayerServerProfile.create({
+        playerId: playerId,
+        serverId: serverId,
+        characters: [{
+          characterId: profile._id,
+          slot: profile.characterSlot
+        }],
+        sharedCurrencies: {
+          gold: 0,
+          diamondBound: 0,
+          diamondUnbound: 0
+        },
+        sharedBankId: bank._id,
+        sharedQuests: {}
+      });
+    }
+
+    // ----------------------------------------------------------
+    // 🔄 S'assurer que le personnage est bien dans characters[]
+    // ----------------------------------------------------------
+    const exists = psp.characters.some(c =>
+      String(c.characterId) === String(profile._id)
+    );
+
+    if (!exists) {
+      psp.characters.push({
+        characterId: profile._id,
+        slot: profile.characterSlot
+      });
+      await psp.save();
     }
 
     console.log(
@@ -70,7 +112,7 @@ export async function loadPlayerCharacter(
         xp: profile.xp,
         nextLevelXp: profile.nextLevelXp,
 
-        // ⭐ NOUVEAU → monnaies globales dans PlayerServerProfile
+        // ⭐ Monnaies globales (PSP)
         gold: psp.sharedCurrencies.gold,
         diamondBound: psp.sharedCurrencies.diamondBound,
         diamondUnbound: psp.sharedCurrencies.diamondUnbound,
