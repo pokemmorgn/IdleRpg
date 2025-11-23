@@ -6,6 +6,7 @@ import { InventoryState } from "./InventoryState";
 import { TitleState } from "./TitleState";
 import { MountState } from "./MountState";
 import { CurrencyState } from "./CurrencyState";
+
 export class PlayerState extends Schema {
 
   // ===== IDENTITÉ =====
@@ -19,24 +20,30 @@ export class PlayerState extends Schema {
   @type("number") level: number = 1;
   @type("string") class: string = "";
   @type("string") race: string = "";
+
   // ===== CURRENCY =====
-   @type(CurrencyState)
-  currencies = new CurrencyState();
+  @type(CurrencyState)
+  currencies: CurrencyState = new CurrencyState();
+
   // ===== SKINS =====
   @type(SkinState)
   skins: SkinState = new SkinState();
-    // ===== TITRES =====
+
+  // ===== TITRES =====
   @type(TitleState)
   titles: TitleState = new TitleState();
+
   // ===== MONTURES =====
   @type(MountState)
   mounts: MountState = new MountState();
-    // ===== XP =====
+
+  // ===== XP / TALENTS =====
   @type("number") xp: number = 0;
   @type("number") nextLevelXp: number = 100;
-  // ===== TALENTS (À AJOUTER) =====
+
   @type("number") availableSkillPoints: number = 0;
   @type({ map: "number" }) talents = new MapSchema<number>();
+
   // ===== INVENTAIRE =====
   @type(InventoryState)
   inventory: InventoryState = new InventoryState();
@@ -74,7 +81,7 @@ export class PlayerState extends Schema {
   @type("number") tenacity: number = 0;
   @type("number") lifesteal: number = 0;
 
-  // ===== COMBAT =====
+  // ===== COMBAT RUNTIME =====
   @type("boolean") inCombat: boolean = false;
   @type("string") targetMonsterId: string = "";
   @type("string") lastAttackerId: string = "";
@@ -103,7 +110,7 @@ export class PlayerState extends Schema {
 
   @type("number") lastMovementTime: number = 0;
 
-  // ===== AFK =====
+  // ===== AFK / MORT =====
   @type("boolean") isAFK: boolean = false;
   @type("boolean") isDead: boolean = false;
   @type("number") deathTimer: number = 0;
@@ -112,10 +119,6 @@ export class PlayerState extends Schema {
 
   // ===== QUÊTES =====
   @type(QuestState) quests: QuestState = new QuestState();
-
-  // ===== CONSOMMABLES (SUPPRIMÉS) =====
-  // @type("number") potionHP: number = 10;
-  // @type("number") food: number = 20;
 
   // --------------------------------------------------------------------
   // 🔥 ITEM CACHE (SERVER ONLY, NON SYNCHRONISÉ)
@@ -146,14 +149,24 @@ export class PlayerState extends Schema {
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
     this.xp = xp ?? 0;
-    this.currencies.values.set("gold", 0);
-    this.currencies.values.set("diamonds", 0);
-    this.currencies.values.set("diamonds_bound", 0);
     this.nextLevelXp = nextLevelXp ?? this.computeNextLevelXp(level);
+
+    // 💰 Initialise toujours les 3 monnaies
+    this.initCurrencies();
   }
 
   // ===========================================================
-  // INVENTORY LOAD
+  // 🔹 INIT CURRENCIES PAR DÉFAUT
+  // ===========================================================
+  private initCurrencies() {
+    const v = this.currencies.values;
+    if (!v.has("gold")) v.set("gold", 0);
+    if (!v.has("diamonds")) v.set("diamonds", 0);
+    if (!v.has("diamonds_bound")) v.set("diamonds_bound", 0);
+  }
+
+  // ===========================================================
+  // INVENTORY LOAD / SAVE
   // ===========================================================
   loadInventoryFromProfile(data: any) {
     if (data) {
@@ -161,9 +174,6 @@ export class PlayerState extends Schema {
     }
   }
 
-  // ===========================================================
-  // INVENTORY SAVE
-  // ===========================================================
   saveInventoryToProfile() {
     return this.inventory.saveToProfile();
   }
@@ -267,7 +277,7 @@ export class PlayerState extends Schema {
   }
 
   // ===========================================================
-  // LOAD TALENTS
+  // LOAD / SAVE TALENTS
   // ===========================================================
   loadTalentsFromProfile(data: any) {
     if (!data) return;
@@ -275,19 +285,18 @@ export class PlayerState extends Schema {
       this.talents.set(talentId, rank as number);
     });
   }
-  
-  // ===========================================================
-  // SAVE TALENTS
-  // ===========================================================
+
   saveTalentsToProfile() {
     return Object.fromEntries(this.talents);
   }
+
   // ===========================================================
   // CALCUL XP NIVEAU SUIVANT
   // ===========================================================
   computeNextLevelXp(level: number): number {
     return Math.floor(100 * Math.pow(level, 1.5)); // Style MMORPG
   }
+
   // ===========================================================
   // SAVE STATS
   // ===========================================================
