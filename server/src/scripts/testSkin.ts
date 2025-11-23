@@ -1,6 +1,6 @@
 /**
  * TEST COSMETICS — Skins / Titles / Mounts
- * Version complète, stable et compatible Colyseus
+ * Version complète patchée (no timeouts + level override)
  */
 
 import * as Colyseus from "colyseus.js";
@@ -136,14 +136,25 @@ async function reserveSeat(token: string) {
 // UTILS
 // =====================================================================
 
-// Waiting for a real stats update
+// Waiting for a real stats update OR an error
 async function waitForStatsUpdate(
     previousStats: any,
     lastStatsRef: { value: any },
+    lastErrorRef: { value: any },
     timeoutMs: number = 5000
 ): Promise<any> {
     return new Promise(resolve => {
         const interval = setInterval(() => {
+
+            // Stop if an error happened
+            if (lastErrorRef.value) {
+                clearInterval(interval);
+                clearTimeout(timeout);
+                resolve(null);
+                return;
+            }
+
+            // Normal stats update
             if (lastStatsRef.value && lastStatsRef.value !== previousStats) {
                 clearInterval(interval);
                 clearTimeout(timeout);
@@ -174,58 +185,56 @@ function diff(a: any, b: any) {
 // =====================================================================
 // SKINS TEST
 // =====================================================================
-async function pickSkin(room: Colyseus.Room, profile: any, lastStatsRef: any) {
-    const classId = profile.class;
-
-    const mapping: Record<string, string> = {
+function pickSkin(profile: any): string {
+    const map: Record<string, string> = {
         warrior: "warrior_basic01",
         priest: "priest_basic01",
         mage: "mage_basic01",
         rogue: "rogue_basic01",
         paladin: "paladin_basic01",
-        druid: "druid_basic01"
+        druid: "druid_basic01",
     };
-
-    return mapping[classId] || "warrior_basic01";
+    return map[profile.class] || "warrior_basic01";
 }
 
-async function testSkinSystem(room: Colyseus.Room, skinId: string, lastStatsRef: any) {
+async function testSkinSystem(room: Colyseus.Room, skinId: string, lastStatsRef: any, lastErrorRef: any) {
     console.log("\n🔥 TEST SKINS");
 
-    // wait for initial stats
     while (!lastStatsRef.value) await sleep(50);
     let before = structuredClone(lastStatsRef.value);
 
-    // UNLOCK
     console.log("🔓 Unlock:", skinId);
     room.send("skin_unlock", { skinId });
-    let after = await waitForStatsUpdate(before, lastStatsRef);
+    let after = await waitForStatsUpdate(before, lastStatsRef, lastErrorRef);
+
+    if (!after && lastErrorRef.value) {
+        console.log("⛔ Unlock failed");
+        lastErrorRef.value = null;
+        return;
+    }
+
     console.log("📊 DIFF:", diff(before, after));
     before = after || before;
 
-    // EQUIP
     console.log("🎽 Equip:", skinId);
     room.send("skin_equip", { skinId });
-    console.log("📌 equip = visual only (no stat change)");
 
-    // LEVEL UP 1
     console.log("⬆️ LevelUp 1");
     room.send("skin_level_up", { skinId });
-    after = await waitForStatsUpdate(before, lastStatsRef);
+    after = await waitForStatsUpdate(before, lastStatsRef, lastErrorRef);
     console.log("📊 DIFF:", diff(before, after));
     before = after || before;
 
-    // LEVEL UP 2
     console.log("⬆️ LevelUp 2");
     room.send("skin_level_up", { skinId });
-    after = await waitForStatsUpdate(before, lastStatsRef);
+    after = await waitForStatsUpdate(before, lastStatsRef, lastErrorRef);
     console.log("📊 DIFF:", diff(before, after));
 }
 
 // =====================================================================
-// TITLES TEST
+// TITLE TEST
 // =====================================================================
-async function testTitleSystem(room: Colyseus.Room, titles: any[], lastStatsRef: any) {
+async function testTitleSystem(room: Colyseus.Room, titles: any[], lastStatsRef: any, lastErrorRef: any) {
     console.log("\n🔥 TEST TITLES");
 
     while (!lastStatsRef.value) await sleep(50);
@@ -234,20 +243,27 @@ async function testTitleSystem(room: Colyseus.Room, titles: any[], lastStatsRef:
     for (const t of titles) {
         console.log("🔓 Unlock:", t.titleId);
         room.send("title_unlock", { titleId: t.titleId });
-        let after = await waitForStatsUpdate(before, lastStatsRef);
+
+        let after = await waitForStatsUpdate(before, lastStatsRef, lastErrorRef);
+
+        if (!after && lastErrorRef.value) {
+            console.log("⛔ Unlock failed for", t.titleId);
+            lastErrorRef.value = null;
+            continue;
+        }
+
         console.log("📊 DIFF:", diff(before, after));
         before = after || before;
 
         console.log("🏷️ Equip:", t.titleId);
         room.send("title_equip", { titleId: t.titleId });
-        console.log("📌 equip = visual only (no stat change)");
     }
 }
 
 // =====================================================================
-// MOUNTS TEST
+// MOUNT TEST
 // =====================================================================
-async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef: any) {
+async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef: any, lastErrorRef: any) {
     console.log("\n🔥 TEST MOUNTS");
 
     while (!lastStatsRef.value) await sleep(50);
@@ -256,13 +272,20 @@ async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef:
     for (const m of mounts) {
         console.log("🔓 Unlock:", m.mountId);
         room.send("mount_unlock", { mountId: m.mountId });
-        let after = await waitForStatsUpdate(before, lastStatsRef);
+
+        let after = await waitForStatsUpdate(before, lastStatsRef, lastErrorRef);
+
+        if (!after && lastErrorRef.value) {
+            console.log("⛔ Unlock failed:", m.mountId);
+            lastErrorRef.value = null;
+            continue;
+        }
+
         console.log("📊 DIFF:", diff(before, after));
         before = after || before;
 
         console.log("🐎 Equip:", m.mountId);
         room.send("mount_equip", { mountId: m.mountId });
-        console.log("📌 equip = visual only");
     }
 }
 
@@ -289,12 +312,16 @@ async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef:
 
         console.log("🔌 CONNECTED");
 
+        // Increase artificial level for tests
+        console.log("📈 OVERRIDE → Setting level to 6 for cosmetics tests");
+        room.send("debug_give_xp", { amount: 999999 });
+
         let lastStatsRef: { value: any } = { value: null };
+        let lastErrorRef: { value: any } = { value: null };
 
         // LISTENERS
         room.onMessage("welcome", msg => console.log("👋 WELCOME:", msg));
         room.onMessage("player_update", msg => {
-            console.log("📥 PLAYER UPDATE:", msg);
             lastStatsRef.value = msg.stats;
         });
 
@@ -305,54 +332,40 @@ async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef:
         room.onMessage("skin_unlocked", msg => console.log("🟩 SKIN UNLOCKED:", msg));
         room.onMessage("skin_equipped", msg => console.log("🎽 SKIN EQUIPPED:", msg));
         room.onMessage("skin_level_up", msg => console.log("⬆️ SKIN LVL:", msg));
-        room.onMessage("skin_error", msg => console.error("❌ SKIN ERROR:", msg));
+        room.onMessage("skin_error", msg => {
+            console.error("❌ SKIN ERROR:", msg);
+            lastErrorRef.value = msg;
+        });
 
         room.onMessage("title_unlocked", msg => console.log("🏷️ TITLE UNLOCKED:", msg));
         room.onMessage("title_equipped", msg => console.log("🏷️ TITLE EQUIPPED:", msg));
-        room.onMessage("title_error", msg => console.error("❌ TITLE ERROR:", msg));
+        room.onMessage("title_error", msg => {
+            console.error("❌ TITLE ERROR:", msg);
+            lastErrorRef.value = msg;
+        });
 
         room.onMessage("mount_unlocked", msg => console.log("🐎 MOUNT UNLOCKED:", msg));
         room.onMessage("mount_equipped", msg => console.log("🐎 MOUNT EQUIPPED:", msg));
-        room.onMessage("mount_error", msg => console.error("❌ MOUNT ERROR:", msg));
-
-        room.onMessage("*", (type: string | number, data: any) => {
-            console.warn("⚠️ Unknown msg:", type, data);
+        room.onMessage("mount_error", msg => {
+            console.error("❌ MOUNT ERROR:", msg);
+            lastErrorRef.value = msg;
         });
 
         await sleep(2000);
 
-        // LIST DATA
-        console.log("\n======================");
-        console.log("📜 LIST COSMETICS DATA");
-        console.log("======================");
-
-        console.log("🎽 Available SKINS:", profile.class);
-        console.log("- priest_basic01 … (based on class)");
-
-        console.log("🏷️ TITLES:", [
-            "title_beginner",
-            "title_brave_warrior",
-            "title_arcane_seeker"
-        ]);
-
-        console.log("🐎 MOUNTS:", [
-            "mount_pony",
-            "mount_wolf"
-        ]);
-
         // RUN TESTS
-        const skinId = await pickSkin(room, profile, lastStatsRef);
-        await testSkinSystem(room, skinId, lastStatsRef);
+        const skinId = pickSkin(profile);
+        await testSkinSystem(room, skinId, lastStatsRef, lastErrorRef);
 
         await testTitleSystem(room, [
             { titleId: "title_beginner" },
             { titleId: "title_brave_warrior" }
-        ], lastStatsRef);
+        ], lastStatsRef, lastErrorRef);
 
         await testMountSystem(room, [
             { mountId: "mount_pony" },
             { mountId: "mount_wolf" }
-        ], lastStatsRef);
+        ], lastStatsRef, lastErrorRef);
 
         console.log("\n🎉 ALL COSMETIC TESTS COMPLETED");
 
