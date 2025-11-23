@@ -1,7 +1,11 @@
 import jwt from "jsonwebtoken";
 import Player from "../../models/Player";
-console.log("🔑 JWT_SECRET loaded in Colyseus:", JWT_SECRET);
+
+// Charge la clé AVANT d'utiliser JWT_SECRET
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
+
+// Log après définition → OK
+console.log("🔑 JWT_SECRET loaded in Colyseus:", JWT_SECRET);
 
 /**
  * Valide un token JWT et retourne les infos du joueur
@@ -32,11 +36,9 @@ export async function validateToken(token: string): Promise<{
 
     console.log(`🔐 Token valide pour joueur: ${player.username} (${player._id})`);
 
-    const playerId = String(player._id);
-    
     return {
       valid: true,
-      playerId: playerId
+      playerId: String(player._id),
     };
 
   } catch (err: any) {
