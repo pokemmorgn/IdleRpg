@@ -20,8 +20,8 @@ export class PlayerState extends Schema {
   @type("string") class: string = "";
   @type("string") race: string = "";
   // ===== CURRENCY =====
-  @type(CurrencyState)
-currencies = new CurrencyState();
+   @type(CurrencyState)
+  currencies = new CurrencyState();
   // ===== SKINS =====
   @type(SkinState)
   skins: SkinState = new SkinState();
