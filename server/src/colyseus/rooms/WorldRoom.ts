@@ -233,61 +233,100 @@ export class WorldRoom extends Room<GameState> {
   // ===========================================================
   // JOIN
   // ===========================================================
-  async onJoin(client: Client, options: any, auth: any) {
+async onJoin(client: Client, options: any, auth: any) {
 
     const player = new PlayerState(
-      client.sessionId,
-      auth.playerId,
-      auth.profileId,
-      auth.characterSlot,
-      auth.characterName,
-      auth.level,
-      auth.characterClass,
-      auth.characterRace,
-      auth.xp,
-      auth.nextLevelXp
+        client.sessionId,
+        auth.playerId,
+        auth.profileId,
+        auth.characterSlot,
+        auth.characterName,
+        auth.level,
+        auth.characterClass,
+        auth.characterRace,
+        auth.xp,
+        auth.nextLevelXp
     );
 
-    if (auth.questData) player.loadQuestsFromProfile(auth.questData);
-    if (auth.inventory) player.inventory.loadFromProfile(auth.inventory);
-    if (auth.talents) player.loadTalentsFromProfile(auth.talents);
+    // ============================
+    // 🔥 LOAD DATA FROM PROFILE
+    // ============================
 
+    if (auth.questData)
+        player.loadQuestsFromProfile(auth.questData);
+
+    if (auth.inventory)
+        player.inventory.loadFromProfile(auth.inventory);
+
+    if (auth.talents)
+        player.loadTalentsFromProfile(auth.talents);
+
+    // Skill points
     player.availableSkillPoints = auth.availableSkillPoints || 0;
 
-    // Items cache
+    // ============================
+    // 🔥 LOAD ITEM CACHE
+    // ============================
+
     player.itemCache = {};
 
     for (const [slot, invSlot] of player.inventory.equipment.entries()) {
-      if (!invSlot.itemId) continue;
-      const model = await ItemModel.findOne({ itemId: invSlot.itemId });
-      if (model) player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
+        if (!invSlot.itemId) continue;
+        const model = await ItemModel.findOne({ itemId: invSlot.itemId });
+        if (model) player.itemCache[invSlot.itemId] = { stats: model.stats || {} };
     }
 
     for (const [itemId] of Object.keys(player.inventory.personalItems)) {
-      const model = await ItemModel.findOne({ itemId });
-      if (model) player.itemCache[itemId] = { stats: model.stats || {} };
+        const model = await ItemModel.findOne({ itemId });
+        if (model) player.itemCache[itemId] = { stats: model.stats || {} };
     }
 
-    // Compute stats
+    // ============================
+    // 🔥 COMPUTE FULL STATS
+    // ============================
+
     const stats = await computeFullStats(player);
     player.loadStatsFromProfile(stats);
 
+    // TEST SERVER = spawn obligatoire
     if (this.serverId === "test") {
-      player.zoneId = "start_zone";
+        player.zoneId = "start_zone";
     }
 
+    // ============================
+    // 🔥 SEND WELCOME
+    // ============================
+
     client.send("welcome", { ok: true });
+
+    // ============================
+    // 💰 SEND ALL CURRENCIES FIRST
+    // ============================
+
+    client.send("currency_full_update", {
+        values: Object.fromEntries(player.currencies.values)
+    });
+
+    // ============================
+    // 🔥 ADD PLAYER TO GAME STATE
+    // ============================
+
     this.state.addPlayer(player);
 
+    // ============================
+    // 🔥 SEND PLAYER DATA
+    // ============================
+
     client.send("player_update", {
-      level: player.level,
-      xp: player.xp,
-      nextLevelXp: player.nextLevelXp,
-      stats,
-      availableSkillPoints: player.availableSkillPoints,
-      talents: player.saveTalentsToProfile()
+        level: player.level,
+        xp: player.xp,
+        nextLevelXp: player.nextLevelXp,
+        stats,
+        availableSkillPoints: player.availableSkillPoints,
+        talents: player.saveTalentsToProfile()
     });
-  }
+}
+
 
   // ===========================================================
   // LEAVE
