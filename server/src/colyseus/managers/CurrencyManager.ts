@@ -1,123 +1,55 @@
+// server/src/colyseus/managers/CurrencyManager.ts
+
 import { Client } from "colyseus";
 import { PlayerState } from "../schema/PlayerState";
 
 export class CurrencyManager {
 
-    // ========================================================================
-    // ROUTEUR DE MESSAGES
-    // ========================================================================
-    handleMessage(
-        type: string,
-        client: Client,
-        player: PlayerState,
-        data: any
-    ): boolean {
+  add(player: PlayerState, type: string, amount: number) {
+    const cur = player.currencies.values;
 
-        try {
-            switch (type) {
+    cur[type] = (cur[type] || 0) + amount;
 
-                case "currency_add":
-                    this.addCurrency(player, client, data);
-                    return true;
+    player.triggerCurrencyUpdate(type);
+  }
 
-                case "currency_spend":
-                    this.spendCurrency(player, client, data);
-                    return true;
-            }
+  remove(player: PlayerState, type: string, amount: number): boolean {
+    const cur = player.currencies.values;
 
-        } catch (err) {
-            console.error("❌ CurrencyManager.handleMessage:", err);
-        }
+    if ((cur[type] || 0) < amount) return false;
 
-        return false; // laisses les autres managers tester
+    cur[type] = (cur[type] || 0) - amount;
+
+    player.triggerCurrencyUpdate(type);
+    return true;
+  }
+
+  set(player: PlayerState, type: string, amount: number) {
+    const cur = player.currencies.values;
+    cur[type] = amount;
+    player.triggerCurrencyUpdate(type);
+  }
+
+  get(player: PlayerState, type: string): number {
+    return player.currencies.values[type] || 0;
+  }
+
+  handleMessage(type: string, client: Client, player: PlayerState, msg: any): boolean {
+    if (type === "currency_add") {
+      this.add(player, msg.currency, msg.amount);
+      return true;
     }
 
-    // ========================================================================
-    // AJOUT DE MONNAIE
-    // ========================================================================
-    private addCurrency(
-        player: PlayerState,
-        client: Client,
-        data: { type: string; amount: number }
-    ) {
-        const { type, amount } = data;
-
-        if (!this.isValidCurrency(type)) {
-            client.send("currency_error", {
-                error: "invalid_currency",
-                type
-            });
-            return;
-        }
-
-        if (amount <= 0) {
-            client.send("currency_error", {
-                error: "invalid_amount",
-                amount
-            });
-            return;
-        }
-
-        player.currencies[type] += amount;
-
-        client.send("currency_update", {
-            type,
-            amount: player.currencies[type]
-        });
+    if (type === "currency_remove") {
+      const ok = this.remove(player, msg.currency, msg.amount);
+      client.send("currency_result", {
+        ok,
+        currency: msg.currency,
+        amount: msg.amount
+      });
+      return true;
     }
 
-    // ========================================================================
-    // DÉPENSER DE LA MONNAIE
-    // ========================================================================
-    private spendCurrency(
-        player: PlayerState,
-        client: Client,
-        data: { type: string; amount: number }
-    ) {
-        const { type, amount } = data;
-
-        if (!this.isValidCurrency(type)) {
-            client.send("currency_error", {
-                error: "invalid_currency",
-                type
-            });
-            return;
-        }
-
-        if (amount <= 0) {
-            client.send("currency_error", {
-                error: "invalid_amount",
-                amount
-            });
-            return;
-        }
-
-        if (player.currencies[type] < amount) {
-            client.send("currency_error", {
-                error: "not_enough_currency",
-                type,
-                amountRequired: amount,
-                owned: player.currencies[type]
-            });
-            return;
-        }
-
-        player.currencies[type] -= amount;
-
-        client.send("currency_update", {
-            type,
-            amount: player.currencies[type]
-        });
-    }
-
-    // ========================================================================
-    // VALIDATION
-    // ========================================================================
-    private isValidCurrency(type: string): type is keyof PlayerState["currencies"] {
-        return (
-            type === "gold" ||
-            type === "diamondBound" ||
-            type === "diamondUnbound"
-        );
-    }
+    return false;
+  }
 }
