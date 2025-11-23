@@ -62,12 +62,6 @@ export interface IServerProfile extends Document {
   availableSkillPoints: number;
   talents: { [talentId: string]: number };
 
-  currencies: {
-    gold: number;
-    diamondBound: number;
-    diamondUnbound: number;
-  };
-
   class: string;
   race: string;
 
@@ -82,7 +76,6 @@ export interface IServerProfile extends Document {
 // ▶ SCHEMAS
 // =======================================================
 
-// ------- PRIMARY STATS -------
 const PlayerPrimaryStatsSchema = new Schema<IPlayerPrimaryStats>({
   strength: { type: Number, required: true, min: 0, default: 10 },
   agility: { type: Number, required: true, min: 0, default: 10 },
@@ -91,8 +84,6 @@ const PlayerPrimaryStatsSchema = new Schema<IPlayerPrimaryStats>({
   spirit: { type: Number, required: true, min: 0, default: 10 }
 }, { _id: false });
 
-
-// ------- COMPUTED STATS -------
 const PlayerComputedStatsSchema = new Schema<IPlayerComputedStats>({
   hp: { type: Number, required: true, default: 100 },
   maxHp: { type: Number, required: true, default: 100 },
@@ -122,17 +113,8 @@ const PlayerComputedStatsSchema = new Schema<IPlayerComputedStats>({
   penetration: { type: Number, required: true, default: 0 },
   tenacity: { type: Number, required: true, default: 0 },
   lifesteal: { type: Number, required: true, default: 0 },
-  spellPenetration: { type: Number, required: true, default: 0 },
+  spellPenetration: { type: Number, required: true, default: 0 }
 }, { _id: false });
-
-
-// ------- CURRENCIES -------
-const CurrencySchema = new Schema({
-  gold: { type: Number, default: 0, min: 0 },
-  diamondBound: { type: Number, default: 0, min: 0 },
-  diamondUnbound: { type: Number, default: 0, min: 0 }
-}, { _id: false });
-
 
 // =======================================================
 // ▶ MAIN PROFILE SCHEMA
@@ -160,8 +142,6 @@ const ServerProfileSchema = new Schema<IServerProfile>({
   availableSkillPoints: { type: Number, default: 0 },
   talents: { type: Map, of: Number, default: {} },
 
-  currencies: { type: CurrencySchema, default: {} },
-
   class: {
     type: String,
     required: true,
@@ -181,9 +161,8 @@ const ServerProfileSchema = new Schema<IServerProfile>({
 
   statsLastCalculated: { type: Date, default: Date.now },
   lastOnline: { type: Date, default: Date.now }
-}, {
-  timestamps: true
-});
+
+}, { timestamps: true });
 
 // UNIQUE COMBINATION → one profile per (playerId, server, slot)
 ServerProfileSchema.index({ playerId: 1, serverId: 1, characterSlot: 1 }, { unique: true });
