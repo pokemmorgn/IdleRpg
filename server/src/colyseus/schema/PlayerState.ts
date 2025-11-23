@@ -171,12 +171,13 @@ export class PlayerState extends Schema {
   // ===========================================================
   // 🔹 INIT CURRENCIES PAR DÉFAUT
   // ===========================================================
-  private initCurrencies() {
-    const v = this.currencies.values;
-    if (!v.has("gold")) v.set("gold", 0);
-    if (!v.has("diamonds")) v.set("diamonds", 0);
-    if (!v.has("diamonds_bound")) v.set("diamonds_bound", 0);
-  }
+private initCurrencies() {
+  const v = this.currencies.values;
+
+  if (!v.has("gold")) v.set("gold", 0);
+  if (!v.has("diamondBound")) v.set("diamondBound", 0);
+  if (!v.has("diamondUnbound")) v.set("diamondUnbound", 0);
+}
 
   // ===========================================================
   // INVENTORY LOAD / SAVE
