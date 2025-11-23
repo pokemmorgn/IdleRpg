@@ -2,10 +2,12 @@ import { PlayerState } from "../../schema/PlayerState";
 import { getRaceById } from "../../../config/races.config";
 import { IPlayerPrimaryStats, IPlayerComputedStats } from "../../../models/ServerProfile";
 import { SkinManagerInstance } from "../SkinManager";
+import { TitleManagerInstance } from "../TitleManager";
+import { MountManagerInstance } from "../MountManager";
 import ItemModel from "../../../models/Item";
 import { getStatsForClass } from "../../../config/classes.config";
 
-type SkinBonus = {
+type BonusType = {
     primaryPercent?: Record<string, number>;
     computedPercent?: Record<string, number>;
 };
@@ -16,10 +18,12 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     const level = player.level;
 
     // ==========================================================
-    // 1) BONUS RACE + SKIN (PRIMARY % + COMPUTED %)
+    // 1) BONUS RACE + SKIN + TITLE + MOUNT
     // ==========================================================
     const race = getRaceById(player.race);
-    const skinBonus: SkinBonus = SkinManagerInstance?.getSkinStatBonus(player) || {};
+    const skinBonus: BonusType = SkinManagerInstance?.getSkinStatBonus(player) || {};
+    const titleBonus: BonusType = TitleManagerInstance?.getTitleStatBonus(player) || {};
+    const mountBonus: BonusType = MountManagerInstance?.getMountStatBonus(player) || {};
 
     const primaryPercent: Record<string, number> = {};
     const computedPercent: Record<string, number> = {};
@@ -38,6 +42,20 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
         }
     }
 
+    // --- Title PRIMARY %
+    if (titleBonus.primaryPercent) {
+        for (const k in titleBonus.primaryPercent) {
+            primaryPercent[k] = (primaryPercent[k] || 0) + titleBonus.primaryPercent[k];
+        }
+    }
+
+    // --- Mount PRIMARY %
+    if (mountBonus.primaryPercent) {
+        for (const k in mountBonus.primaryPercent) {
+            primaryPercent[k] = (primaryPercent[k] || 0) + mountBonus.primaryPercent[k];
+        }
+    }
+
     // --- Race COMPUTED %
     if (race?.statsModifiers?.computedPercent) {
         for (const k in race.statsModifiers.computedPercent) {
@@ -49,6 +67,20 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     if (skinBonus.computedPercent) {
         for (const k in skinBonus.computedPercent) {
             computedPercent[k] = (computedPercent[k] || 0) + skinBonus.computedPercent[k];
+        }
+    }
+
+    // --- Title COMPUTED %
+    if (titleBonus.computedPercent) {
+        for (const k in titleBonus.computedPercent) {
+            computedPercent[k] = (computedPercent[k] || 0) + titleBonus.computedPercent[k];
+        }
+    }
+
+    // --- Mount COMPUTED %
+    if (mountBonus.computedPercent) {
+        for (const k in mountBonus.computedPercent) {
+            computedPercent[k] = (computedPercent[k] || 0) + mountBonus.computedPercent[k];
         }
     }
 
@@ -65,10 +97,10 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
 
     // ==========================================================
     // 3) PRIMARY BONUS FROM EQUIPMENT
+    // ==========================================================
     for (const eq of player.inventory.equipment.values()) {
         if (!eq.itemId) continue;
-    
-        // ✅ CORRECTION : Utiliser les stats déjà stockées dans le slot
+
         for (const key of ["strength", "agility", "intelligence", "endurance", "spirit"]) {
             if (eq.stats.has(key)) {
                 const k = key as keyof IPlayerPrimaryStats;
@@ -86,9 +118,9 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     }
 
     // ==========================================================
-    // 5) WEAPON ATTACK SPEED (lecture du slot "weapon")
+    // 5) WEAPON ATTACK SPEED
     // ==========================================================
-    let weaponSpeed = 2.5; // fallback
+    let weaponSpeed = 2.5;
 
     for (const [slot, eq] of player.inventory.equipment.entries()) {
         if (slot === "weapon" && eq.itemId) {
@@ -100,7 +132,7 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     }
 
     // ==========================================================
-    // 6) COMPUTED BASE
+    // 6) COMPUTED BASE STATS
     // ==========================================================
     let computed: IPlayerComputedStats = {
         maxHp: 100 + primary.endurance * 5,
@@ -133,7 +165,6 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
         spellPenetration: 0
     };
 
-    // Cap minimum attack speed
     computed.attackSpeed = Math.max(0.3, computed.attackSpeed);
 
     // ==========================================================
@@ -141,13 +172,12 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     // ==========================================================
     for (const eq of player.inventory.equipment.values()) {
         if (!eq.itemId) continue;
-    
-        // ✅ CORRECTION : Utiliser les stats déjà stockées dans le slot
+
         for (const [key, value] of eq.stats.entries()) {
             if (["strength", "agility", "intelligence", "endurance", "spirit", "attackSpeed"].includes(key)) {
                 continue;
             }
-    
+
             const k = key as keyof IPlayerComputedStats;
             if (typeof computed[k] === "number") {
                 computed[k] += value;
@@ -166,7 +196,7 @@ export async function computeFullStats(player: PlayerState): Promise<IPlayerComp
     }
 
     // ==========================================================
-    // 9) FINALIZATION
+    // 9) FINAL VALUES
     // ==========================================================
     computed.hp = computed.maxHp;
     computed.resource = computed.maxResource;
