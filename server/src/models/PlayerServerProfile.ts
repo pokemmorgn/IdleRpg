@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
-import { ItemSchema } from "./ItemModel"; // ⚠️ Assure-toi que tu exportes bien ItemSchema dans ItemModel.ts
+import { ItemSchema } from "./Item";
 
 // =======================================================
 // ▶ INTERFACE
