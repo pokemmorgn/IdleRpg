@@ -193,7 +193,7 @@ export class WorldRoom extends Room<GameState> {
   // onAuth
   // ===========================================================
   async onAuth(client: Client, options: any) {
-
+console.log("📥 onAuth RECEIVED:", options);
     if (!options.token || options.serverId !== this.serverId)
       return false;
 
