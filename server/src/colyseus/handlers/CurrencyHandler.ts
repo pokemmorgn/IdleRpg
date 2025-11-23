@@ -1,3 +1,5 @@
+// server/src/colyseus/handlers/CurrencyHandler.ts
+
 import { CurrencyManager } from "../managers/CurrencyManager";
 import { Client } from "colyseus";
 import { PlayerState } from "../schema/PlayerState";
@@ -10,16 +12,17 @@ export class CurrencyHandler {
 
     /**
      * Retourne TRUE si le message concerne la monnaie
-     * (et donc ne doit pas être transmis aux autres managers)
+     * (et ne doit pas être transmis aux autres handlers)
      */
-    handle(type: string, client: Client, player: PlayerState, data: any): boolean {
+    handle(type: string, client: Client, player: PlayerState, payload: any): boolean {
         
-        // Le seul type géré ici :
+        // On traite uniquement les messages de type "currency"
         if (type !== "currency")
             return false;
 
-        // On laisse le manager traiter l'opération (add/remove/set)
-        this.currencyManager.handleMessage(type, client, player, data);
+        // On délègue au CurrencyManager qui contient toute la sécurité
+        this.currencyManager.handleMessage(type, client, player, payload);
+
         return true;
     }
 }
