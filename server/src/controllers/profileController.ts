@@ -4,6 +4,7 @@ import Server from "../models/Server";
 import PlayerServerProfile from "../models/PlayerServerProfile";
 import Bank from "../models/Bank";
 
+import { isValidCharacterSlot } from "../config/character.config";
 import { isValidClass, isClassAllowedForRace } from "../config/classes.config";
 import { isValidRace } from "../config/races.config";
 import { StatsManager } from "../managers/StatsManager";
@@ -13,7 +14,8 @@ interface AuthRequest extends Request {
 }
 
 /* ============================================================
-   GET /profile    → liste tous les personnages du joueur
+   GET /profile
+   Liste tous les profils du joueur (tous serveurs)
 ============================================================ */
 export const listProfiles = async (req: AuthRequest, res: Response) => {
   try {
@@ -35,9 +37,11 @@ export const listProfiles = async (req: AuthRequest, res: Response) => {
         level: profile.level,
         class: profile.class,
         race: profile.race,
+
         gold: profile.currencies.gold,
         diamondBound: profile.currencies.diamondBound,
         diamondUnbound: profile.currencies.diamondUnbound,
+
         lastOnline: profile.lastOnline
       }))
     });
@@ -50,7 +54,7 @@ export const listProfiles = async (req: AuthRequest, res: Response) => {
 
 
 /* ============================================================
-   GET /profile/:serverId  → liste les persos du serveur
+   GET /profile/:serverId
 ============================================================ */
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -73,9 +77,11 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
         characterSlot: profile.characterSlot,
         level: profile.level,
         xp: profile.xp,
+
         gold: profile.currencies.gold,
         diamondBound: profile.currencies.diamondBound,
         diamondUnbound: profile.currencies.diamondUnbound,
+
         class: profile.class,
         race: profile.race,
         primaryStats: profile.primaryStats,
@@ -92,70 +98,53 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
 
 
 /* ============================================================
-   POST /profile/:serverId  → CREER UN PERSONNAGE (MULTI)
+   POST /profile/:serverId → créer un personnage
 ============================================================ */
 export const createProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { serverId } = req.params;
-    const { characterName, characterClass, characterRace } = req.body;
+    const { characterSlot, characterName, characterClass, characterRace } = req.body;
     const playerId = req.playerId;
 
-    if (!playerId)
-      return res.status(401).json({ success: false, error: "Unauthorized" });
+    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    // --- VALIDATIONS ---
-    if (!characterName || !characterClass || !characterRace)
-      return res.status(400).json({ success: false, error: "Missing fields" });
+    // VALIDATIONS
+    if (!characterSlot || !characterName || !characterClass || !characterRace)
+      return res.status(400).json({ success: false, error: "Missing required fields" });
+
+    if (!isValidCharacterSlot(characterSlot))
+      return res.status(400).json({ success: false, error: "Invalid character slot" });
 
     const server = await Server.findOne({ serverId });
     if (!server)
-      return res.status(404).json({ success: false, error: "Server not found" });
+      return res.status(404).json({ success: false, error: `Server ${serverId} not found` });
 
     if (server.status === "maintenance")
-      return res.status(403).json({ success: false, error: "Server under maintenance" });
+      return res.status(403).json({ success: false, error: "Server is in maintenance" });
 
     if (!isValidClass(characterClass))
-      return res.status(400).json({ success: false, error: "Invalid class" });
+      return res.status(400).json({ success: false, error: `Invalid class: ${characterClass}` });
 
     if (!isValidRace(characterRace))
-      return res.status(400).json({ success: false, error: "Invalid race" });
+      return res.status(400).json({ success: false, error: `Invalid race: ${characterRace}` });
 
     if (!isClassAllowedForRace(characterClass, characterRace))
       return res.status(400).json({ success: false, error: "Class not allowed for race" });
 
+    // Slot déjà utilisé ?
+    const existingCharacter = await ServerProfile.findOne({ playerId, serverId, characterSlot });
+    if (existingCharacter)
+      return res.status(400).json({ success: false, error: "Slot already in use" });
+
+    // Nom déjà pris ?
     const existingName = await ServerProfile.findOne({ serverId, characterName });
     if (existingName)
       return res.status(400).json({ success: false, error: "Name already taken" });
 
 
-    // ============================================================
-    // 🔥 1) RÉCUPÉRER / CRÉER PlayerServerProfile
-    // ============================================================
-    let psProfile = await PlayerServerProfile.findOne({ playerId, serverId });
-
-    if (!psProfile) {
-      psProfile = await PlayerServerProfile.create({
-        playerId,
-        serverId,
-        characters: [],
-        sharedCurrencies: {
-          gold: 0,
-          diamondBound: 0,
-          diamondUnbound: 0
-        },
-        sharedBankId: null,
-        sharedQuests: {}
-      });
-    }
-
-    // Slot auto
-    const usedSlots = psProfile.characters.map(c => c.slot);
-    let characterSlot = 1;
-    while (usedSlots.includes(characterSlot)) characterSlot++;
-
-    // ============================================================
-    // 🔥 2) CRÉATION DU PERSONNAGE
-    // ============================================================
+    /* ============================================================
+       🔥 CREATION DU PERSONNAGE
+    ============================================================ */
     const newProfile = await ServerProfile.create({
       playerId,
       serverId,
@@ -209,34 +198,49 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
       lastOnline: new Date()
     });
 
-    // Calcul stats
-    await StatsManager.initializeNewCharacter(String(newProfile._id));
+    /* ============================================================
+       🔥 Ajouter le personnage dans PlayerServerProfile
+    ============================================================ */
+    let psProfile = await PlayerServerProfile.findOne({ playerId, serverId });
 
-    // ============================================================
-    // 🔥 3) AJOUT AU PlayerServerProfile
-    // ============================================================
-    psProfile.characters.push({
-      characterId: newProfile._id,
-      slot: characterSlot
-    });
-
-    // 🔥 4) CRÉATION AUTO DE LA BANQUE
-    if (!psProfile.sharedBankId) {
+    if (!psProfile) {
+      // 🟢 Banque créée automatiquement
       const bank = await Bank.create({
         playerId,
         items: [],
         slots: 100
       });
-      psProfile.sharedBankId = bank._id;
+
+      psProfile = await PlayerServerProfile.create({
+        playerId,
+        serverId,
+        characters: [{
+          characterId: newProfile._id as any,
+          slot: characterSlot
+        }],
+        sharedCurrencies: {
+          gold: 0,
+          diamondBound: 0,
+          diamondUnbound: 0
+        },
+        sharedBankId: bank._id as any,
+        sharedQuests: {}
+      });
+    } else {
+      psProfile.characters.push({
+        characterId: newProfile._id as any,
+        slot: characterSlot
+      });
+      await psProfile.save();
     }
 
-    await psProfile.save();
-
+    /* ============================================================
+       🔥 Calcul des stats
+    ============================================================ */
+    await StatsManager.initializeNewCharacter(String(newProfile._id));
     const profileWithStats = await ServerProfile.findById(newProfile._id);
 
-
-    // --- REPONSE ---
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: `Character ${characterName} created successfully`,
       profile: {
@@ -244,11 +248,14 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         characterName: profileWithStats!.characterName,
         serverId: profileWithStats!.serverId,
         characterSlot: profileWithStats!.characterSlot,
+
         level: profileWithStats!.level,
         xp: profileWithStats!.xp,
+
         gold: profileWithStats!.currencies.gold,
         diamondBound: profileWithStats!.currencies.diamondBound,
         diamondUnbound: profileWithStats!.currencies.diamondUnbound,
+
         class: profileWithStats!.class,
         race: profileWithStats!.race,
         primaryStats: profileWithStats!.primaryStats,
@@ -258,7 +265,7 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
     });
 
   } catch (err: any) {
-    console.error("❌ Erreur createProfile:", err.message);
+    console.error("❌ Erreur createProfile:", err);
     res.status(500).json({ success: false, error: "Failed to create character" });
   }
 };
@@ -276,12 +283,22 @@ export const deleteProfile = async (req: AuthRequest, res: Response) => {
 
     const slot = parseInt(characterSlot);
 
+    if (!isValidCharacterSlot(slot))
+      return res.status(400).json({ success: false, error: "Invalid character slot" });
+
     const profile = await ServerProfile.findOne({ playerId, serverId, characterSlot: slot });
 
     if (!profile)
       return res.status(404).json({ success: false, error: "Character not found" });
 
     await ServerProfile.findByIdAndDelete(profile._id);
+
+    // 🔥 Supprimer aussi du PlayerServerProfile
+    const psProfile = await PlayerServerProfile.findOne({ playerId, serverId });
+    if (psProfile) {
+      psProfile.characters = psProfile.characters.filter(c => String(c.characterId) !== String(profile._id));
+      await psProfile.save();
+    }
 
     res.json({
       success: true,
