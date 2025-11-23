@@ -1,58 +1,160 @@
+// src/colyseus/utils/playerLoader.ts
 
-src/colyseus/utils/playerLoader.ts:50:6 - error TS2304: Cannot find name 'psp'.
+import ServerProfile from "../../models/ServerProfile";
+import Server from "../../models/Server";
+import PlayerServerProfile from "../../models/PlayerServerProfile";
+import Bank from "../../models/Bank";
 
-50 if (!psp) {
-        ~~~
+import { Types } from "mongoose";
+import { isValidCharacterSlot } from "../../config/character.config";
 
-src/colyseus/utils/playerLoader.ts:59:3 - error TS2304: Cannot find name 'psp'.
+export async function loadPlayerCharacter(
+  playerId: string,
+  serverId: string,
+  characterSlot: number
+): Promise<{
+  success: boolean;
+  profile?: any;
+  error?: string;
+}> {
+  try {
+    // ----------------------------------------------------------
+    // Vérifie serveur existant
+    // ----------------------------------------------------------
+    const server = await Server.findOne({ serverId });
+    if (!server) return { success: false, error: `Server ${serverId} not found` };
 
-59   psp = await PlayerServerProfile.create({
-     ~~~
+    if (server.status === "maintenance")
+      return { success: false, error: "Server is in maintenance" };
 
-src/colyseus/utils/playerLoader.ts:63:35 - error TS2503: Cannot find namespace 'Types'.
+    if (!isValidCharacterSlot(characterSlot)) {
+      return { success: false, error: `Invalid character slot: ${characterSlot}` };
+    }
 
-63       characterId: profile._id as Types.ObjectId,
-                                     ~~~~~
+    // ----------------------------------------------------------
+    // Récupère le personnage
+    // ----------------------------------------------------------
+    const profile = await ServerProfile.findOne({
+      playerId,
+      serverId,
+      characterSlot
+    });
 
-src/colyseus/utils/playerLoader.ts:79:16 - error TS2304: Cannot find name 'psp'.
+    if (!profile) {
+      return {
+        success: false,
+        error: `No character found in slot ${characterSlot} on server ${serverId}`
+      };
+    }
 
-79 const exists = psp.characters.some(c =>
-                  ~~~
+    // ----------------------------------------------------------
+    // Récupère PlayerServerProfile
+    // ----------------------------------------------------------
+    let psp = await PlayerServerProfile.findOne({
+      playerId,
+      serverId
+    });
 
-src/colyseus/utils/playerLoader.ts:79:36 - error TS7006: Parameter 'c' implicitly has an 'any' type.
+    // ----------------------------------------------------------
+    // 🔥 Auto-create PlayerServerProfile si absent
+    // ----------------------------------------------------------
+    if (!psp) {
+      console.warn(`⚠️ Missing PlayerServerProfile → creating new one...`);
 
-79 const exists = psp.characters.some(c =>
-                                      ~
+      // créer une banque globale vide
+      const bank = await Bank.create({
+        playerId: new Types.ObjectId(playerId),
+        items: [],
+        slots: 100
+      });
 
-src/colyseus/utils/playerLoader.ts:84:3 - error TS2304: Cannot find name 'psp'.
+      psp = await PlayerServerProfile.create({
+        playerId: new Types.ObjectId(playerId),
+        serverId,
+        characters: [
+          {
+            characterId: profile._id as Types.ObjectId,
+            slot: profile.characterSlot
+          }
+        ],
+        sharedCurrencies: {
+          gold: 0,
+          diamondBound: 0,
+          diamondUnbound: 0
+        },
+        sharedBankId: bank._id,
+        sharedQuests: {}
+      });
+    }
 
-84   psp.characters.push({
-     ~~~
+    // ----------------------------------------------------------
+    // 🔍 Vérifie que le personnage est dans psp.characters
+    // ----------------------------------------------------------
+    const exists = psp.characters.some(
+      c => String(c.characterId) === String(profile._id)
+    );
 
-src/colyseus/utils/playerLoader.ts:85:33 - error TS2503: Cannot find namespace 'Types'.
+    if (!exists) {
+      psp.characters.push({
+        characterId: profile._id as Types.ObjectId,
+        slot: profile.characterSlot
+      });
 
-85     characterId: profile._id as Types.ObjectId,
-                                   ~~~~~
+      await psp.save();
+    }
 
-src/colyseus/utils/playerLoader.ts:88:9 - error TS2304: Cannot find name 'psp'.
+    // ----------------------------------------------------------
+    // Log OK
+    // ----------------------------------------------------------
+    console.log(
+      `📂 Personnage chargé: ${profile.characterName} (Lv${profile.level} ${profile.class})`
+    );
 
-88   await psp.save();
-           ~~~
+    // ----------------------------------------------------------
+    // Retourne le profil complet
+    // ----------------------------------------------------------
+    return {
+      success: true,
+      profile: {
+        profileId: String(profile._id),
+        playerId: String(profile.playerId),
+        serverId: profile.serverId,
+        characterSlot: profile.characterSlot,
+        characterName: profile.characterName,
 
-src/colyseus/utils/playerLoader.ts:110:15 - error TS2304: Cannot find name 'psp'.
+        level: profile.level,
+        xp: profile.xp,
+        nextLevelXp: profile.nextLevelXp,
 
-110         gold: psp.sharedCurrencies.gold,
-                  ~~~
+        // ⭐ Monnaies globales
+        gold: psp.sharedCurrencies.gold,
+        diamondBound: psp.sharedCurrencies.diamondBound,
+        diamondUnbound: psp.sharedCurrencies.diamondUnbound,
 
-src/colyseus/utils/playerLoader.ts:111:23 - error TS2304: Cannot find name 'psp'.
+        class: profile.class,
+        race: profile.race,
 
-111         diamondBound: psp.sharedCurrencies.diamondBound,
-                          ~~~
+        primaryStats: profile.primaryStats,
+        computedStats: profile.computedStats,
 
-src/colyseus/utils/playerLoader.ts:112:25 - error TS2304: Cannot find name 'psp'.
+        lastOnline: profile.lastOnline
+      }
+    };
 
-112         diamondUnbound: psp.sharedCurrencies.diamondUnbound,
-                            ~~~
+  } catch (err: any) {
+    console.error("❌ Erreur loadPlayerCharacter:", err);
+    return { success: false, error: err.message };
+  }
+}
 
-
-Found 11 errors in the same file, starting at: src/colyseus/utils/playerLoader.ts:50
+export function isCharacterAlreadyConnected(
+  connectedPlayers: Map<string, any>,
+  profileId: string
+): boolean {
+  for (const [, player] of connectedPlayers.entries()) {
+    if (player.profileId === profileId) {
+      return true;
+    }
+  }
+  return false;
+}
