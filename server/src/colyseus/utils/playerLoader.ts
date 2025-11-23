@@ -1,140 +1,58 @@
-// src/colyseus/utils/playerLoader.ts
 
-import ServerProfile from "../../models/ServerProfile";
-import Server from "../../models/Server";
-import PlayerServerProfile from "../../models/PlayerServerProfile";
-import Bank from "../../models/Bank";
-import { isValidCharacterSlot } from "../../config/character.config";
+src/colyseus/utils/playerLoader.ts:50:6 - error TS2304: Cannot find name 'psp'.
 
-export async function loadPlayerCharacter(
-  playerId: string,
-  serverId: string,
-  characterSlot: number
-): Promise<{
-  success: boolean;
-  profile?: any;
-  error?: string;
-}> {
-  try {
-    // Vérifie que le serveur existe
-    const server = await Server.findOne({ serverId });
-    if (!server) {
-      return { success: false, error: `Server ${serverId} not found` };
-    }
+50 if (!psp) {
+        ~~~
 
-    if (server.status === "maintenance") {
-      return { success: false, error: "Server is in maintenance" };
-    }
+src/colyseus/utils/playerLoader.ts:59:3 - error TS2304: Cannot find name 'psp'.
 
-    if (!isValidCharacterSlot(characterSlot)) {
-      return { success: false, error: `Invalid character slot: ${characterSlot}` };
-    }
+59   psp = await PlayerServerProfile.create({
+     ~~~
 
-    // Récupère le profil du personnage
-    const profile = await ServerProfile.findOne({
-      playerId: playerId,
-      serverId: serverId,
-      characterSlot: characterSlot
-    });
+src/colyseus/utils/playerLoader.ts:63:35 - error TS2503: Cannot find namespace 'Types'.
 
-    if (!profile) {
-      return {
-        success: false,
-        error: `No character found in slot ${characterSlot} on server ${serverId}`
-      };
-    }
+63       characterId: profile._id as Types.ObjectId,
+                                     ~~~~~
 
-// ----------------------------------------------------------
-// 🔥 AUTO-CREATE PlayerServerProfile IF MISSING
-// ----------------------------------------------------------
-if (!psp) {
-  console.warn(`⚠️ Missing PlayerServerProfile for ${playerId} on ${serverId}, creating...`);
+src/colyseus/utils/playerLoader.ts:79:16 - error TS2304: Cannot find name 'psp'.
 
-  const bank = await Bank.create({
-    playerId: playerId,
-    items: [],
-    slots: 100
-  });
+79 const exists = psp.characters.some(c =>
+                  ~~~
 
-  psp = await PlayerServerProfile.create({
-    playerId: playerId,
-    serverId: serverId,
-    characters: [{
-      characterId: profile._id as Types.ObjectId,
-      slot: profile.characterSlot
-    }],
-    sharedCurrencies: {
-      gold: 0,
-      diamondBound: 0,
-      diamondUnbound: 0
-    },
-    sharedBankId: bank._id,
-    sharedQuests: {}
-  });
-}
+src/colyseus/utils/playerLoader.ts:79:36 - error TS7006: Parameter 'c' implicitly has an 'any' type.
 
-// ----------------------------------------------------------
-// 🔄 Ensure character is present in characters[]
-// ----------------------------------------------------------
-const exists = psp.characters.some(c =>
-  String(c.characterId) === String(profile._id)
-);
+79 const exists = psp.characters.some(c =>
+                                      ~
 
-if (!exists) {
-  psp.characters.push({
-    characterId: profile._id as Types.ObjectId,
-    slot: profile.characterSlot
-  });
-  await psp.save();
-}
+src/colyseus/utils/playerLoader.ts:84:3 - error TS2304: Cannot find name 'psp'.
+
+84   psp.characters.push({
+     ~~~
+
+src/colyseus/utils/playerLoader.ts:85:33 - error TS2503: Cannot find namespace 'Types'.
+
+85     characterId: profile._id as Types.ObjectId,
+                                   ~~~~~
+
+src/colyseus/utils/playerLoader.ts:88:9 - error TS2304: Cannot find name 'psp'.
+
+88   await psp.save();
+           ~~~
+
+src/colyseus/utils/playerLoader.ts:110:15 - error TS2304: Cannot find name 'psp'.
+
+110         gold: psp.sharedCurrencies.gold,
+                  ~~~
+
+src/colyseus/utils/playerLoader.ts:111:23 - error TS2304: Cannot find name 'psp'.
+
+111         diamondBound: psp.sharedCurrencies.diamondBound,
+                          ~~~
+
+src/colyseus/utils/playerLoader.ts:112:25 - error TS2304: Cannot find name 'psp'.
+
+112         diamondUnbound: psp.sharedCurrencies.diamondUnbound,
+                            ~~~
 
 
-    console.log(
-      `📂 Personnage chargé: ${profile.characterName} (Lv${profile.level} ${profile.class})`
-    );
-
-    return {
-      success: true,
-      profile: {
-        profileId: String(profile._id),
-        playerId: String(profile.playerId),
-        serverId: profile.serverId,
-        characterSlot: profile.characterSlot,
-        characterName: profile.characterName,
-
-        level: profile.level,
-        xp: profile.xp,
-        nextLevelXp: profile.nextLevelXp,
-
-        // ⭐ Monnaies globales (PSP)
-        gold: psp.sharedCurrencies.gold,
-        diamondBound: psp.sharedCurrencies.diamondBound,
-        diamondUnbound: psp.sharedCurrencies.diamondUnbound,
-
-        class: profile.class,
-        race: profile.race,
-
-        primaryStats: profile.primaryStats,
-        computedStats: profile.computedStats,
-
-        lastOnline: profile.lastOnline
-      }
-    };
-
-  } catch (err: any) {
-    console.error("❌ Erreur loadPlayerCharacter:", err.message);
-    return { success: false, error: err.message };
-  }
-}
-
-export function isCharacterAlreadyConnected(
-  connectedPlayers: Map<string, any>,
-  profileId: string
-): boolean {
-  for (const [, player] of connectedPlayers.entries()) {
-    if (player.profileId === profileId) {
-      return true;
-    }
-  }
-  return false;
-}
+Found 11 errors in the same file, starting at: src/colyseus/utils/playerLoader.ts:50
