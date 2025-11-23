@@ -311,7 +311,7 @@ async function testMountSystem(room: Colyseus.Room, mounts: any[], lastStatsRef:
         const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTED");
-
+        room.onMessage("xp_gain", msg => console.log("📈 XP GAIN:", msg));
         // Increase artificial level for tests
         console.log("📈 OVERRIDE → Setting level to 6 for cosmetics tests");
         room.send("debug_give_xp", { amount: 999999 });
