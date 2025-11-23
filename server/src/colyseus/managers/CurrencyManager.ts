@@ -65,20 +65,35 @@ export class CurrencyManager {
         return player.currencies.values.get(type) || 0;
     }
 
+    // ===========================================================
+    // 🔥 MESSAGE ROUTER
+    // ===========================================================
     handleMessage(type: string, client: Client, player: PlayerState, data: any): boolean {
-    const { currency, amount } = data || {};
-
-    switch (type) {
-        case "currency_add":
-            this.add(player, client, currency, amount);
+        if (type !== "currency") return false;
+    
+        const action = data.action;
+        const currencyType = data.type;
+        const amount = Number(data.amount) || 0;
+    
+        // Sécurité
+        if (!["gold", "diamonds", "diamonds_premium"].includes(currencyType))
+            return false;
+    
+        if (action === "add") {
+            this.add(player, client, currencyType, amount);
             return true;
-        case "currency_remove":
-            return this.remove(player, client, currency, amount);
-        case "currency_set":
-            this.set(player, client, currency, amount);
+        }
+    
+        if (action === "remove") {
+            this.remove(player, client, currencyType, amount);
             return true;
+        }
+    
+        if (action === "set") {
+            this.set(player, client, currencyType, amount);
+            return true;
+        }
+    
+        return false;
     }
-    return false;
-}
-
 }
