@@ -1,0 +1,55 @@
+{
+  "contractName": "CurrencySecureTransaction",
+  "version": "1.0",
+  "description": "Secure currency transaction contract for game clients (Unity, Web, Mobile). This must be respected by ALL client implementations.",
+
+  "security": {
+    "signatureRequired": true,
+    "signatureAlgorithm": "HMAC-SHA256",
+    "secretEnvVariable": "PX42_KEY",
+    "payloadWrapper": "SecurityTransaction.wrap()"
+  },
+
+  "rules": {
+    "authoritativeServer": true,
+    "clientMayNotModifyLocalBalance": true,
+    "clientMayNotCallSet": true,
+    "antiFlood": {
+      "maxOperationsPerSecond": 5
+    },
+    "maxAmountPerOperation": 5000
+  },
+
+  "allowedActions": [
+    "add",
+    "remove"
+  ],
+
+  "forbiddenActions": [
+    "set"
+  ],
+
+  "validCurrencies": [
+    "gold",
+    "diamonds",
+    "diamonds_bound"
+  ],
+
+  "payloadFormat": {
+    "wrappedPayload": {
+      "signature": "<HMAC_SHA256>",
+      "timestamp": "<unix_ms>",
+      "data": {
+        "action": "add / remove",
+        "type": "gold / diamonds / diamonds_bound",
+        "amount": "<integer>"
+      }
+    }
+  },
+
+  "clientInstruction": {
+    "summary": "All client currency operations MUST go through SecurityTransaction.wrap(). Never send raw currency messages.",
+    "exampleCodeUnity": "room.Send(\"currency\", SecurityTransaction.Wrap(new { action = \"add\", type = \"gold\", amount = 100 }));",
+    "exampleCodeJavascript": "room.send(\"currency\", SecurityTransaction.wrap({ action: 'remove', type: 'diamonds', amount: 20 }));"
+  }
+}
