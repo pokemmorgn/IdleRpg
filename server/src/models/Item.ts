@@ -31,11 +31,15 @@ export interface IItemModel extends Document {
     // 🔥 Nouveau : item lié au personnage (non transférable)
     personal?: boolean;
 
-    // Shared flag (si tu veux plus tard)
+    // Shared flag (à utiliser plus tard si besoin)
     shared?: boolean;
 }
 
-const ItemSchema = new Schema<IItemModel>({
+// =======================================================
+// ▶ SCHEMA EXPORTABLE
+// =======================================================
+
+export const ItemSchema = new Schema<IItemModel>({
     itemId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     type: { type: String, required: true },
@@ -58,10 +62,12 @@ const ItemSchema = new Schema<IItemModel>({
 
     bagSizeIncrease: Number,
 
-    // 🔥 Ajout
     personal: { type: Boolean, default: false },
-
     shared: { type: Boolean, default: false }
 });
+
+// =======================================================
+// ▶ MODEL MONGOOSE
+// =======================================================
 
 export default mongoose.model<IItemModel>("Item", ItemSchema);
