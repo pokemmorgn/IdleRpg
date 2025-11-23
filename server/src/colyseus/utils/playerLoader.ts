@@ -44,56 +44,50 @@ export async function loadPlayerCharacter(
       };
     }
 
-    // ----------------------------------------------------------
-    // 🔥 AUTO-CREATE PlayerServerProfile IF MISSING
-    // ----------------------------------------------------------
-    let psp = await PlayerServerProfile.findOne({
-      playerId: playerId,
-      serverId: serverId
-    });
+// ----------------------------------------------------------
+// 🔥 AUTO-CREATE PlayerServerProfile IF MISSING
+// ----------------------------------------------------------
+if (!psp) {
+  console.warn(`⚠️ Missing PlayerServerProfile for ${playerId} on ${serverId}, creating...`);
 
-    if (!psp) {
-      console.warn(`⚠️ Missing PlayerServerProfile for ${playerId} on ${serverId}, creating...`);
+  const bank = await Bank.create({
+    playerId: playerId,
+    items: [],
+    slots: 100
+  });
 
-      // 🔹 Créer banque globale
-      const bank = await Bank.create({
-        playerId: playerId,
-        items: [],
-        slots: 100
-      });
+  psp = await PlayerServerProfile.create({
+    playerId: playerId,
+    serverId: serverId,
+    characters: [{
+      characterId: profile._id as Types.ObjectId,
+      slot: profile.characterSlot
+    }],
+    sharedCurrencies: {
+      gold: 0,
+      diamondBound: 0,
+      diamondUnbound: 0
+    },
+    sharedBankId: bank._id,
+    sharedQuests: {}
+  });
+}
 
-      // 🔹 Créer PlayerServerProfile basique
-      psp = await PlayerServerProfile.create({
-        playerId: playerId,
-        serverId: serverId,
-        characters: [{
-          characterId: profile._id,
-          slot: profile.characterSlot
-        }],
-        sharedCurrencies: {
-          gold: 0,
-          diamondBound: 0,
-          diamondUnbound: 0
-        },
-        sharedBankId: bank._id,
-        sharedQuests: {}
-      });
-    }
+// ----------------------------------------------------------
+// 🔄 Ensure character is present in characters[]
+// ----------------------------------------------------------
+const exists = psp.characters.some(c =>
+  String(c.characterId) === String(profile._id)
+);
 
-    // ----------------------------------------------------------
-    // 🔄 S'assurer que le personnage est bien dans characters[]
-    // ----------------------------------------------------------
-    const exists = psp.characters.some(c =>
-      String(c.characterId) === String(profile._id)
-    );
+if (!exists) {
+  psp.characters.push({
+    characterId: profile._id as Types.ObjectId,
+    slot: profile.characterSlot
+  });
+  await psp.save();
+}
 
-    if (!exists) {
-      psp.characters.push({
-        characterId: profile._id,
-        slot: profile.characterSlot
-      });
-      await psp.save();
-    }
 
     console.log(
       `📂 Personnage chargé: ${profile.characterName} (Lv${profile.level} ${profile.class})`
