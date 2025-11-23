@@ -1,8 +1,7 @@
-// server/src/colyseus/utils/playerLoader.ts
-
 import ServerProfile from "../../models/ServerProfile";
 import Server from "../../models/Server";
-import PlayerServerProfile from "../../models/PlayerServerProfile";
+import { PlayerServerProfile } from "../../models/PlayerServerProfile";
+import Bank from "../../models/Bank";
 import { isValidCharacterSlot } from "../../config/character.config";
 
 export async function loadPlayerCharacter(
@@ -15,25 +14,23 @@ export async function loadPlayerCharacter(
   error?: string;
 }> {
   try {
-    // 1️⃣ Vérifie que le serveur existe
+
+    // 1) Vérifie que le serveur existe
     const server = await Server.findOne({ serverId });
-    if (!server) {
+    if (!server)
       return { success: false, error: `Server ${serverId} not found` };
-    }
 
-    if (server.status === "maintenance") {
+    if (server.status === "maintenance")
       return { success: false, error: "Server is in maintenance" };
-    }
 
-    if (!isValidCharacterSlot(characterSlot)) {
-      return { success: false, error: `Invalid character slot: ${characterSlot}` };
-    }
+    if (!isValidCharacterSlot(characterSlot))
+      return { success: false, error: `Invalid character slot ${characterSlot}` };
 
-    // 2️⃣ Charge ServerProfile (données du personnage)
+    // 2) Récupère le personnage
     const profile = await ServerProfile.findOne({
-      playerId: playerId,
-      serverId: serverId,
-      characterSlot: characterSlot
+      playerId,
+      serverId,
+      characterSlot
     });
 
     if (!profile) {
@@ -43,56 +40,53 @@ export async function loadPlayerCharacter(
       };
     }
 
-    // 3️⃣ Charge PlayerServerProfile (monnaies, banque, quêtes)
-    let psp = await PlayerServerProfile.findOne({
-      playerId: playerId,
-      serverId: serverId
-    });
+    // 3) Récupère PlayerServerProfile
+    let psp = await PlayerServerProfile.findOne({ playerId, serverId });
 
-    // ===========================================================
-    // ⭐ PATCH AUTOMATIQUE : créer PlayerServerProfile si manquant
-    // ===========================================================
+    // 4) AUTO-CRÉATION SI ABSENT
     if (!psp) {
-      console.warn("⚠️ Missing PlayerServerProfile → creating default one.");
+      console.log("⚠️ No PlayerServerProfile found → auto-creating.");
+
+      // Création de la banque si inexistante
+      const bank = await Bank.create({
+        playerId,
+        items: [],
+        slots: 100
+      });
 
       psp = await PlayerServerProfile.create({
         playerId,
         serverId,
-        characters: [
-          { characterId: profile._id, slot: characterSlot }
-        ],
+        characters: [{
+          characterId: profile._id,
+          slot: characterSlot
+        }],
         sharedCurrencies: {
           gold: 0,
           diamondBound: 0,
           diamondUnbound: 0
         },
-        sharedBankId: null,
+        sharedBankId: bank._id,
         sharedQuests: {}
       });
     }
 
-    // ===========================================================
-    // ⭐ PATCH : s’assurer que le personnage est dans characters[]
-    // ===========================================================
-    const exists = psp.characters.some(e => 
-      e.characterId.toString() === profile._id.toString()
+    // 5) Vérifie que le personnage est dans la liste sinon → ajout
+    const exists = psp.characters.some(c =>
+      String(c.characterId) === String(profile._id)
     );
 
     if (!exists) {
+      console.log("🛠 Adding missing character to PlayerServerProfile");
+
       psp.characters.push({
         characterId: profile._id,
         slot: characterSlot
       });
-
       await psp.save();
-      console.log("📌 Added missing character entry to PlayerServerProfile.");
     }
 
-    console.log(
-      `📂 Personnage chargé: ${profile.characterName} (Lv${profile.level} ${profile.class})`
-    );
-
-    // 4️⃣ Retour structuré
+    // 6) OK → renvoyer la structure complète
     return {
       success: true,
       profile: {
@@ -101,43 +95,30 @@ export async function loadPlayerCharacter(
         serverId: profile.serverId,
         characterSlot: profile.characterSlot,
         characterName: profile.characterName,
-
         level: profile.level,
         xp: profile.xp,
         nextLevelXp: profile.nextLevelXp,
 
-        // ⭐ monnaies globales
+        // Shared currencies depuis PlayerServerProfile
         gold: psp.sharedCurrencies.gold,
         diamondBound: psp.sharedCurrencies.diamondBound,
         diamondUnbound: psp.sharedCurrencies.diamondUnbound,
 
         class: profile.class,
         race: profile.race,
-
         primaryStats: profile.primaryStats,
         computedStats: profile.computedStats,
+        lastOnline: profile.lastOnline,
 
         questData: profile.questData,
         inventory: profile.inventory,
-
-        lastOnline: profile.lastOnline
+        talents: profile.talents,
+        availableSkillPoints: profile.availableSkillPoints
       }
     };
 
   } catch (err: any) {
-    console.error("❌ Erreur loadPlayerCharacter:", err);
+    console.error("❌ loadPlayerCharacter error:", err);
     return { success: false, error: err.message };
   }
-}
-
-export function isCharacterAlreadyConnected(
-  connectedPlayers: Map<string, any>,
-  profileId: string
-): boolean {
-  for (const [, player] of connectedPlayers.entries()) {
-    if (player.profileId === profileId) {
-      return true;
-    }
-  }
-  return false;
 }
