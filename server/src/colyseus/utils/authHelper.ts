@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import Player from "../../models/Player";
-
+console.log("🔑 JWT_SECRET loaded in Colyseus:", JWT_SECRET);
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
 /**
