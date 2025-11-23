@@ -177,10 +177,19 @@ export class WorldRoom extends Room<GameState> {
     this.onMessage("mount_equip", (client, msg) =>
       this.handleMessage(client, "mount_equip", msg));
 
-    // CATCH-ALL message router:
+    // CATCH-ALL message router
     this.onMessage("*", (client, type, msg) => {
-      this.handleMessage(client, String(type), msg);
+    
+        // ❌ Produit par Colyseus — ne doit JAMAIS être intercepté
+        if (typeof type !== "string") return;
+    
+        if (type.startsWith("$") || type.includes("auth") || type.includes("system"))
+            return;
+    
+        this.handleMessage(client, type, msg);
     });
+
+
 
     this.setSimulationInterval(dt => this.combatManager.update(dt), 33);
 
