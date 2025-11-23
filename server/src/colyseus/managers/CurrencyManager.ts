@@ -64,4 +64,21 @@ export class CurrencyManager {
     get(player: PlayerState, type: string): number {
         return player.currencies.values.get(type) || 0;
     }
+
+    handleMessage(type: string, client: Client, player: PlayerState, data: any): boolean {
+    const { currency, amount } = data || {};
+
+    switch (type) {
+        case "currency_add":
+            this.add(player, client, currency, amount);
+            return true;
+        case "currency_remove":
+            return this.remove(player, client, currency, amount);
+        case "currency_set":
+            this.set(player, client, currency, amount);
+            return true;
+    }
+    return false;
+}
+
 }
