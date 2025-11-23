@@ -18,6 +18,7 @@ import { TestManager } from "../test/TestManager";
 import { SkinManager } from "../managers/SkinManager";
 import { TitleManager } from "../managers/TitleManager";
 import { MountManager } from "../managers/MountManager";
+
 import { CurrencyManager } from "../managers/CurrencyManager";
 import { CurrencyHandler } from "../handlers/CurrencyHandler";
 
@@ -168,14 +169,15 @@ export class WorldRoom extends Room<GameState> {
     console.log("📥 WORLD ROOM READY");
 
     // Cosmetics
-    this.onMessage("skin_unlock", (client, msg) => this.handleMessage(client, "skin_unlock", msg));
-    this.onMessage("skin_equip", (client, msg) => this.handleMessage(client, "skin_equip", msg));
-    this.onMessage("skin_level_up", (client, msg) => this.handleMessage(client, "skin_level_up", msg));
-    this.onMessage("title_unlock", (client, msg) => this.handleMessage(client, "title_unlock", msg));
-    this.onMessage("title_equip", (client, msg) => this.handleMessage(client, "title_equip", msg));
-    this.onMessage("mount_unlock", (client, msg) => this.handleMessage(client, "mount_unlock", msg));
-    this.onMessage("mount_equip", (client, msg) => this.handleMessage(client, "mount_equip", msg));
+    this.onMessage("skin_unlock", (c, m) => this.handleMessage(c, "skin_unlock", m));
+    this.onMessage("skin_equip", (c, m) => this.handleMessage(c, "skin_equip", m));
+    this.onMessage("skin_level_up", (c, m) => this.handleMessage(c, "skin_level_up", m));
+    this.onMessage("title_unlock", (c, m) => this.handleMessage(c, "title_unlock", m));
+    this.onMessage("title_equip", (c, m) => this.handleMessage(c, "title_equip", m));
+    this.onMessage("mount_unlock", (c, m) => this.handleMessage(c, "mount_unlock", m));
+    this.onMessage("mount_equip", (c, m) => this.handleMessage(c, "mount_equip", m));
 
+    // Catch-all
     this.onMessage("*", (client, type, msg) => {
       this.handleMessage(client, String(type), msg);
     });
@@ -285,18 +287,26 @@ export class WorldRoom extends Room<GameState> {
     });
 
     if (psp) {
+
+      // Synchronise la monnaie globale → PlayerState
       player.sharedCurrencies = {
         gold: psp.sharedCurrencies.gold,
         diamondBound: psp.sharedCurrencies.diamondBound,
         diamondUnbound: psp.sharedCurrencies.diamondUnbound
       };
 
+      // Conversion pour le client Colyseus (CurrencyState)
+      player.currencies.values.set("gold", player.sharedCurrencies.gold);
+      player.currencies.values.set("diamonds_bound", player.sharedCurrencies.diamondBound);
+      player.currencies.values.set("diamonds", player.sharedCurrencies.diamondUnbound);
+
       client.send("currency_full_update", {
-        values: player.sharedCurrencies
+        values: {
+          gold: player.sharedCurrencies.gold,
+          diamonds_bound: player.sharedCurrencies.diamondBound,
+          diamonds: player.sharedCurrencies.diamondUnbound
+        }
       });
-    } else {
-      console.error("❌ Missing PlayerServerProfile in onJoin");
-      client.send("currency_full_update", { values: {} });
     }
 
     if (this.serverId === "test") player.zoneId = "start_zone";
