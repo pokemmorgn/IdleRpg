@@ -1,55 +1,67 @@
-// server/src/colyseus/managers/CurrencyManager.ts
-
 import { Client } from "colyseus";
 import { PlayerState } from "../schema/PlayerState";
+import { computeFullStats } from "./stats/PlayerStatsCalculator";
 
 export class CurrencyManager {
 
-  add(player: PlayerState, type: string, amount: number) {
-    const cur = player.currencies.values;
-
-    cur[type] = (cur[type] || 0) + amount;
-
-    player.triggerCurrencyUpdate(type);
-  }
-
-  remove(player: PlayerState, type: string, amount: number): boolean {
-    const cur = player.currencies.values;
-
-    if ((cur[type] || 0) < amount) return false;
-
-    cur[type] = (cur[type] || 0) - amount;
-
-    player.triggerCurrencyUpdate(type);
-    return true;
-  }
-
-  set(player: PlayerState, type: string, amount: number) {
-    const cur = player.currencies.values;
-    cur[type] = amount;
-    player.triggerCurrencyUpdate(type);
-  }
-
-  get(player: PlayerState, type: string): number {
-    return player.currencies.values[type] || 0;
-  }
-
-  handleMessage(type: string, client: Client, player: PlayerState, msg: any): boolean {
-    if (type === "currency_add") {
-      this.add(player, msg.currency, msg.amount);
-      return true;
+    constructor() {
+        console.log("💰 CurrencyManager chargé.");
     }
 
-    if (type === "currency_remove") {
-      const ok = this.remove(player, msg.currency, msg.amount);
-      client.send("currency_result", {
-        ok,
-        currency: msg.currency,
-        amount: msg.amount
-      });
-      return true;
+    // ===========================================================
+    // 🔥 ENVOI D'UNE UPDATE CLIENT
+    // ===========================================================
+    private sendUpdate(client: Client, type: string, amount: number) {
+        client.send("currency_update", {
+            type,
+            amount
+        });
     }
 
-    return false;
-  }
+    // ===========================================================
+    // 📥 ADD CURRENCY
+    // ===========================================================
+    add(player: PlayerState, client: Client, type: string, amount: number) {
+        if (amount <= 0) return;
+
+        const current = player.currencies.values.get(type) || 0;
+        player.currencies.values.set(type, current + amount);
+
+        this.sendUpdate(client, type, current + amount);
+    }
+
+    // ===========================================================
+    // 📤 REMOVE CURRENCY
+    // ===========================================================
+    remove(player: PlayerState, client: Client, type: string, amount: number): boolean {
+        const current = player.currencies.values.get(type) || 0;
+
+        if (current < amount) {
+            client.send("currency_error", {
+                type,
+                error: "not_enough_currency"
+            });
+            return false;
+        }
+
+        player.currencies.values.set(type, current - amount);
+        this.sendUpdate(client, type, current - amount);
+
+        return true;
+    }
+
+    // ===========================================================
+    // ✏️ SET CURRENCY
+    // ===========================================================
+    set(player: PlayerState, client: Client, type: string, amount: number) {
+        player.currencies.values.set(type, amount);
+        this.sendUpdate(client, type, amount);
+    }
+
+    // ===========================================================
+    // 📦 GET
+    // ===========================================================
+    get(player: PlayerState, type: string): number {
+        return player.currencies.values.get(type) || 0;
+    }
 }
