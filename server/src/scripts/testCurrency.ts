@@ -3,7 +3,7 @@
  * Compatible avec SecurityVerifier (HMAC + timestamp + nonce)
  */
 import dotenv from "dotenv";
-dotenv.config();
+dotenv.config({ path: __dirname + "/../../.env" });
 import * as Colyseus from "colyseus.js";
 import crypto from "crypto";
 
