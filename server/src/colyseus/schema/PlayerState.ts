@@ -5,7 +5,7 @@ import { QuestObjectiveMap } from "./QuestObjectiveMap";
 import { InventoryState } from "./InventoryState";
 import { TitleState } from "./TitleState";
 import { MountState } from "./MountState";
-
+import { CurrencyState } from "./CurrencyState";
 export class PlayerState extends Schema {
 
   // ===== IDENTITÉ =====
