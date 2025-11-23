@@ -16,11 +16,16 @@ import { DialogueManager } from "../managers/DialogueManager";
 import { TestManager } from "../test/TestManager";
 
 import { SkinManager } from "../managers/SkinManager";
+import { TitleManager } from "../managers/TitleManager";
+import { MountManager } from "../managers/MountManager";
+
 import { InventoryManager } from "../managers/InventoryManager";
 import { computeFullStats } from "../managers/stats/PlayerStatsCalculator";
 import { LevelManager } from "../managers/LevelManager";
 import { TalentManager } from "../managers/TalentManager";
 import { talentScriptRegistry } from "../talents/TalentScriptRegistry";
+
+import { handleCosmeticsMessage } from "../handlers/cosmetics.handler";
 
 import ServerProfile from "../../models/ServerProfile";
 import ItemModel from "../../models/Item";
@@ -53,9 +58,12 @@ export class WorldRoom extends Room<GameState> {
     this.setState(new GameState(this.serverId));
     console.log("🧬 GameState initialisé");
 
+    // Initialize cosmetic managers
     new SkinManager();
+    new TitleManager();
+    new MountManager();
 
-    // Talents INIT
+    // Talents
     await talentScriptRegistry.initialize();
     this.talentManager = new TalentManager(
       this.savePlayerData.bind(this),
@@ -66,7 +74,7 @@ export class WorldRoom extends Room<GameState> {
     );
     await this.talentManager.loadAllTalentsFromDB();
 
-    // Level Manager (avec TalentManager)
+    // Level Manager
     this.levelManager = new LevelManager(
       (sessionId, type, data) => {
         const c = this.clients.find(cl => cl.sessionId === sessionId);
@@ -110,7 +118,6 @@ export class WorldRoom extends Room<GameState> {
 
     this.monsterManager = new MonsterManager(this.serverId, this.state);
 
-    // Combat Manager (LevelManager et QuestObjectiveManager)
     this.combatManager = new CombatManager(
       this.state,
       (sessionId, type, data) => {
@@ -145,6 +152,25 @@ export class WorldRoom extends Room<GameState> {
 
     console.log("📥 WORLD ROOM READY");
 
+    // COSMETICS MESSAGES
+    this.onMessage("skin_unlock", (client, msg) =>
+      this.handleMessage(client, "skin_unlock", msg));
+    this.onMessage("skin_equip", (client, msg) =>
+      this.handleMessage(client, "skin_equip", msg));
+    this.onMessage("skin_level_up", (client, msg) =>
+      this.handleMessage(client, "skin_level_up", msg));
+
+    this.onMessage("title_unlock", (client, msg) =>
+      this.handleMessage(client, "title_unlock", msg));
+    this.onMessage("title_equip", (client, msg) =>
+      this.handleMessage(client, "title_equip", msg));
+
+    this.onMessage("mount_unlock", (client, msg) =>
+      this.handleMessage(client, "mount_unlock", msg));
+    this.onMessage("mount_equip", (client, msg) =>
+      this.handleMessage(client, "mount_equip", msg));
+
+    // CATCH-ALL message router:
     this.onMessage("*", (client, type, msg) => {
       this.handleMessage(client, String(type), msg);
     });
@@ -238,7 +264,7 @@ export class WorldRoom extends Room<GameState> {
       if (model) player.itemCache[itemId] = { stats: model.stats || {} };
     }
 
-    // Compute full stats
+    // Compute stats
     const stats = await computeFullStats(player);
     player.loadStatsFromProfile(stats);
 
@@ -249,7 +275,6 @@ export class WorldRoom extends Room<GameState> {
     client.send("welcome", { ok: true });
     this.state.addPlayer(player);
 
-    // ⭐ ENVOYER le paquet complet
     client.send("player_update", {
       level: player.level,
       xp: player.xp,
@@ -276,19 +301,21 @@ export class WorldRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
+    // ===== COSMETICS (SKINS + TITLES + MOUNTS) =====
+    if (handleCosmeticsMessage(type, client, player, msg)) return;
+
     // Inventory
     if (type.startsWith("inv_")) {
       await this.inventoryManager.handleMessage(type, client, player, msg);
       return;
     }
 
-    // TALENT LEARN
+    // TALENT
     if (type === "talent_learn") {
       await this.talentManager.learnTalent(player, msg.talentId);
       return;
     }
 
-    // TALENT RESET
     if (type === "talent_reset") {
       await this.talentManager.resetTalents(player);
       return;
@@ -302,7 +329,7 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // STATS REQUEST → renvoie player_update
+    // STATS REQUEST
     if (type === "stats_request") {
       const stats = await computeFullStats(player);
       player.loadStatsFromProfile(stats);
@@ -324,7 +351,7 @@ export class WorldRoom extends Room<GameState> {
       return;
     }
 
-    // Quests & dialogue
+    // Quests
     if (type === "npc_interact") return this.npcManager.handleInteraction(client, player, msg);
     if (type === "npc_accept_quest") return this.npcManager.handleAcceptQuest(client, player, msg);
     if (type === "npc_turn_in_quest") return this.npcManager.handleTurnInQuest(client, player, msg);
