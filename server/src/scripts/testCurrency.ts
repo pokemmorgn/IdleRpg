@@ -1,9 +1,10 @@
 /**
- * TEST CURRENCY SYSTEM — Gold / Diamonds / Premium Diamonds
- * Version stable, optimisée, totalement compatible Colyseus
+ * TEST CURRENCY SYSTEM — Secure Mode
+ * Compatible avec SecurityVerifier (HMAC + timestamp + nonce)
  */
 
 import * as Colyseus from "colyseus.js";
+import crypto from "crypto";
 
 // ======================
 // CONFIG
@@ -19,8 +20,33 @@ const SERVER_ID = "test";
 const CHARACTER_SLOT = 1;
 const CHARACTER_NAME = "CurrencyTester";
 
+// La même clé que dans ton .env
+const PX42_KEY = process.env.PX42_KEY || "DEV_TEST_KEY_CHANGE_THIS";
+
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// =====================================================================
+// SECURITY PAYLOAD BUILDER (CLIENT-SIDE)
+// =====================================================================
+function createSecurePayload(data: any) {
+    const timestamp = Date.now();
+    const nonce = crypto.randomBytes(16).toString("hex");
+
+    const raw = JSON.stringify(data) + timestamp + nonce;
+
+    const signature = crypto
+        .createHmac("sha256", PX42_KEY)
+        .update(raw)
+        .digest("hex");
+
+    return {
+        data,
+        timestamp,
+        nonce,
+        signature
+    };
 }
 
 // =====================================================================
@@ -70,7 +96,6 @@ async function getProfile(token: string) {
 
     const j = await r.json();
     if (!r.ok) return null;
-
     return j.profiles.find((p: any) => p.characterSlot === CHARACTER_SLOT) ?? null;
 }
 
@@ -79,9 +104,7 @@ async function getCreationData(token: string) {
         headers: { Authorization: `Bearer ${token}` }
     });
 
-    const j = await r.json();
-    if (!r.ok) return null;
-    return j;
+    return r.json();
 }
 
 async function createCharacter(token: string, race: string, classId: string) {
@@ -105,7 +128,7 @@ async function createCharacter(token: string, race: string, classId: string) {
         return null;
     }
 
-    console.log("✔ Character created !");
+    console.log("✔ Character created");
     return j.profile;
 }
 
@@ -122,9 +145,7 @@ async function reserveSeat(token: string) {
         })
     });
 
-    const j = await r.json();
-    if (!r.ok) throw new Error("matchmaking failed");
-    return j;
+    return r.json();
 }
 
 // =====================================================================
@@ -141,7 +162,7 @@ function diffCurrencies(before: any, after: any) {
 }
 
 // =====================================================================
-// CURRENCY TEST SUITE
+// CURRENCY TEST SUITE (SECURE PAYLOADS)
 // =====================================================================
 async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
     console.log("\n🔥 TEST CURRENCIES");
@@ -151,29 +172,30 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
 
     let before = structuredClone(lastCurrencyRef.value);
 
-const ops = [
-    { action: "add", type: "gold", amount: 100 },
-    { action: "add", type: "diamonds", amount: 20 },          // premium
-    { action: "add", type: "diamonds_bound", amount: 5 },     // bound
+    const ops = [
+        { action: "add", type: "gold", amount: 100 },
+        { action: "add", type: "diamonds", amount: 20 },
+        { action: "add", type: "diamonds_bound", amount: 5 },
 
-    { action: "remove", type: "gold", amount: 30 },
-    { action: "remove", type: "diamonds", amount: 5 },
+        { action: "remove", type: "gold", amount: 30 },
+        { action: "remove", type: "diamonds", amount: 5 },
 
-    { action: "set", type: "gold", amount: 777 },
-    { action: "set", type: "diamonds_bound", amount: 42 }
-];
-
+        { action: "set", type: "gold", amount: 777 }, // Should be blocked
+        { action: "set", type: "diamonds_bound", amount: 42 }
+    ];
 
     for (const op of ops) {
         console.log(`\n💰 ${op.action.toUpperCase()} → ${op.type} (${op.amount})`);
 
-        room.send("currency", {
+        const securePayload = createSecurePayload({
             action: op.action,
             type: op.type,
             amount: op.amount
         });
 
-        await sleep(200);
+        room.send("currency", securePayload);
+
+        await sleep(250);
 
         const after = structuredClone(lastCurrencyRef.value);
         console.log("📊 DIFF:", diffCurrencies(before, after));
@@ -208,7 +230,7 @@ const ops = [
         let lastCurrencyRef: { value: any } = { value: null };
 
         // =========================
-        // LISTENERS — IMPORTANTS
+        // LISTENERS
         // =========================
         room.onMessage("welcome", msg => console.log("👋 WELCOME:", msg));
 
@@ -226,22 +248,16 @@ const ops = [
             console.error("❌ CURRENCY ERROR:", msg)
         );
 
-        room.onMessage("*", (t, d) => console.warn("⚠ Unknown msg:", t, d));
-
-        // ================ XP Boost to avoid locks ================
-        console.log("📈 OVERRIDE → Giving XP");
+        // Debug XP boost
+        console.log("📈 BOOST XP → Avoid locks");
         room.send("debug_give_xp", { amount: 99999 });
         await sleep(1000);
 
-        // =========================
-        // RUN TEST SUITE
-        // =========================
         await testCurrencySystem(room, lastCurrencyRef);
 
         console.log("\n============================");
         console.log("💰 CURRENCY TEST SUMMARY");
         console.log("============================");
-
         console.table(lastCurrencyRef.value);
 
         console.log("\n🎉 ALL CURRENCY TESTS COMPLETED");
