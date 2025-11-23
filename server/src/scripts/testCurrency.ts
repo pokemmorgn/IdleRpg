@@ -1,6 +1,6 @@
 /**
- * TEST CURRENCY SYSTEM — Gold / Diamonds / Premium Diamonds
- * Version stable, optimisée, totalement compatible Colyseus
+ * TEST CURRENCY SYSTEM — Gold / Diamonds / Bound Diamonds
+ * Version stable, optimisée, compatible avec ton WorldRoom actuel.
  */
 
 import * as Colyseus from "colyseus.js";
@@ -151,22 +151,22 @@ async function testCurrencySystem(room: Colyseus.Room, lastCurrencyRef: any) {
 
     let before = structuredClone(lastCurrencyRef.value);
 
-const ops = [
-    { action: "add", type: "gold", amount: 100 },
-    { action: "add", type: "diamonds", amount: 20 },          // premium
-    { action: "add", type: "diamonds_bound", amount: 5 },     // bound
+    const ops = [
+        { action: "add", type: "gold", amount: 100 },
+        { action: "add", type: "diamonds", amount: 20 },
+        { action: "add", type: "diamonds_bound", amount: 5 },
 
-    { action: "remove", type: "gold", amount: 30 },
-    { action: "remove", type: "diamonds", amount: 5 },
+        { action: "remove", type: "gold", amount: 30 },
+        { action: "remove", type: "diamonds", amount: 5 },
 
-    { action: "set", type: "gold", amount: 777 },
-    { action: "set", type: "diamonds_bound", amount: 42 }
-];
-
+        { action: "set", type: "gold", amount: 777 },
+        { action: "set", type: "diamonds_bound", amount: 42 }
+    ];
 
     for (const op of ops) {
         console.log(`\n💰 ${op.action.toUpperCase()} → ${op.type} (${op.amount})`);
 
+        // ❗ Ici on renvoie EXACTEMENT le même format qu’avant
         room.send("currency", {
             action: op.action,
             type: op.type,
@@ -200,7 +200,10 @@ const ops = [
         }
 
         const mm = await reserveSeat(token);
+
         const client = new Colyseus.Client(WS_URL);
+
+        // ❗ ICI : AUCUNE MODIFICATION → pas de token dans consumeSeatReservation
         const room = await client.consumeSeatReservation(mm);
 
         console.log("🔌 CONNECTED");
@@ -208,7 +211,7 @@ const ops = [
         let lastCurrencyRef: { value: any } = { value: null };
 
         // =========================
-        // LISTENERS — IMPORTANTS
+        // LISTENERS
         // =========================
         room.onMessage("welcome", msg => console.log("👋 WELCOME:", msg));
 
@@ -228,14 +231,10 @@ const ops = [
 
         room.onMessage("*", (t, d) => console.warn("⚠ Unknown msg:", t, d));
 
-        // ================ XP Boost to avoid locks ================
-        console.log("📈 OVERRIDE → Giving XP");
+        console.log("📈 Giving test XP...");
         room.send("debug_give_xp", { amount: 99999 });
         await sleep(1000);
 
-        // =========================
-        // RUN TEST SUITE
-        // =========================
         await testCurrencySystem(room, lastCurrencyRef);
 
         console.log("\n============================");
