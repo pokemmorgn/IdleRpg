@@ -451,7 +451,7 @@ private async savePlayerData(player: PlayerState): Promise<void> {
         talents: player.saveTalentsToProfile(),
 
         // 💰 Currency persistante
-        currencies: player.currencies,
+        currencies: Object.fromEntries(player.currencies.values),
 
         // Quêtes
         questData: player.saveQuestsToProfile(),
