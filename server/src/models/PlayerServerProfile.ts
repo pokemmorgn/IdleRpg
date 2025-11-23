@@ -1,5 +1,9 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
+// =======================================================
+// ▶ INTERFACE
+// =======================================================
+
 export interface IPlayerServerProfile extends Document {
   playerId: Types.ObjectId;
   serverId: string;
@@ -15,12 +19,16 @@ export interface IPlayerServerProfile extends Document {
     diamondUnbound: number;
   };
 
-  sharedBank: Array<any>;
+  sharedBankId: Types.ObjectId | null;
   sharedQuests: Record<string, any>;
 
   createdAt: Date;
   updatedAt: Date;
 }
+
+// =======================================================
+// ▶ SCHEMA
+// =======================================================
 
 const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
   playerId: { type: Schema.Types.ObjectId, required: true, index: true },
@@ -37,10 +45,11 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     diamondUnbound: { type: Number, default: 0 }
   },
 
-  // ⭐ VERSION 100% COMPATIBLE — AUCUNE ERREUR
-  sharedBank: {
-    type: [Schema.Types.Mixed],
-    default: []
+  // ⭐ BANQUE GLOBALE VIA UN VRAI MODEL (aucune erreur TS)
+  sharedBankId: {
+    type: Schema.Types.ObjectId,
+    ref: "Bank",
+    default: null
   },
 
   sharedQuests: {
@@ -50,6 +59,7 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
 
 }, { timestamps: true });
 
+// ➤ Un même joueur = un seul profil par serveur
 PlayerServerProfileSchema.index(
   { playerId: 1, serverId: 1 },
   { unique: true }
