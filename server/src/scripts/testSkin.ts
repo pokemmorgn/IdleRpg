@@ -165,15 +165,18 @@ async function waitForStats(previous: any, ref: { value: any }) {
 // DATA PICKERS
 // =====================================================================
 function pickSkinFromClass(profile: any) {
-    return {
+    const map = {
         warrior: "warrior_basic01",
         priest: "priest_basic01",
         mage: "mage_basic01",
         rogue: "rogue_basic01",
         paladin: "paladin_basic01",
         druid: "druid_basic01",
-    }[profile.class] || "warrior_basic01";
+    } as Record<string, string>;
+
+    return map[String(profile.class)] || "warrior_basic01";
 }
+
 
 // =====================================================================
 // TEST BLOCKS
