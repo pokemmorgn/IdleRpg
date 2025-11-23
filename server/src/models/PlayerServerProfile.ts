@@ -1,5 +1,9 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
+// =======================================================
+// ▶ INTERFACE
+// =======================================================
+
 export interface IPlayerServerProfile extends Document {
   playerId: Types.ObjectId;
   serverId: string;
@@ -22,16 +26,18 @@ export interface IPlayerServerProfile extends Document {
   updatedAt: Date;
 }
 
+// =======================================================
+// ▶ SCHEMA
+// =======================================================
+
 const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
   playerId: { type: Schema.Types.ObjectId, required: true, index: true },
   serverId: { type: String, required: true, index: true },
 
-  characters: [
-    {
-      characterId: { type: Schema.Types.ObjectId, ref: "ServerProfile", required: true },
-      slot: { type: Number, required: true }
-    }
-  ],
+  characters: [{
+    characterId: { type: Schema.Types.ObjectId, ref: "ServerProfile", required: true },
+    slot: { type: Number, required: true }
+  }],
 
   sharedCurrencies: {
     gold: { type: Number, default: 0 },
@@ -39,6 +45,7 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     diamondUnbound: { type: Number, default: 0 }
   },
 
+  // ⭐ BANQUE GLOBALE VIA UN VRAI MODEL (aucune erreur TS)
   sharedBankId: {
     type: Schema.Types.ObjectId,
     ref: "Bank",
@@ -49,14 +56,16 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     type: Object,
     default: {}
   }
+
 }, { timestamps: true });
 
+// ➤ Un même joueur = un seul profil par serveur
 PlayerServerProfileSchema.index(
   { playerId: 1, serverId: 1 },
   { unique: true }
 );
 
-export const PlayerServerProfile = mongoose.model<IPlayerServerProfile>(
+export default mongoose.model<IPlayerServerProfile>(
   "PlayerServerProfile",
   PlayerServerProfileSchema
 );
