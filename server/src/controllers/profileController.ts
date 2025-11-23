@@ -14,22 +14,29 @@ interface AuthRequest extends Request {
 }
 
 /* ============================================================
-   GET /profile
-   Liste tous les profils du joueur (tous serveurs)
+   GET /profile — liste tous les profils d’un joueur
 ============================================================ */
 export const listProfiles = async (req: AuthRequest, res: Response) => {
   try {
     const playerId = req.playerId;
-    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
+    if (!playerId)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    const profiles = await ServerProfile
-      .find({ playerId })
+    const profiles = await ServerProfile.find({ playerId })
       .sort({ serverId: 1, characterSlot: 1 });
 
-    res.json({
-      success: true,
-      count: profiles.length,
-      profiles: profiles.map(profile => ({
+    const groupedByServer: Record<string, any[]> = {};
+
+    for (const profile of profiles) {
+      if (!groupedByServer[profile.serverId]) groupedByServer[profile.serverId] = [];
+
+      // Récupère PlayerServerProfile par serveur
+      const psp = await PlayerServerProfile.findOne({
+        playerId,
+        serverId: profile.serverId
+      });
+
+      groupedByServer[profile.serverId].push({
         profileId: String(profile._id),
         characterName: profile.characterName,
         serverId: profile.serverId,
@@ -38,39 +45,53 @@ export const listProfiles = async (req: AuthRequest, res: Response) => {
         class: profile.class,
         race: profile.race,
 
-        gold: profile.currencies.gold,
-        diamondBound: profile.currencies.diamondBound,
-        diamondUnbound: profile.currencies.diamondUnbound,
+        // ⭐ MONNAIES PARTAGÉES
+        gold: psp?.sharedCurrencies.gold ?? 0,
+        diamondBound: psp?.sharedCurrencies.diamondBound ?? 0,
+        diamondUnbound: psp?.sharedCurrencies.diamondUnbound ?? 0,
 
         lastOnline: profile.lastOnline
-      }))
+      });
+    }
+
+    res.json({
+      success: true,
+      count: profiles.length,
+      profilesByServer: groupedByServer
     });
 
   } catch (err: any) {
-    console.error("❌ Erreur listProfiles:", err.message);
+    console.error("❌ listProfiles error:", err.message);
     res.status(500).json({ success: false, error: "Failed to list profiles" });
   }
 };
 
 
 /* ============================================================
-   GET /profile/:serverId
+   GET /profile/:serverId — liste les personnages d’un serveur
 ============================================================ */
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { serverId } = req.params;
     const playerId = req.playerId;
 
-    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
+    if (!playerId)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
     const profiles = await ServerProfile
       .find({ playerId, serverId })
       .sort({ characterSlot: 1 });
 
+    const psp = await PlayerServerProfile.findOne({
+      playerId,
+      serverId
+    });
+
     res.json({
       success: true,
       serverId,
       count: profiles.length,
+
       profiles: profiles.map(profile => ({
         profileId: String(profile._id),
         characterName: profile.characterName,
@@ -78,9 +99,10 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
         level: profile.level,
         xp: profile.xp,
 
-        gold: profile.currencies.gold,
-        diamondBound: profile.currencies.diamondBound,
-        diamondUnbound: profile.currencies.diamondUnbound,
+        // ⭐ MONNAIES PARTAGÉES
+        gold: psp?.sharedCurrencies.gold ?? 0,
+        diamondBound: psp?.sharedCurrencies.diamondBound ?? 0,
+        diamondUnbound: psp?.sharedCurrencies.diamondUnbound ?? 0,
 
         class: profile.class,
         race: profile.race,
@@ -91,14 +113,14 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
     });
 
   } catch (err: any) {
-    console.error("❌ Erreur getProfile:", err.message);
+    console.error("❌ getProfile error:", err.message);
     res.status(500).json({ success: false, error: "Failed to get profiles" });
   }
 };
 
 
 /* ============================================================
-   POST /profile/:serverId → créer un personnage
+   POST /profile/:serverId — créer un personnage
 ============================================================ */
 export const createProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -106,7 +128,8 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
     const { characterSlot, characterName, characterClass, characterRace } = req.body;
     const playerId = req.playerId;
 
-    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
+    if (!playerId)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
     // VALIDATIONS
     if (!characterSlot || !characterName || !characterClass || !characterRace)
@@ -141,7 +164,6 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
     if (existingName)
       return res.status(400).json({ success: false, error: "Name already taken" });
 
-
     /* ============================================================
        🔥 CREATION DU PERSONNAGE
     ============================================================ */
@@ -152,12 +174,6 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
       characterName,
       level: 1,
       xp: 0,
-
-      currencies: {
-        gold: 0,
-        diamondBound: 0,
-        diamondUnbound: 0
-      },
 
       class: characterClass,
       race: characterRace,
@@ -199,43 +215,46 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
     });
 
     /* ============================================================
-       🔥 Ajouter le personnage dans PlayerServerProfile
+       🔥 Ajouter ce personnage au PlayerServerProfile
     ============================================================ */
-    let psProfile = await PlayerServerProfile.findOne({ playerId, serverId });
+    let psp = await PlayerServerProfile.findOne({ playerId, serverId });
 
-    if (!psProfile) {
-      // 🟢 Banque créée automatiquement
+    if (!psp) {
+      // Crée la banque globale
       const bank = await Bank.create({
         playerId,
         items: [],
         slots: 100
       });
 
-      psProfile = await PlayerServerProfile.create({
+      psp = await PlayerServerProfile.create({
         playerId,
         serverId,
+
         characters: [{
-          characterId: newProfile._id as any,
+          characterId: newProfile._id,
           slot: characterSlot
         }],
+
         sharedCurrencies: {
           gold: 0,
           diamondBound: 0,
           diamondUnbound: 0
         },
-        sharedBankId: bank._id as any,
+
+        sharedBankId: bank._id,
         sharedQuests: {}
       });
     } else {
-      psProfile.characters.push({
-        characterId: newProfile._id as any,
+      psp.characters.push({
+        characterId: newProfile._id,
         slot: characterSlot
       });
-      await psProfile.save();
+      await psp.save();
     }
 
     /* ============================================================
-       🔥 Calcul des stats
+       🔥 Calcul des stats du personnage
     ============================================================ */
     await StatsManager.initializeNewCharacter(String(newProfile._id));
     const profileWithStats = await ServerProfile.findById(newProfile._id);
@@ -252,9 +271,10 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         level: profileWithStats!.level,
         xp: profileWithStats!.xp,
 
-        gold: profileWithStats!.currencies.gold,
-        diamondBound: profileWithStats!.currencies.diamondBound,
-        diamondUnbound: profileWithStats!.currencies.diamondUnbound,
+        // ⭐ MONNAIES PARTAGÉES
+        gold: psp.sharedCurrencies.gold,
+        diamondBound: psp.sharedCurrencies.diamondBound,
+        diamondUnbound: psp.sharedCurrencies.diamondUnbound,
 
         class: profileWithStats!.class,
         race: profileWithStats!.race,
@@ -265,8 +285,11 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
     });
 
   } catch (err: any) {
-    console.error("❌ Erreur createProfile:", err);
-    res.status(500).json({ success: false, error: "Failed to create character" });
+    console.error("❌ createProfile error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create character"
+    });
   }
 };
 
@@ -279,25 +302,32 @@ export const deleteProfile = async (req: AuthRequest, res: Response) => {
     const { serverId, characterSlot } = req.params;
     const playerId = req.playerId;
 
-    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
+    if (!playerId)
+      return res.status(401).json({ success: false, error: "Unauthorized" });
 
     const slot = parseInt(characterSlot);
 
     if (!isValidCharacterSlot(slot))
       return res.status(400).json({ success: false, error: "Invalid character slot" });
 
-    const profile = await ServerProfile.findOne({ playerId, serverId, characterSlot: slot });
+    const profile = await ServerProfile.findOne({
+      playerId,
+      serverId,
+      characterSlot: slot
+    });
 
     if (!profile)
       return res.status(404).json({ success: false, error: "Character not found" });
 
     await ServerProfile.findByIdAndDelete(profile._id);
 
-    // 🔥 Supprimer aussi du PlayerServerProfile
-    const psProfile = await PlayerServerProfile.findOne({ playerId, serverId });
-    if (psProfile) {
-      psProfile.characters = psProfile.characters.filter(c => String(c.characterId) !== String(profile._id));
-      await psProfile.save();
+    // 🔥 enlever aussi du PlayerServerProfile
+    const psp = await PlayerServerProfile.findOne({ playerId, serverId });
+    if (psp) {
+      psp.characters = psp.characters.filter(
+        c => String(c.characterId) !== String(profile._id)
+      );
+      await psp.save();
     }
 
     res.json({
@@ -306,7 +336,7 @@ export const deleteProfile = async (req: AuthRequest, res: Response) => {
     });
 
   } catch (err: any) {
-    console.error("❌ Erreur deleteProfile:", err.message);
+    console.error("❌ deleteProfile error:", err.message);
     res.status(500).json({ success: false, error: "Failed to delete character" });
   }
 };
