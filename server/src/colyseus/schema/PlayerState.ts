@@ -146,6 +146,9 @@ export class PlayerState extends Schema {
     this.connectedAt = Date.now();
     this.lastActivity = Date.now();
     this.xp = xp ?? 0;
+    this.currencies.values.set("gold", 0);
+    this.currencies.values.set("diamonds", 0);
+    this.currencies.values.set("diamonds_bound", 0);
     this.nextLevelXp = nextLevelXp ?? this.computeNextLevelXp(level);
   }
 
