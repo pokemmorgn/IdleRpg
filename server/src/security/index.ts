@@ -5,3 +5,4 @@ export * from "./SecurityLogger";
 export * from "./SecurityHMAC";
 export * from "./SecurityVerifier";
 export * from "./SecurityTransaction";
+export * from "./PlayerStateHasher";
