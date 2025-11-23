@@ -1,4 +1,9 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
+import { ItemSchema } from "./ItemModel"; // ⚠️ Assure-toi que tu exportes bien ItemSchema dans ItemModel.ts
+
+// =======================================================
+// ▶ INTERFACE
+// =======================================================
 
 export interface IPlayerServerProfile extends Document {
   playerId: Types.ObjectId;
@@ -15,18 +20,24 @@ export interface IPlayerServerProfile extends Document {
     diamondUnbound: number;
   };
 
-  sharedBank: any[];
+  sharedBank: Array<any>;
+  sharedQuests: Record<string, any>;
 
-  sharedQuests: { [questId: string]: any };
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+// =======================================================
+// ▶ SCHEMA
+// =======================================================
 
 const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
   playerId: { type: Schema.Types.ObjectId, required: true, index: true },
   serverId: { type: String, required: true, index: true },
 
   characters: [{
-    characterId: { type: Schema.Types.ObjectId, ref: "ServerProfile" },
-    slot: Number,
+    characterId: { type: Schema.Types.ObjectId, ref: "ServerProfile", required: true },
+    slot: { type: Number, required: true }
   }],
 
   sharedCurrencies: {
@@ -35,9 +46,21 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     diamondUnbound: { type: Number, default: 0 }
   },
 
-  sharedBank: { type: Array, default: [] },
-  sharedQuests: { type: Object, default: {} }
+  sharedBank: {
+    type: [ItemSchema],   // ⭐ Propre, typé, pas de Mixed
+    default: []
+  },
+
+  sharedQuests: {
+    type: Object,
+    default: {}
+  }
+}, {
+  timestamps: true
 });
+
+// ➤ Un même compte ne peut avoir qu’UN profil par serveur
+PlayerServerProfileSchema.index({ playerId: 1, serverId: 1 }, { unique: true });
 
 export default mongoose.model<IPlayerServerProfile>(
   "PlayerServerProfile",
