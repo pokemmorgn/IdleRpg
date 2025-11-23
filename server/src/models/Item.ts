@@ -36,9 +36,35 @@ export interface IItemModel extends Document {
 }
 
 // =======================================================
-// ▶ SCHEMA EXPORTABLE
+// ▶ SCHEMA EXPORTABLE (POUR LA BANQUE)
 // =======================================================
+// 💡 IMPORTANT : sous-schema simplifié pour stockage en array.
+// 💡 Pas un model, juste un sous-document.
+// 💡 _id: false OBLIGATOIRE pour éviter la génération d’IDs.
+export const ItemSubSchema = new Schema({
+    itemId: String,
+    name: String,
+    type: String,
+    icon: String,
 
+    stackable: Boolean,
+    maxStack: Number,
+
+    effects: Object,
+    equipSlot: String,
+    stats: Object,
+
+    rewards: Array,
+    bagSizeIncrease: Number,
+
+    personal: Boolean,
+    shared: Boolean
+}, { _id: false });
+
+
+// =======================================================
+// ▶ SCHEMA PRINCIPAL (MODEL GLOBAL ITEM)
+// =======================================================
 export const ItemSchema = new Schema<IItemModel>({
     itemId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
@@ -65,9 +91,5 @@ export const ItemSchema = new Schema<IItemModel>({
     personal: { type: Boolean, default: false },
     shared: { type: Boolean, default: false }
 });
-
-// =======================================================
-// ▶ MODEL MONGOOSE
-// =======================================================
 
 export default mongoose.model<IItemModel>("Item", ItemSchema);
