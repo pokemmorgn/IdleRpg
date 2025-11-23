@@ -1,10 +1,10 @@
 // server/src/security/SecurityVerifier.ts
 
-import crypto from "crypto";
 import dotenv from "dotenv";
+dotenv.config();
+import crypto from "crypto";
 import { PlayerStateHasher } from "./PlayerStateHasher";
 
-dotenv.config();
 
 // =====================================
 // 🔐 GLOBAL SECRET (HMAC)
