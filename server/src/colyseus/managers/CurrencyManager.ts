@@ -1,17 +1,53 @@
-// server/src/colyseus/managers/CurrencyManager.ts
+// ============================================================================
+//  CURRENCY MANAGER — SERVER AUTHORITATIVE (SECURE MODE)
+//
+//  🔒 IMPORTANT POUR LE FRONT-END / UNITY DEV / IA GENERATRICE DE CODE :
+//
+//  1) Le CLIENT NE DOIT JAMAIS modifier les soldes de currency localement.
+//     - Pas de player.gold += 5
+//     - Pas de player.diamonds = 999
+//     - Pas de "set" envoyé côté client
+//
+//  2) Le CLIENT DOIT TOUJOURS utiliser une TRANSACTION SECURE :
+//
+//       room.send("currency", SecurityTransaction.wrap({
+//           action: "add",
+//           type: "gold",
+//           amount: 50,
+//       }));
+//
+//     → SecurityTransaction.wrap() ajoute la signature HMAC requise pour le serveur.
+//
+//  3) Toute requête non signée ou modifiée sera automatiquement:
+//       - bloquée
+//       - logguée en tant que tentative de cheat
+//
+//
+//  4) Actions autorisées côté client :
+//       - add        (ajout de monnaie légitime)
+//       - remove     (paiement d'un coût, achat, upgrade)
+//     ❌ "set" est complètement INTERDIT côté client.
+//
+//
+//  5) Le serveur applique automatiquement :
+//       - Anti flood : 5 opérations / seconde max
+//       - Delta max   : ±5000 par requête (anti memory hack)
+//       - Validation HMAC signature
+//
+//  6) Le serveur est totalement AUTHORITATIVE :
+//       → même si le client se fait hacker, le serveur reste inviolable.
+//
+// ============================================================================
 
 import { Client } from "colyseus";
 import { PlayerState } from "../schema/PlayerState";
+import { SecurityVerifier } from "../../security/SecurityVerifier";
 
 export class CurrencyManager {
 
-    // Types autorisés côté serveur
     private static VALID_TYPES = ["gold", "diamonds", "diamonds_bound"];
-
-    // Montant maximum par requête (anti burst hack)
     private static MAX_DELTA = 5000;
 
-    // Anti-spam par joueur
     private lastOpTimestamp: Map<string, number> = new Map();
     private opCountWindow: Map<string, number> = new Map();
 
@@ -19,15 +55,14 @@ export class CurrencyManager {
         console.log("💰 CurrencyManager chargé (secure mode).");
     }
 
-    // ===========================================================
-    // 🔐 ANTI-FLOOD (5 opérations / seconde max)
-    // ===========================================================
+    // ========================================================================
+    // 🔥 ANTI-FLOOD
+    // ========================================================================
     private isFlooding(player: PlayerState): boolean {
         const now = Date.now();
         const last = this.lastOpTimestamp.get(player.sessionId) || 0;
         const count = this.opCountWindow.get(player.sessionId) || 0;
 
-        // Reset la fenêtre après 1 seconde
         if (now - last > 1000) {
             this.lastOpTimestamp.set(player.sessionId, now);
             this.opCountWindow.set(player.sessionId, 1);
@@ -36,34 +71,25 @@ export class CurrencyManager {
 
         this.opCountWindow.set(player.sessionId, count + 1);
 
-        if (count + 1 > 5) {
-            console.warn("⚠️ FLOOD DETECTED:", {
-                player: player.playerId,
-                operations: count + 1,
-            });
+        if (count + 1 > 5)
             return true;
-        }
 
         return false;
     }
 
-    // ===========================================================
-    // 🔥 ENVOI D’UNE UPDATE AU CLIENT
-    // ===========================================================
     private sendUpdate(client: Client, type: string, amount: number) {
         client.send("currency_update", { type, amount });
     }
 
-    // ===========================================================
-    // 📥 ADD CURRENCY
-    // ===========================================================
+    // ========================================================================
+    // 📥 ADD
+    // ========================================================================
     add(player: PlayerState, client: Client, type: string, amount: number) {
 
         if (amount <= 0) return;
 
-        // Anti cheat : trop élevé
         if (amount > CurrencyManager.MAX_DELTA) {
-            console.warn("⚠️ CHEAT DETECTED (ADD TOO HIGH)", {
+            console.warn("⚠️ SECURITY: ADD TOO HIGH", {
                 player: player.playerId,
                 amount
             });
@@ -77,22 +103,22 @@ export class CurrencyManager {
         this.sendUpdate(client, type, newAmount);
     }
 
-    // ===========================================================
-    // 📤 REMOVE CURRENCY
-    // ===========================================================
+    // ========================================================================
+    // 📤 REMOVE
+    // ========================================================================
     remove(player: PlayerState, client: Client, type: string, amount: number): boolean {
-        const current = player.currencies.values.get(type) || 0;
 
         if (amount <= 0) return false;
 
-        // Anti cheat : trop élevé
         if (amount > CurrencyManager.MAX_DELTA) {
-            console.warn("⚠️ CHEAT DETECTED (REMOVE TOO HIGH)", {
+            console.warn("⚠️ SECURITY: REMOVE TOO HIGH", {
                 player: player.playerId,
                 amount
             });
             return false;
         }
+
+        const current = player.currencies.values.get(type) || 0;
 
         if (current < amount) {
             client.send("currency_error", {
@@ -109,56 +135,66 @@ export class CurrencyManager {
         return true;
     }
 
-    // ===========================================================
-    // ⛔ SET CURRENCY (INTERDIT AU CLIENT)
-    // ===========================================================
+    // ========================================================================
+    // ❌ SET INTERDIT CÔTÉ CLIENT
+    // ========================================================================
     set(player: PlayerState, client: Client, type: string, amount: number) {
-        console.warn("⚠️ CHEAT ATTEMPT: client tried to use 'set'!", {
+        console.warn("⛔ SECURITY: CLIENT TRIED TO USE SET()", {
             player: player.playerId,
-            type,
-            amount
+            type, amount
         });
         return;
     }
 
-    // ===========================================================
-    // 📦 GET CURRENCY
-    // ===========================================================
-    get(player: PlayerState, type: string): number {
+    get(player: PlayerState, type: string) {
         return player.currencies.values.get(type) || 0;
     }
 
-    // ===========================================================
-    // 🔥 MESSAGE ROUTER (MAIN ENTRY)
-    // ===========================================================
-    handleMessage(type: string, client: Client, player: PlayerState, data: any): boolean {
+    // ========================================================================
+    // 🔥 ROUTE PRINCIPALE
+    // ========================================================================
+    handleMessage(type: string, client: Client, player: PlayerState, payload: any): boolean {
 
-        if (type !== "currency") return false;
+        if (type !== "currency")
+            return false;
+
+        // ======================================================
+        // 🔐 1) Vérification cryptographique
+        // ======================================================
+        if (!SecurityVerifier.verify(payload)) {
+            console.warn("⛔ SECURITY: INVALID SIGNATURE", {
+                player: player.playerId
+            });
+            return true;
+        }
+
+        const data = payload.data;
 
         const action = data.action;
         const currencyType = data.type;
         const amount = Number(data.amount) || 0;
 
-        // 🔐 Type invalide → CHEAT
+        // ======================================================
+        // 🔐 2) Type valide ?
+        // ======================================================
         if (!CurrencyManager.VALID_TYPES.includes(currencyType)) {
-            console.warn("⚠️ CHEAT: invalid currency type", {
-                player: player.playerId,
-                type: currencyType
-            });
+            console.warn("⛔ SECURITY: INVALID CURRENCY TYPE", currencyType);
             return true;
         }
 
-        // 🔐 Anti flood
+        // ======================================================
+        // 🔐 3) Anti-flood
+        // ======================================================
         if (this.isFlooding(player)) {
-            console.warn("⚠️ CHEAT FLOOD:", {
-                player: player.playerId,
-                action
-            });
+            console.warn("⛔ SECURITY: FLOOD DETECTED", player.playerId);
             return true;
         }
 
-        // Routing sécurisé
+        // ======================================================
+        // 🔐 4) Dispatch
+        // ======================================================
         switch (action) {
+
             case "add":
                 this.add(player, client, currencyType, amount);
                 return true;
@@ -167,16 +203,11 @@ export class CurrencyManager {
                 this.remove(player, client, currencyType, amount);
                 return true;
 
-            case "set": // INTERDIT
+            case "set":
                 this.set(player, client, currencyType, amount);
                 return true;
-
-            default:
-                console.warn("⚠️ CHEAT: Invalid currency action", {
-                    player: player.playerId,
-                    action
-                });
-                return true;
         }
+
+        return false;
     }
 }
