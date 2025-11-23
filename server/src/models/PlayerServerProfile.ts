@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
-import { ItemSchema } from "./Item";
+import { ItemSubSchema } from "./Item";
 
 // =======================================================
 // ▶ INTERFACE
@@ -46,8 +46,9 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     diamondUnbound: { type: Number, default: 0 }
   },
 
+  // ⭐️ BANQUE GLOBALE — UTILISE LE SUBSCHEMA
   sharedBank: {
-    type: [ItemSchema],   // ⭐ Propre, typé, pas de Mixed
+    type: [ItemSubSchema],
     default: []
   },
 
@@ -55,6 +56,7 @@ const PlayerServerProfileSchema = new Schema<IPlayerServerProfile>({
     type: Object,
     default: {}
   }
+
 }, {
   timestamps: true
 });
