@@ -6,27 +6,22 @@ import { isValidClass, isClassAllowedForRace } from "../config/classes.config";
 import { isValidRace } from "../config/races.config";
 import { StatsManager } from "../managers/StatsManager";
 
-// 🔥 Typer proprement les requêtes authentifiées
 interface AuthRequest extends Request {
   playerId?: string;
 }
 
-/**
- * GET /profile
- * Liste tous les profils du joueur (tous serveurs)
- */
+/* ============================================================
+   GET /profile
+   Liste tous les profils du joueur (tous serveurs)
+============================================================ */
 export const listProfiles = async (req: AuthRequest, res: Response) => {
   try {
     const playerId = req.playerId;
+    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    if (!playerId) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
-
-    const profiles = await ServerProfile.find({ playerId }).sort({
-      serverId: 1,
-      characterSlot: 1
-    });
+    const profiles = await ServerProfile
+      .find({ playerId })
+      .sort({ serverId: 1, characterSlot: 1 });
 
     res.json({
       success: true,
@@ -39,32 +34,36 @@ export const listProfiles = async (req: AuthRequest, res: Response) => {
         level: profile.level,
         class: profile.class,
         race: profile.race,
+
+        // Facultatif mais utile
+        gold: profile.currencies.gold,
+        diamondBound: profile.currencies.diamondBound,
+        diamondUnbound: profile.currencies.diamondUnbound,
+
         lastOnline: profile.lastOnline
       }))
     });
+
   } catch (err: any) {
     console.error("❌ Erreur listProfiles:", err.message);
     res.status(500).json({ success: false, error: "Failed to list profiles" });
   }
 };
 
-/**
- * GET /profile/:serverId
- * Récupère tous les profils du joueur sur un serveur
- */
+
+/* ============================================================
+   GET /profile/:serverId
+============================================================ */
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { serverId } = req.params;
     const playerId = req.playerId;
 
-    if (!playerId) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
+    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    const profiles = await ServerProfile.find({
-      playerId,
-      serverId
-    }).sort({ characterSlot: 1 });
+    const profiles = await ServerProfile
+      .find({ playerId, serverId })
+      .sort({ characterSlot: 1 });
 
     res.json({
       success: true,
@@ -76,7 +75,12 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
         characterSlot: profile.characterSlot,
         level: profile.level,
         xp: profile.xp,
-        gold: profile.gold,
+
+        // 🔥 PATCH CURRENCY
+        gold: profile.currencies.gold,
+        diamondBound: profile.currencies.diamondBound,
+        diamondUnbound: profile.currencies.diamondUnbound,
+
         class: profile.class,
         race: profile.race,
         primaryStats: profile.primaryStats,
@@ -84,102 +88,62 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
         lastOnline: profile.lastOnline
       }))
     });
+
   } catch (err: any) {
     console.error("❌ Erreur getProfile:", err.message);
     res.status(500).json({ success: false, error: "Failed to get profiles" });
   }
 };
 
-/**
- * POST /profile/:serverId
- * Crée un profil sur un serveur
- */
+
+/* ============================================================
+   POST /profile/:serverId  →  créer un personnage
+============================================================ */
 export const createProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { serverId } = req.params;
     const { characterSlot, characterName, characterClass, characterRace } = req.body;
     const playerId = req.playerId;
 
-    if (!playerId) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
+    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    // === VALIDATIONS ===
-
-    if (!characterSlot || !characterName || !characterClass || !characterRace) {
+    // VALIDATIONS (inchangées)
+    if (!characterSlot || !characterName || !characterClass || !characterRace)
       return res.status(400).json({ success: false, error: "Missing required fields" });
-    }
 
-    if (!isValidCharacterSlot(characterSlot)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid character slot: ${characterSlot}`
-      });
-    }
+    if (!isValidCharacterSlot(characterSlot))
+      return res.status(400).json({ success: false, error: `Invalid character slot: ${characterSlot}` });
 
     const server = await Server.findOne({ serverId });
-    if (!server) {
-      return res.status(404).json({
-        success: false,
-        error: `Server ${serverId} not found`
-      });
-    }
+    if (!server)
+      return res.status(404).json({ success: false, error: `Server ${serverId} not found` });
 
-    if (server.status === "maintenance") {
-      return res.status(403).json({
-        success: false,
-        error: "Server is in maintenance"
-      });
-    }
+    if (server.status === "maintenance")
+      return res.status(403).json({ success: false, error: "Server is in maintenance" });
 
-    if (!isValidClass(characterClass)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid class: ${characterClass}`
-      });
-    }
+    if (!isValidClass(characterClass))
+      return res.status(400).json({ success: false, error: `Invalid class: ${characterClass}` });
 
-    if (!isValidRace(characterRace)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid race: ${characterRace}`
-      });
-    }
+    if (!isValidRace(characterRace))
+      return res.status(400).json({ success: false, error: `Invalid race: ${characterRace}` });
 
-    if (!isClassAllowedForRace(characterClass, characterRace)) {
-      return res.status(400).json({
-        success: false,
-        error: `Class ${characterClass} is not allowed for race ${characterRace}`
-      });
-    }
+    if (!isClassAllowedForRace(characterClass, characterRace))
+      return res.status(400).json({ success: false, error: `Class not allowed for race` });
 
-    const existingCharacter = await ServerProfile.findOne({
-      playerId,
-      serverId,
-      characterSlot
-    });
+    // Slot déjà utilisé ?
+    const existingCharacter = await ServerProfile.findOne({ playerId, serverId, characterSlot });
+    if (existingCharacter)
+      return res.status(400).json({ success: false, error: `Slot already in use` });
 
-    if (existingCharacter) {
-      return res.status(400).json({
-        success: false,
-        error: `Character slot ${characterSlot} is already occupied on server ${serverId}`
-      });
-    }
+    // Nom déjà pris ?
+    const existingName = await ServerProfile.findOne({ serverId, characterName });
+    if (existingName)
+      return res.status(400).json({ success: false, error: `Name already taken` });
 
-    const existingName = await ServerProfile.findOne({
-      serverId,
-      characterName
-    });
 
-    if (existingName) {
-      return res.status(400).json({
-        success: false,
-        error: `Character name "${characterName}" is already taken on server ${serverId}`
-      });
-    }
-
-    // === CRÉATION DU PERSONNAGE ===
-    // On met tout à zéro → StatsManager fera le vrai calcul
+    // ==============================================================
+    // 🔥 CREATION DU PERSONNAGE
+    // ==============================================================
     const newProfile = await ServerProfile.create({
       playerId,
       serverId,
@@ -187,7 +151,14 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
       characterName,
       level: 1,
       xp: 0,
-      gold: 0,
+
+      // 🔥 initialise les 3 monnaies
+      currencies: {
+        gold: 0,
+        diamondBound: 0,
+        diamondUnbound: 0
+      },
+
       class: characterClass,
       race: characterRace,
 
@@ -201,25 +172,19 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
 
       computedStats: {
         hp: 1,
-        maxHp: 1,                 // min: 1
+        maxHp: 1,
         resource: 0,
         maxResource: 0,
-      
         manaRegen: 0,
         rageRegen: 0,
         energyRegen: 0,
-      
         attackPower: 0,
         spellPower: 0,
-      
-        attackSpeed: 1.0,         // min: 0.8
-      
+        attackSpeed: 1.0,
         criticalChance: 0,
         criticalDamage: 150,
-      
         damageReduction: 0,
-        moveSpeed: 1,             // >= 0
-      
+        moveSpeed: 1,
         armor: 0,
         magicResistance: 0,
         precision: 0,
@@ -230,14 +195,12 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         spellPenetration: 0
       },
 
-
       lastOnline: new Date()
     });
 
-    // === CALCUL INITIAL DES STATS ===
+    // 🔥 Calcul initial complet
     await StatsManager.initializeNewCharacter(String(newProfile._id));
 
-    // Recharger depuis Mongo avec les stats calculées
     const profileWithStats = await ServerProfile.findById(newProfile._id);
 
     res.status(201).json({
@@ -248,9 +211,15 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         characterName: profileWithStats!.characterName,
         serverId: profileWithStats!.serverId,
         characterSlot: profileWithStats!.characterSlot,
+
         level: profileWithStats!.level,
         xp: profileWithStats!.xp,
-        gold: profileWithStats!.gold,
+
+        // 🔥 CURRENCIES
+        gold: profileWithStats!.currencies.gold,
+        diamondBound: profileWithStats!.currencies.diamondBound,
+        diamondUnbound: profileWithStats!.currencies.diamondUnbound,
+
         class: profileWithStats!.class,
         race: profileWithStats!.race,
         primaryStats: profileWithStats!.primaryStats,
@@ -258,45 +227,33 @@ export const createProfile = async (req: AuthRequest, res: Response) => {
         lastOnline: profileWithStats!.lastOnline
       }
     });
+
   } catch (err: any) {
     console.error("❌ Erreur createProfile:", err.message);
     res.status(500).json({ success: false, error: "Failed to create character" });
   }
 };
 
-/**
- * DELETE /profile/:serverId/:characterSlot
- */
+
+/* ============================================================
+   DELETE /profile/:serverId/:characterSlot
+============================================================ */
 export const deleteProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { serverId, characterSlot } = req.params;
     const playerId = req.playerId;
 
-    if (!playerId) {
-      return res.status(401).json({ success: false, error: "Unauthorized" });
-    }
+    if (!playerId) return res.status(401).json({ success: false, error: "Unauthorized" });
 
-    const slotNumber = parseInt(characterSlot);
+    const slot = parseInt(characterSlot);
 
-    if (!isValidCharacterSlot(slotNumber)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid character slot: ${characterSlot}`
-      });
-    }
+    if (!isValidCharacterSlot(slot))
+      return res.status(400).json({ success: false, error: "Invalid character slot" });
 
-    const profile = await ServerProfile.findOne({
-      playerId,
-      serverId,
-      characterSlot: slotNumber
-    });
+    const profile = await ServerProfile.findOne({ playerId, serverId, characterSlot: slot });
 
-    if (!profile) {
-      return res.status(404).json({
-        success: false,
-        error: `No character found in slot ${characterSlot} on server ${serverId}`
-      });
-    }
+    if (!profile)
+      return res.status(404).json({ success: false, error: "Character not found" });
 
     await ServerProfile.findByIdAndDelete(profile._id);
 
@@ -304,9 +261,10 @@ export const deleteProfile = async (req: AuthRequest, res: Response) => {
       success: true,
       message: `Character ${profile.characterName} deleted successfully`
     });
+
   } catch (err: any) {
     console.error("❌ Erreur deleteProfile:", err.message);
-    res.status(500).json({ success: false, error: "Failed to delete profile" });
+    res.status(500).json({ success: false, error: "Failed to delete character" });
   }
 };
 
