@@ -1,8 +1,10 @@
+import dotenv from "dotenv";
+dotenv.config();   // ← must be first
 import express, { Application, Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import mongoose from "mongoose";
 import cors from "cors";
-import dotenv from "dotenv";
+
 
 // --- Colyseus ---
 import { Server } from "colyseus";
@@ -21,7 +23,7 @@ import dialogueRoutes from "./routes/dialogueRoutes";
 import monsterRoutes from "./routes/monsterRoutes";
 import statsRoutes from "./routes/statsRoutes"; // ← AJOUT
 
-dotenv.config();
+
 
 const app: Application = express();
 
