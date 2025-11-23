@@ -11,11 +11,20 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
  *  - values["diamonds"] = 15
  */
 export class CurrencyState extends Schema {
-  
-  /** 
-   * Map dynamique "string → number".
-   * On peut ajouter autant de monnaies qu’on veut.
-   */
+
   @type({ map: "number" })
   values = new MapSchema<number>();
+
+  getGold() {
+    return this.values.get("gold") || 0;
+  }
+
+  getPremiumDiamonds() {
+    return this.values.get("diamonds") || 0;
+  }
+
+  getBoundDiamonds() {
+    return this.values.get("diamonds_bound") || 0;
+  }
 }
+
