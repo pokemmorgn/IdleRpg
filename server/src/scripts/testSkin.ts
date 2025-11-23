@@ -255,9 +255,9 @@ async function testSkinSystem(room: Colyseus.Room, skinId: string, lastStatsRef:
         // =====================================================================
         // 🔥 Catch-all (avant tous les autres listeners)
         // =====================================================================
-        room.onMessage("*", (type: string, message: any) => {
-            console.warn(`⚠️ onMessage() not registered for type '${type}'.`, message);
-        });
+room.onMessage("*", (type: string | number, message: any) => {
+    console.warn(`⚠️ onMessage non géré (${String(type)}):`, message);
+});
 
         // =====================================================================
         // 🔥 Listeners normaux
