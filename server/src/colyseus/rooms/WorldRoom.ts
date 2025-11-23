@@ -296,15 +296,15 @@ console.log("📥 onAuth RECEIVED:", options);
       };
 
       // Conversion pour le client Colyseus (CurrencyState)
-      player.currencies.values.set("gold", player.sharedCurrencies.gold);
-      player.currencies.values.set("diamonds_bound", player.sharedCurrencies.diamondBound);
-      player.currencies.values.set("diamonds", player.sharedCurrencies.diamondUnbound);
-
+      player.currencies.values.set("gold", psp.sharedCurrencies.gold);
+      player.currencies.values.set("diamonds", psp.sharedCurrencies.diamondUnbound);
+      player.currencies.values.set("diamonds_bound", psp.sharedCurrencies.diamondBound);
+      
       client.send("currency_full_update", {
         values: {
-          gold: player.sharedCurrencies.gold,
-          diamonds_bound: player.sharedCurrencies.diamondBound,
-          diamonds: player.sharedCurrencies.diamondUnbound
+          gold: psp.sharedCurrencies.gold,
+          diamonds: psp.sharedCurrencies.diamondUnbound, // 💎 unbound
+          diamonds_bound: psp.sharedCurrencies.diamondBound // 💎 bound
         }
       });
     }
