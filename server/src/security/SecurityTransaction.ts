@@ -1,29 +1,34 @@
-// server/src/security/SecurityTransaction.ts
 import crypto from "crypto";
+import dotenv from "dotenv";
 
-const SECRET = process.env.PX42_KEY || "MISSING_SECRET_KEY";
+dotenv.config();
+
+const SECRET = process.env.PX42_KEY;
+if (!SECRET) throw new Error("Missing PX42_KEY in .env");
 
 /**
- * Utility to create secure signed payloads for currency messages.
+ * This function is used ONLY by trusted server-side test scripts,
+ * NOT by players nor clients (Unity/web/mobile).
  * 
- * Clients (Unity / JS / mobile) MUST use this wrapper.
+ * It wraps data in a secure signed envelope compatible with SecurityVerifier.
  */
 export class SecurityTransaction {
 
     static wrap(data: any) {
-        const payload = {
-            timestamp: Date.now(),
-            data
-        };
 
-        const signature = crypto
-            .createHmac("sha256", SECRET)
-            .update(JSON.stringify(payload))
+        const timestamp = Date.now();
+        const nonce = crypto.randomBytes(16).toString("hex");
+
+        const raw = JSON.stringify(data) + timestamp + nonce;
+        const signature = crypto.createHmac("sha256", SECRET)
+            .update(raw)
             .digest("hex");
 
         return {
-            signature,
-            ...payload
+            data,
+            timestamp,
+            nonce,
+            signature
         };
     }
 }
